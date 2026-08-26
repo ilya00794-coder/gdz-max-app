@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Решебник — MAX mini app</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Manrope:wght@500;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!--
+    MAX Bridge — https://dev.max.ru/docs/webapps/bridge
+    Скрипт создаёт глобальный window.WebApp; отдельной инициализации не требует.
+    Вне клиента MAX (обычный браузер) объект не появится — app.js это переживает
+    и переключается в режим автономного превью.
+  -->
+  <script src="https://st.max.ru/js/max-web-app.js"></script>
+
+  <div class="app">
+
+    <!-- Экран 1: выбор класса и предмета -->
+    <section class="screen" id="screen-setup" data-active="true">
+      <header class="topbar">
+        <span class="brand">реш<span class="brand-accent">ёбник</span></span>
+      </header>
+
+      <div class="setup">
+        <p class="eyebrow">сфоткал — решил</p>
+        <h1 class="headline">Какой класс?</h1>
+
+        <div class="chip-row" id="grade-row"></div>
+
+        <h2 class="subhead">Предмет</h2>
+        <div class="chip-row" id="subject-row"></div>
+
+        <button class="cta" id="btn-to-capture" disabled>Дальше</button>
+      </div>
+    </section>
+
+    <!-- Экран 2: фото задачи -->
+    <section class="screen" id="screen-capture" data-active="false">
+      <header class="topbar">
+        <button class="icon-btn" id="btn-back-setup" aria-label="Назад">←</button>
+        <span class="brand">реш<span class="brand-accent">ёбник</span></span>
+      </header>
+
+      <div class="capture">
+        <div class="capture-frame">
+          <div class="capture-corner tl"></div>
+          <div class="capture-corner tr"></div>
+          <div class="capture-corner bl"></div>
+          <div class="capture-corner br"></div>
+          <p class="capture-hint">Наведи на задачу<br />можно сделать несколько фото</p>
+        </div>
+
+        <div class="thumb-row" id="thumb-row"></div>
+
+        <div class="capture-actions">
+          <label class="cta cta-outline" for="file-input">+ Фото</label>
+          <input type="file" id="file-input" accept="image/*" capture="environment" multiple hidden />
+          <button class="cta" id="btn-solve">Решить</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Экран 3: подтверждение распознанного текста -->
+    <section class="screen" id="screen-confirm" data-active="false">
+      <header class="topbar">
+        <button class="icon-btn" id="btn-back-capture" aria-label="Назад">←</button>
+        <span class="brand">реш<span class="brand-accent">ёбник</span></span>
+      </header>
+
+      <div class="confirm">
+        <p class="eyebrow">мы это распознали, всё верно?</p>
+        <textarea class="recognized-text" id="recognized-text"></textarea>
+        <button class="cta" id="btn-confirm">Верно, решай →</button>
+      </div>
+    </section>
+
+    <!-- Экран 4: свайп-решение (сигнатурный экран) -->
+    <section class="screen" id="screen-solution" data-active="false">
+      <div class="progress-strip" id="progress-strip"></div>
+
+      <header class="topbar topbar-on-dark">
+        <button class="icon-btn" id="btn-back-confirm" aria-label="Назад">←</button>
+        <span class="step-counter" id="step-counter">1 / 3</span>
+      </header>
+
+      <div class="reel" id="reel"></div>
+
+      <div class="swipe-hint" id="swipe-hint">↑ свайпни, чтобы увидеть шаг</div>
+    </section>
+
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
