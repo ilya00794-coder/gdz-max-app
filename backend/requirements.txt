@@ -1,0 +1,2 @@
+# Верификация ответов через символьную математику (backend/src/services/verify_sympy.py).
+sympy>=1.12

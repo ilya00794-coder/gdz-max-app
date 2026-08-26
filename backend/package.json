@@ -1,0 +1,20 @@
+{
+  "name": "gdz-max-backend",
+  "version": "0.1.0",
+  "description": "API-сервер для мини-приложения решебника в MAX",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch --env-file-if-exists=.env server.js",
+    "start:env": "node --env-file-if-exists=.env server.js",
+    "migrate": "node --env-file-if-exists=.env src/db/migrate.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.120.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "pg": "^8.23.0",
+    "zod": "^4.4.3"
+  }
+}

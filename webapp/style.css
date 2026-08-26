@@ -1,0 +1,372 @@
+/* =========================================================
+   Токены дизайна
+   Концепция: школьная доска + маркеры-хайлайтеры.
+   Не крем/терракота, не чёрный+неон, не газетная сетка —
+   это "доска" (тёмно-зелёный) с меловым текстом и яркими
+   акцентами маркеров. Тематически привязано к школе.
+   ========================================================= */
+:root {
+  --board: #123524;         /* фон — школьная доска */
+  --board-deep: #0b241a;    /* глубокий фон для акцентных экранов */
+  --chalk: #f3efe4;         /* меловой текст */
+  --chalk-dim: #b9c9be;     /* приглушённый меловой текст */
+  --marker-yellow: #ffd23f; /* акцент 1 — хайлайтер жёлтый */
+  --marker-pink: #ff5d8f;   /* акцент 2 — маркер розовый */
+  --marker-blue: #5fc4ff;   /* акцент 3 — маркер голубой */
+  --line: rgba(243, 239, 228, 0.18);
+
+  --font-display: "Caveat", cursive;
+  --font-body: "Manrope", -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--board);
+  color: var(--chalk);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+/* фактура доски: едва заметные меловые разводы */
+.app::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  max-width: 480px;
+  margin: 0 auto;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255,255,255,0.03), transparent 40%),
+    radial-gradient(circle at 85% 75%, rgba(255,255,255,0.025), transparent 45%);
+  z-index: 0;
+}
+
+.screen {
+  display: none;
+  min-height: 100vh;
+  flex-direction: column;
+  position: relative;
+  z-index: 1;
+}
+.screen[data-active="true"] { display: flex; }
+
+/* ---------- topbar ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 20px 8px;
+}
+.topbar-on-dark { position: relative; z-index: 3; padding-top: 26px; }
+
+.brand {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--chalk);
+}
+.brand-accent { color: var(--marker-yellow); }
+
+.icon-btn {
+  background: rgba(243,239,228,0.08);
+  border: 1px solid var(--line);
+  color: var(--chalk);
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+/* ---------- экран 1: setup ---------- */
+.setup { padding: 12px 24px 40px; flex: 1; display: flex; flex-direction: column; }
+
+.eyebrow {
+  font-family: var(--font-body);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--marker-yellow);
+  margin: 4px 0 2px;
+}
+
+.headline {
+  font-family: var(--font-display);
+  font-size: 46px;
+  line-height: 1.05;
+  margin: 0 0 20px;
+  color: var(--chalk);
+}
+
+.subhead {
+  font-family: var(--font-display);
+  font-size: 28px;
+  margin: 28px 0 12px;
+  color: var(--chalk);
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chip {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--board);
+  background: var(--chalk);
+  border: none;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transform: rotate(var(--tilt, 0deg));
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.chip:nth-child(3n+1) { --tilt: -2deg; }
+.chip:nth-child(3n+2) { --tilt: 1.5deg; }
+.chip:nth-child(3n+3) { --tilt: -1deg; }
+
+.chip[data-selected="true"] {
+  background: var(--marker-yellow);
+  transform: rotate(0deg) scale(1.04);
+}
+
+.cta {
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--board);
+  background: var(--marker-yellow);
+  border: none;
+  border-radius: 12px;
+  padding: 16px 20px;
+  text-align: center;
+  cursor: pointer;
+  margin-top: auto;
+}
+.cta:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.cta-outline {
+  background: transparent;
+  color: var(--chalk);
+  border: 2px solid var(--line);
+  margin-top: 0;
+}
+
+/* ---------- экран 2: capture ---------- */
+.capture {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 24px 32px;
+  gap: 20px;
+}
+
+.capture-frame {
+  position: relative;
+  flex: 1;
+  min-height: 320px;
+  border-radius: 16px;
+  background: rgba(243,239,228,0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.capture-corner {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--marker-yellow);
+}
+.tl { top: 14px; left: 14px; border-right: none; border-bottom: none; border-radius: 6px 0 0 0; }
+.tr { top: 14px; right: 14px; border-left: none; border-bottom: none; border-radius: 0 6px 0 0; }
+.bl { bottom: 14px; left: 14px; border-right: none; border-top: none; border-radius: 0 0 0 6px; }
+.br { bottom: 14px; right: 14px; border-left: none; border-top: none; border-radius: 0 0 6px 0; }
+
+.capture-hint {
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--chalk-dim);
+  text-align: center;
+  line-height: 1.3;
+}
+
+.thumb-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 2px solid var(--marker-yellow);
+}
+
+.capture-actions {
+  display: flex;
+  gap: 12px;
+}
+.capture-actions .cta,
+.capture-actions .cta-outline {
+  flex: 1;
+  margin-top: 0;
+}
+
+/* ---------- экран 3: confirm ---------- */
+.confirm {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 24px 32px;
+  gap: 16px;
+}
+
+.recognized-text {
+  flex: 1;
+  min-height: 220px;
+  background: rgba(243,239,228,0.05);
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  color: var(--chalk);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  padding: 16px;
+  resize: none;
+}
+
+/* ---------- экран 4: solution — сигнатурный экран ---------- */
+#screen-solution {
+  background: var(--board-deep);
+}
+
+/* Прогресс в виде "разлинованных полосок тетради", как сторис */
+.progress-strip {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  gap: 4px;
+  padding: 10px 16px 0;
+  z-index: 4;
+}
+.progress-seg {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(243,239,228,0.2);
+  overflow: hidden;
+}
+.progress-seg[data-state="done"] { background: var(--marker-yellow); }
+.progress-seg[data-state="current"] {
+  background: linear-gradient(90deg, var(--marker-yellow) 50%, rgba(243,239,228,0.2) 50%);
+  background-size: 200% 100%;
+  animation: fill 6s linear forwards;
+}
+@keyframes fill { from { background-position: 100% 0; } to { background-position: 0 0; } }
+
+.step-counter {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--chalk-dim);
+  margin-left: auto;
+}
+
+.reel {
+  flex: 1;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  display: flex;
+  flex-direction: column;
+}
+
+.reel-card {
+  min-height: calc(100vh - 90px);
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 40px 28px 60px;
+  position: relative;
+}
+
+.reel-card::before {
+  /* акцентная маркерная полоса слева — сигнатурный штрих экрана решения */
+  content: "";
+  position: absolute;
+  left: 20px;
+  top: 40px;
+  bottom: 60px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--card-accent, var(--marker-yellow));
+}
+
+.reel-card:nth-child(3n+1) { --card-accent: var(--marker-yellow); }
+.reel-card:nth-child(3n+2) { --card-accent: var(--marker-pink); }
+.reel-card:nth-child(3n+3) { --card-accent: var(--marker-blue); }
+
+.reel-card-title {
+  font-family: var(--font-display);
+  font-size: 34px;
+  color: var(--card-accent, var(--marker-yellow));
+  margin: 0 0 14px 28px;
+}
+
+.reel-card-content {
+  font-family: var(--font-body);
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--chalk);
+  margin: 0 0 0 28px;
+}
+
+.reel-card-final {
+  margin-top: 28px;
+  margin-left: 28px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: rgba(255, 210, 63, 0.12);
+  border: 1px solid rgba(255, 210, 63, 0.35);
+}
+.reel-card-final-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--marker-yellow);
+  margin: 0 0 4px;
+}
+.reel-card-final-value {
+  font-family: var(--font-display);
+  font-size: 26px;
+  color: var(--chalk);
+  margin: 0;
+}
+
+.swipe-hint {
+  text-align: center;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--chalk-dim);
+  padding: 10px 0 16px;
+  opacity: 0.7;
+}
+
+@media (min-width: 481px) {
+  .app { border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+}
