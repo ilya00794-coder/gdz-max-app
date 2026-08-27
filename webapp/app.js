@@ -221,13 +221,49 @@ async function fetchSolution() {
     // Мок-решение для автономного превью UI без backend
     return {
       steps: [
-        { title: "Разбираем условие", content: "Дано уравнение: 2x + 8 = 20. Нужно найти x." },
-        { title: "Переносим числа", content: "Переносим 8 в правую часть с обратным знаком: 2x = 20 − 8, то есть 2x = 12." },
-        { title: "Делим на коэффициент", content: "Делим обе части на 2: x = 12 ÷ 2." },
+        { title: "Разбираем условие", content: "Дано линейное уравнение $2x+8=20$. Нужно найти значение $x$, при котором равенство верно." },
+        { title: "Переносим слагаемое", content: "Перенесём число $8$ из левой части в правую, изменив знак: $2x=20-8$, то есть $2x=12$." },
+        { title: "Делим на коэффициент", content: "Разделим обе части на коэффициент при $x$: $x=\\dfrac{12}{2}=6$." },
+        { title: "Проверка", content: "Подставим $x=6$ в исходное уравнение: $2\\cdot 6+8=12+8=20$. Равенство верное." },
       ],
-      finalAnswer: "x = 6",
+      finalAnswer: "$x = 6$",
       verification: { verified: false, method: "mock" },
     };
+  }
+}
+
+// ---------- отрисовка формул (KaTeX) ----------
+// Бэкенд возвращает шаги с формулами в LaTeX внутри $...$. Без отрисовки ученик
+// видит сырые $ и \dfrac{}{} — это мусор на экране, а не решение.
+const MATH_DELIMITERS = [
+  { left: "$$", right: "$$", display: true },
+  { left: "\\[", right: "\\]", display: true },
+  { left: "$", right: "$", display: false },
+  { left: "\\(", right: "\\)", display: false },
+];
+
+/**
+ * Отрисовывает формулы внутри уже вставленного в DOM элемента.
+ * Вызывать только ПОСЛЕ вставки: auto-render работает по живому дереву.
+ *
+ * Экран подтверждения (textarea#recognized-text) сюда намеренно не попадает —
+ * там текст остаётся редактируемым сырым, ученик его правит руками.
+ */
+function renderMath(root) {
+  if (typeof window.renderMathInElement !== "function") {
+    // KaTeX не загрузился (нет сети, CDN недоступен) — оставляем текст как есть,
+    // это хуже на вид, но лучше, чем пустой экран.
+    console.warn("KaTeX недоступен, формулы остаются текстом");
+    return;
+  }
+  try {
+    window.renderMathInElement(root, {
+      delimiters: MATH_DELIMITERS,
+      throwOnError: false, // кривую формулу показываем как текст, не роняем экран
+      ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code"],
+    });
+  } catch (err) {
+    console.warn("KaTeX не смог отрисовать формулы:", err);
   }
 }
 
@@ -260,6 +296,9 @@ function renderReel(solution) {
     `;
     reel.appendChild(card);
   });
+
+  // Формулы отрисовываем после того, как все карточки уже в DOM.
+  renderMath(reel);
 
   stepCounter.textContent = `1 / ${solution.steps.length}`;
 
