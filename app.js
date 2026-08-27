@@ -97,7 +97,9 @@ const state = {
   check: null, // последний результат проверки домашней работы // solve — решить задачу из учебника, check — проверить свою работу
   grade: null,
   subject: null,
-  photos: [], // { file, dataUrl }
+  // Один снимок за раз: экран съёмки показывает его крупно, рамка выделения — прямо на нём.
+  // Массив был нужен ради нескольких миниатюр; с одним кадром он только добавлял учёт id.
+  photo: null, // { file, dataUrl, cropNorm, cropTouched }
   recognizedText: "",
   solution: null,
 };
@@ -175,143 +177,81 @@ document.getElementById("btn-back-setup").addEventListener("click", () => {
 
 // ---------- экран 2: capture ----------
 const fileInput = document.getElementById("file-input");
-const thumbRow = document.getElementById("thumb-row");
 const btnSolve = document.getElementById("btn-solve");
-
-// Снимкам нужен собственный идентификатор: по индексу удалять нельзя,
-// после первого же удаления индексы съедут.
-let photoSeq = 0;
-
-fileInput.addEventListener("change", async (e) => {
-  const files = [...e.target.files];
-  hideCaptureError();
-  for (const file of files) {
-    try {
-      const dataUrl = await fileToDataUrl(file);
-      const photo = { id: ++photoSeq, file, dataUrl };
-      state.photos.push(photo);
-      thumbRow.appendChild(createThumb(photo));
-    } catch (err) {
-      // Один нечитаемый файл не должен ронять остальные и не должен подвешивать экран.
-      showCaptureError(err.message);
-    }
-  }
-  // Иначе повторный выбор того же файла не вызовет change и снимок не добавится.
-  e.target.value = "";
-});
-
-/** Миниатюра с крестиком удаления. */
-function createThumb(photo) {
-  const item = document.createElement("div");
-  item.className = "thumb-item";
-  item.dataset.photoId = String(photo.id);
-
-  const img = document.createElement("img");
-  img.className = "thumb";
-  img.src = photo.croppedDataUrl ?? photo.dataUrl;
-  img.alt = "Снимок задачи";
-  // Тап по снимку открывает выделение области — точка входа именно на снимке,
-  // потому что кадров может быть несколько и выбирать надо конкретный.
-  img.addEventListener("click", () => openCrop(photo.id));
-
-  const badge = document.createElement("span");
-  badge.className = "thumb-crop-badge";
-  badge.innerHTML = `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
-       stroke-width="2" stroke-linecap="round" aria-hidden="true">
-    <path d="M6 2v14a2 2 0 0 0 2 2h14M2 6h14a2 2 0 0 1 2 2v14" /></svg>`;
-
-  const remove = document.createElement("button");
-  remove.className = "thumb-remove";
-  remove.type = "button";
-  remove.setAttribute("aria-label", "Удалить снимок");
-  remove.textContent = "×";
-  remove.addEventListener("click", (e) => {
-    e.stopPropagation(); // иначе следом откроется выделение удалённого снимка
-    removePhoto(photo.id);
-  });
-
-  item.append(img, badge, remove);
-  return item;
-}
-
-/** Перерисовывает миниатюру после обрезки. */
-function refreshThumb(photo) {
-  const item = thumbRow.querySelector(`.thumb-item[data-photo-id="${photo.id}"]`);
-  if (!item) return;
-  item.querySelector(".thumb").src = photo.croppedDataUrl ?? photo.dataUrl;
-  item.dataset.cropped = photo.croppedDataUrl ? "true" : "false";
-}
-
-function removePhoto(id) {
-  state.photos = state.photos.filter((p) => p.id !== id);
-  thumbRow.querySelector(`.thumb-item[data-photo-id="${id}"]`)?.remove();
-  hideCaptureError();
-}
-
-/** Обнуляет набор снимков: и состояние, и миниатюры. */
-function resetPhotos() {
-  state.photos = [];
-  thumbRow.innerHTML = "";
-  hideCaptureError();
-  closeCrop();
-}
-
-/**
- * Старт новой задачи. Вызывается только там, где ученик явно начинает следующую:
- * кнопка «Новая задача» и возврат на выбор класса. При обычной навигации назад
- * внутри одной задачи (capture ↔ confirm ↔ solution) ничего не сбрасывается —
- * там снимки и распознанный текст должны сохраняться.
- */
-function startNewTask() {
-  resetPhotos();
-  state.recognizedText = "";
-  state.solution = null;
-  recognizedTextEl.value = "";
-  updateConfirmCta();
-}
-
-// ---------- выделение области задания ----------
-// Одно фото часто содержит несколько задач. Если область выделена, на распознавание
-// уходит только она: модель не цепляет соседние задания. Выделение необязательное —
-// без него уходит весь кадр, как раньше.
-const cropOverlay = document.getElementById("crop-overlay");
+const captureEmpty = document.getElementById("capture-empty");
+const capturePhoto = document.getElementById("capture-photo");
+const cropTip = document.getElementById("crop-tip");
 const cropFrame = document.getElementById("crop-frame");
 const cropImage = document.getElementById("crop-image");
 const cropBox = document.getElementById("crop-box");
 
 const MIN_CROP_PX = 40; // меньше пальцем всё равно не выделить
 
-let cropPhotoId = null;
-let cropRect = null;    // {x, y, w, h} в пикселях ОТОБРАЖАЕМОГО изображения
+let cropRect = null;  // {x, y, w, h} в пикселях ОТОБРАЖАЕМОГО изображения
 let cropDrag = null;
 
-function openCrop(photoId) {
-  const photo = state.photos.find((p) => p.id === photoId);
-  if (!photo) return;
+fileInput.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  // Сбрасываем сразу: иначе повторный выбор того же файла не вызовет change.
+  e.target.value = "";
+  if (!file) return;
 
-  cropPhotoId = photoId;
-  cropOverlay.hidden = false;
+  hideCaptureError();
+  try {
+    const dataUrl = await fileToDataUrl(file);
+    state.photo = { file, dataUrl, cropNorm: null, cropTouched: false };
+    showPhoto();
+  } catch (err) {
+    showCaptureError(err.message);
+  }
+});
 
-  // Показываем всегда оригинал: так выделение можно переделать заново.
+/** Показывает снимок крупно и ставит рамку выделения поверх него. */
+function showPhoto() {
+  captureEmpty.hidden = true;
+  capturePhoto.hidden = false;
+  cropTip.hidden = false;
+
   cropImage.onload = () => {
     const w = cropImage.clientWidth;
     const h = cropImage.clientHeight;
-    // Если рамку уже задавали, восстанавливаем её из долей, а не из пикселей:
-    // размер картинки на экране зависит от устройства и ориентации.
-    const n = photo.cropNorm;
+    const n = state.photo?.cropNorm;
+    // Рамку храним в долях, а не в пикселях: размер картинки на экране
+    // зависит от устройства и ориентации.
     cropRect = n
       ? { x: n.x * w, y: n.y * h, w: n.w * w, h: n.h * h }
       : { x: w * 0.1, y: h * 0.1, w: w * 0.8, h: h * 0.8 };
     drawCropBox();
   };
-  cropImage.src = photo.dataUrl;
+  cropImage.src = state.photo.dataUrl;
 }
 
-function closeCrop() {
-  cropOverlay.hidden = true;
-  cropPhotoId = null;
+/** Возврат к состоянию «до съёмки». */
+function resetPhoto() {
+  state.photo = null;
   cropRect = null;
   cropDrag = null;
+  cropImage.removeAttribute("src");
+  capturePhoto.hidden = true;
+  cropTip.hidden = true;
+  captureEmpty.hidden = false;
+  hideCaptureError();
+}
+
+document.getElementById("btn-remove-photo").addEventListener("click", resetPhoto);
+
+/**
+ * Старт новой задачи. Вызывается только там, где ученик явно начинает следующую:
+ * кнопки «Новая задача» / «Новая проверка» и возврат на выбор класса. При обычной
+ * навигации назад внутри одной задачи ничего не сбрасывается.
+ */
+function startNewTask() {
+  resetPhoto();
+  state.recognizedText = "";
+  state.solution = null;
+  state.check = null;
+  recognizedTextEl.value = "";
+  updateConfirmCta();
 }
 
 function drawCropBox() {
@@ -356,6 +296,12 @@ cropFrame.addEventListener("pointermove", (e) => {
     if (cropDrag.handle.includes("s")) bottom = clamp(bottom + dy, y + MIN_CROP_PX, h);
     cropRect = { x, y, w: right - x, h: bottom - y };
   }
+
+  // Рамку тронули — значит выделение осознанное, отправлять будем только его.
+  if (state.photo) {
+    state.photo.cropTouched = true;
+    state.photo.cropNorm = { x: cropRect.x / w, y: cropRect.y / h, w: cropRect.w / w, h: cropRect.h / h };
+  }
   drawCropBox();
   e.preventDefault();
 });
@@ -364,16 +310,17 @@ const endCropDrag = () => { cropDrag = null; };
 cropFrame.addEventListener("pointerup", endCropDrag);
 cropFrame.addEventListener("pointercancel", endCropDrag);
 
-document.getElementById("crop-cancel").addEventListener("click", closeCrop);
+/**
+ * Что уходит на бэкенд: обрезка, если рамку двигали, иначе весь кадр.
+ * Оригинал не перезаписывается — выделение можно переделать.
+ */
+function imageForUpload() {
+  const photo = state.photo;
+  if (!photo) return null;
+  if (!photo.cropTouched || !cropRect) return photo.dataUrl;
 
-document.getElementById("crop-done").addEventListener("click", () => {
-  const photo = state.photos.find((p) => p.id === cropPhotoId);
-  if (!photo || !cropRect) return closeCrop();
-
-  const dispW = cropImage.clientWidth;
-  const dispH = cropImage.clientHeight;
-  const scaleX = cropImage.naturalWidth / dispW;
-  const scaleY = cropImage.naturalHeight / dispH;
+  const scaleX = cropImage.naturalWidth / cropImage.clientWidth;
+  const scaleY = cropImage.naturalHeight / cropImage.clientHeight;
 
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(cropRect.w * scaleX));
@@ -388,14 +335,8 @@ document.getElementById("crop-done").addEventListener("click", () => {
     );
 
   // JPEG: кроп фотографии в PNG весил бы кратно больше и упирался бы в лимит запроса.
-  photo.croppedDataUrl = canvas.toDataURL("image/jpeg", 0.92);
-  photo.cropNorm = {
-    x: cropRect.x / dispW, y: cropRect.y / dispH,
-    w: cropRect.w / dispW, h: cropRect.h / dispH,
-  };
-  refreshThumb(photo);
-  closeCrop();
-});
+  return canvas.toDataURL("image/jpeg", 0.92);
+}
 
 const FILE_READ_ERROR = "Не удалось прочитать фото, попробуйте другой снимок.";
 
@@ -456,7 +397,7 @@ btnSolve.addEventListener("click", async () => {
 
   // Фото нет — это не ошибка, а сценарий «введу условие сам»: идём на confirm с пустым полем.
   // Подсказка живёт в placeholder, а не в value: иначе ученик отправил бы чужой пример.
-  if (state.photos.length === 0) {
+  if (!state.photo) {
     state.solution = null;
     state.recognizedText = "";
     recognizedTextEl.value = "";
@@ -469,9 +410,12 @@ btnSolve.addEventListener("click", async () => {
   setButtonBusy(btnSolve, true, check ? "Проверяем…" : "Распознаём…");
   try {
     // dataUrl уже в виде data:image/...;base64,... — vision.js принимает такой формат.
-    // Если область выделена, отправляем только её — полный кадр не нужен.
-    const images = state.photos.map((p) => p.croppedDataUrl ?? p.dataUrl);
-    const payload = { imagesBase64: images, grade: state.grade, subject: state.subject };
+    // Если рамку двигали, уйдёт только выделенное. Эндпоинты ждут массив — оборачиваем.
+    const payload = {
+      imagesBase64: [imageForUpload()],
+      grade: state.grade,
+      subject: state.subject,
+    };
 
     if (check) {
       // Проверка последовательно поднимает три модели, отсюда увеличенный таймаут.

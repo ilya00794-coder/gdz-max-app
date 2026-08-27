@@ -287,8 +287,8 @@ html, body {
 
 /* =========================================================
    Экран съёмки — светлый стиль A (docs/design-spec.md).
-   Имена .capture-actions, .thumb-row, .thumb сохранены:
-   на них завязаны app.js (миниатюры) и вставка сообщения об ошибке.
+   Имя .capture-actions сохранено: перед ним app.js вставляет
+   сообщение об ошибке.
    ========================================================= */
 .brand-topbar--back { gap: 10px; }
 
@@ -327,47 +327,6 @@ html, body {
 }
 
 .capture-sub { margin: 0; font-size: 13px; color: var(--l-muted); }
-
-.thumb-row {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 14px 0 0;
-  min-height: 14px;
-}
-
-.thumb-item { position: relative; flex: 0 0 auto; }
-
-.thumb {
-  width: 64px;
-  height: 64px;
-  object-fit: cover;
-  border-radius: 10px;
-  border: 0.5px solid var(--l-line);
-  display: block;
-}
-
-.thumb-remove {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0.5px solid var(--l-line);
-  border-radius: 50%;
-  background: var(--l-bg);
-  color: var(--l-text);
-  font-size: 16px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-/* Невидимое расширение тап-зоны: пальцем в 24px кружок не попасть. */
-.thumb-remove::after { content: ""; position: absolute; inset: -8px; }
 
 .capture-actions {
   display: flex;
@@ -470,47 +429,6 @@ html, body {
 /* =========================================================
    Выделение области задания на фото — светлый стиль A.
    ========================================================= */
-.crop-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  flex-direction: column;
-  background: var(--l-bg);
-  font-family: var(--font-system);
-}
-
-.crop-overlay[hidden] { display: none; }
-
-.crop-topbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  border-bottom: 0.5px solid var(--l-line);
-}
-
-.crop-title {
-  flex: 1;
-  text-align: center;
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--l-text);
-}
-
-.crop-topbar .btn-light { flex: 0 0 auto; padding: 9px 14px; }
-.crop-done { background: var(--l-accent); border-color: var(--l-accent); color: #fff; }
-
-.crop-stage {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: var(--l-surface);
-  overflow: hidden;
-}
-
 .crop-frame { position: relative; line-height: 0; touch-action: none; }
 
 .crop-image {
@@ -549,39 +467,6 @@ html, body {
 .crop-handle[data-handle="sw"] { bottom: -9px; left: -9px; cursor: nesw-resize; }
 .crop-handle[data-handle="se"] { bottom: -9px; right: -9px; cursor: nwse-resize; }
 
-.crop-hint {
-  margin: 0;
-  padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
-  font-size: 13px;
-  line-height: 1.4;
-  color: var(--l-muted);
-  text-align: center;
-}
-
-/* Миниатюра: подсказка, что по снимку можно тапнуть для выделения. */
-.thumb { cursor: pointer; }
-
-.thumb-crop-badge {
-  position: absolute;
-  left: 4px;
-  bottom: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 0.5px solid var(--l-line);
-  color: var(--l-accent);
-  pointer-events: none;
-}
-
-.thumb-item[data-cropped="true"] .thumb-crop-badge {
-  background: var(--l-accent);
-  color: #fff;
-  border-color: var(--l-accent);
-}
 
 /* =========================================================
    Экран проверки домашней работы — светлый стиль A.
@@ -696,3 +581,49 @@ html, body {
 
 .reference-body { padding: 0 16px 16px; border-top: 0.5px solid var(--l-line); }
 .reference-body .steps { margin-top: 16px; }
+
+/* =========================================================
+   Экран съёмки: одно фото за раз, крупно, рамка выделения
+   прямо на снимке (docs/design-spec.md).
+   ========================================================= */
+.capture-photo {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--l-surface);
+  overflow: hidden;
+}
+
+.capture-photo[hidden] { display: none; }
+.capture-frame[hidden] { display: none; }
+
+.photo-remove {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0.5px solid var(--l-line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--l-text);
+  cursor: pointer;
+}
+
+.crop-tip {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--l-muted);
+  text-align: center;
+}
+
+.crop-tip[hidden] { display: none; }
