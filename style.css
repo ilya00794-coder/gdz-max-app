@@ -1,32 +1,17 @@
 /* =========================================================
-   Токены дизайна
-   Концепция: школьная доска + маркеры-хайлайтеры.
-   Не крем/терракота, не чёрный+неон, не газетная сетка —
-   это "доска" (тёмно-зелёный) с меловым текстом и яркими
-   акцентами маркеров. Тематически привязано к школе.
+   Токены дизайна — светлый стиль A.
+   Источник правды: docs/design-spec.md.
+   Тёмно-зелёная «доска с маркерами» удалена целиком вместе
+   со своими токенами: ни одно правило их больше не использовало.
    ========================================================= */
-:root {
-  --board: #123524;         /* фон — школьная доска */
-  --board-deep: #0b241a;    /* глубокий фон для акцентных экранов */
-  --chalk: #f3efe4;         /* меловой текст */
-  --chalk-dim: #b9c9be;     /* приглушённый меловой текст */
-  --marker-yellow: #ffd23f; /* акцент 1 — хайлайтер жёлтый */
-  --marker-pink: #ff5d8f;   /* акцент 2 — маркер розовый */
-  --marker-blue: #5fc4ff;   /* акцент 3 — маркер голубой */
-  --line: rgba(243, 239, 228, 0.18);
-
-  --font-display: "Caveat", cursive;
-  --font-body: "Manrope", -apple-system, sans-serif;
-}
-
 * { box-sizing: border-box; }
 
 html, body {
   margin: 0;
   height: 100%;
-  background: var(--board);
-  color: var(--chalk);
-  font-family: var(--font-body);
+  background: var(--l-bg);
+  color: var(--l-text);
+  font-family: var(--font-system);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -38,20 +23,6 @@ html, body {
   overflow: hidden;
 }
 
-/* фактура доски: едва заметные меловые разводы */
-.app::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  max-width: 480px;
-  margin: 0 auto;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 15% 20%, rgba(255,255,255,0.03), transparent 40%),
-    radial-gradient(circle at 85% 75%, rgba(255,255,255,0.025), transparent 45%);
-  z-index: 0;
-}
-
 .screen {
   display: none;
   min-height: 100vh;
@@ -60,78 +31,6 @@ html, body {
   z-index: 1;
 }
 .screen[data-active="true"] { display: flex; }
-
-/* ---------- topbar ---------- */
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 18px 20px 8px;
-}
-.brand {
-  font-family: var(--font-display);
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--chalk);
-}
-.brand-accent { color: var(--marker-yellow); }
-
-.icon-btn {
-  background: rgba(243,239,228,0.08);
-  border: 1px solid var(--line);
-  color: var(--chalk);
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  font-size: 18px;
-  cursor: pointer;
-}
-
-/* ---------- экран 1: setup ---------- */
-.cta {
-  font-family: var(--font-body);
-  font-weight: 800;
-  font-size: 16px;
-  color: var(--board);
-  background: var(--marker-yellow);
-  border: none;
-  border-radius: 12px;
-  padding: 16px 20px;
-  text-align: center;
-  cursor: pointer;
-  margin-top: auto;
-}
-.cta:disabled { opacity: 0.35; cursor: not-allowed; }
-
-.cta-outline {
-  background: transparent;
-  color: var(--chalk);
-  border: 2px solid var(--line);
-  margin-top: 0;
-}
-
-/* ---------- экран 3: confirm ---------- */
-.confirm {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  padding: 8px 24px 32px;
-  gap: 16px;
-}
-
-.recognized-text {
-  flex: 1;
-  min-height: 220px;
-  background: rgba(243,239,228,0.05);
-  border: 1px dashed var(--line);
-  border-radius: 12px;
-  color: var(--chalk);
-  font-family: var(--font-body);
-  font-size: 15px;
-  line-height: 1.6;
-  padding: 16px;
-  resize: none;
-}
 
 /* =========================================================
    Экран решения — светлый стиль A (docs/design-spec.md).
@@ -470,3 +369,67 @@ html, body {
   color: var(--l-text);
   border: 0.5px solid var(--l-line);
 }
+
+/* =========================================================
+   Экран подтверждения условия — светлый стиль A (docs/design-spec.md).
+   Класс .recognized-text и id textarea сохранены: на них завязаны
+   updateConfirmCta и сравнение текста с распознанным в app.js.
+   ========================================================= */
+.confirm {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 20px calc(20px + env(safe-area-inset-bottom));
+  font-family: var(--font-system);
+}
+
+.confirm-title {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--l-text);
+}
+
+.confirm-lead {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--l-text-2);
+}
+
+.recognized-text {
+  flex: 1;
+  min-height: 180px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0.5px solid var(--l-line);
+  border-radius: 12px;
+  background: var(--l-bg);
+  color: var(--l-text);
+  font-family: var(--font-system);
+  font-size: 15px;
+  line-height: 1.6;
+  resize: none;
+}
+
+.recognized-text::placeholder { color: var(--l-muted); }
+.recognized-text:focus { outline: none; border-color: var(--l-accent); }
+
+/* Классы .cta ещё общие для всех экранов — перекрашиваем адресно. */
+#screen-confirm .cta {
+  margin-top: 16px;
+  width: 100%;
+  padding: 13px 16px;
+  border: none;
+  border-radius: 10px;
+  background: var(--l-accent);
+  color: #fff;
+  font-family: var(--font-system);
+  font-size: 15px;
+  font-weight: 500;
+  transform: none;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+#screen-confirm .cta:disabled { background: var(--l-surface); color: var(--l-muted); opacity: 1; cursor: not-allowed; }
