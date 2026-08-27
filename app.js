@@ -657,6 +657,22 @@ async function postJson(path, payload, timeoutMs) {
   }
 }
 
+/**
+ * Экранирует текст перед вставкой через innerHTML.
+ *
+ * Это не только про безопасность. Тексты приходят от модели и полны математики:
+ * «16-20<0», «a<b», «x>0». Без экранирования браузер принимает «<b» за начало тега
+ * и молча съедает кусок решения. KaTeX это не мешает — он читает текстовые узлы,
+ * где сущности уже разобраны обратно в символы.
+ */
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 // ---------- отрисовка формул (KaTeX) ----------
 // Бэкенд возвращает шаги с формулами в LaTeX внутри $...$. Без отрисовки ученик
 // видит сырые $ и \dfrac{}{} — это мусор на экране, а не решение.
@@ -729,8 +745,8 @@ function stepsMarkup(steps) {
       <li class="step">
         <span class="step-num">${i + 1}</span>
         <div class="step-body">
-          <h2 class="step-title">${step.title}</h2>
-          <p class="step-text">${step.content}</p>
+          <h2 class="step-title">${escapeHtml(step.title)}</h2>
+          <p class="step-text">${escapeHtml(step.content)}</p>
         </div>
       </li>`
     )
@@ -741,7 +757,7 @@ function stepsMarkup(steps) {
 function answerMarkup(solution) {
   return `
     <p class="answer-label">Ответ</p>
-    <p class="answer-value">${solution.finalAnswer}</p>
+    <p class="answer-value">${escapeHtml(solution.finalAnswer)}</p>
     ${verificationRow(solution.verification)}
   `;
 }
@@ -852,7 +868,7 @@ function renderCheck(result) {
       (line, i) => `
       <li class="student-step" data-first-mistake="${c.firstMistakeStep === i + 1}">
         <span class="student-step-num">${i + 1}</span>
-        <span>${line}</span>
+        <span>${escapeHtml(line)}</span>
       </li>`
     )
     .join("");
@@ -865,11 +881,11 @@ function renderCheck(result) {
         .map(
           (m) => `
         <div class="mistake">
-          <p class="mistake-where">${m.stepDescription}</p>
+          <p class="mistake-where">${escapeHtml(m.stepDescription)}</p>
           <p class="mistake-label">Что получилось</p>
-          <p class="mistake-text">${m.whatStudentDid}</p>
+          <p class="mistake-text">${escapeHtml(m.whatStudentDid)}</p>
           <p class="mistake-label">Как лучше</p>
-          <p class="mistake-text mistake-better">${m.whatShouldBeDone}</p>
+          <p class="mistake-text mistake-better">${escapeHtml(m.whatShouldBeDone)}</p>
         </div>`
         )
         .join("")
@@ -904,7 +920,7 @@ function renderCheck(result) {
     ? `<div class="check-note">
          <div>
            <strong>Не удалось разобрать на фото</strong>
-           <ul>${unreadable.map((u) => `<li>${u}</li>`).join("")}</ul>
+           <ul>${unreadable.map((u) => `<li>${escapeHtml(u)}</li>`).join("")}</ul>
            Это не считается ошибкой. Если фрагмент важен — переснимите его крупнее.
          </div>
        </div>`
