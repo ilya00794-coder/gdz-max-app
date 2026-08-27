@@ -155,25 +155,41 @@ const btnSolve = document.getElementById("btn-solve");
 
 fileInput.addEventListener("change", async (e) => {
   const files = [...e.target.files];
+  hideCaptureError();
   for (const file of files) {
-    const dataUrl = await fileToDataUrl(file);
-    state.photos.push({ file, dataUrl });
-    const img = document.createElement("img");
-    img.className = "thumb";
-    img.src = dataUrl;
-    thumbRow.appendChild(img);
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      state.photos.push({ file, dataUrl });
+      const img = document.createElement("img");
+      img.className = "thumb";
+      img.src = dataUrl;
+      thumbRow.appendChild(img);
+    } catch (err) {
+      // Один нечитаемый файл не должен ронять остальные и не должен подвешивать экран.
+      showCaptureError(err.message);
+    }
   }
 });
 
+const FILE_READ_ERROR = "Не удалось прочитать фото, попробуйте другой снимок.";
+
 function fileToDataUrl(file) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
-    reader.readAsDataURL(file);
+    // Без этого при сбое чтения промис не резолвился никогда и await висел молча.
+    reader.onerror = () => reject(new Error(FILE_READ_ERROR));
+    reader.onabort = () => reject(new Error(FILE_READ_ERROR));
+    try {
+      reader.readAsDataURL(file);
+    } catch {
+      reject(new Error(FILE_READ_ERROR));
+    }
   });
 }
 
-document.getElementById("btn-back-capture").addEventListener("click", () => showScreen("screen-setup"));
+// Кнопка на экране подтверждения — назад к съёмке.
+document.getElementById("btn-back-capture").addEventListener("click", () => showScreen("screen-capture"));
 
 const recognizedTextEl = document.getElementById("recognized-text");
 
@@ -247,7 +263,8 @@ btnSolve.addEventListener("click", async () => {
 });
 
 // ---------- экран 3: confirm ----------
-document.getElementById("btn-back-confirm")?.addEventListener("click", () => showScreen("screen-capture"));
+// Кнопка на экране решения — назад к подтверждению условия.
+document.getElementById("btn-back-confirm")?.addEventListener("click", () => showScreen("screen-confirm"));
 
 const btnConfirm = document.getElementById("btn-confirm");
 
@@ -306,9 +323,9 @@ btnConfirm.addEventListener("click", async () => {
     });
     renderSolution(state.solution);
     showScreen("screen-solution");
-  } catch {
+  } catch (err) {
     // Никакой подстановки готового решения: ученик должен узнать, что решения нет.
-    showConfirmError("Не удалось получить решение, проверьте связь и попробуйте снова.");
+    showConfirmError(err.message);
   } finally {
     setButtonBusy(btnConfirm, false);
   }
@@ -316,33 +333,72 @@ btnConfirm.addEventListener("click", async () => {
 
 // ---------- вызов backend ----------
 
+// Распознавание + решение реально занимают 30–40 секунд, поэтому запас большой.
+const REQUEST_TIMEOUT_MS = 60000;
+
 /**
- * Голый запрос к /api/solve: ошибки НЕ маскирует, отдаёт текст ошибки от бэкенда.
- * Используется для распознавания фото — там подмена ошибки моком недопустима:
- * ученик должен узнать, что снимок не разобрали, а не получить решение чужой задачи.
+ * Превращает любой сбой в фразу, понятную школьнику.
+ * Единая точка для обоих путей — фото и текста, чтобы «Failed to fetch»
+ * и «Бэкенд ответил 413» не доходили до экрана.
+ *
+ * @param {number|null} status - HTTP-статус, либо null если ответа не было вовсе
+ * @param {object} [err] - исходная ошибка и/или сообщение бэкенда
+ */
+function humanizeError(status, err) {
+  if (err?.name === "AbortError") {
+    return "Сервер долго не отвечает. Попробуйте снова.";
+  }
+  if (status === null || status === undefined) {
+    return "Нет связи с сервером. Проверьте интернет и попробуйте снова.";
+  }
+  if (status === 413) {
+    return "Фото слишком большое. Снимите одну задачу крупнее или сожмите снимок.";
+  }
+  // 4xx бэкенд формулирует для ученика сам (422 «переснимите», 400 про формат файла) —
+  // такой текст показываем как есть, он точнее любого общего.
+  if (status < 500 && err?.serverMessage) {
+    return err.serverMessage;
+  }
+  return "Что-то пошло не так на нашей стороне. Попробуйте ещё раз через минуту.";
+}
+
+/**
+ * Запрос к /api/solve: ошибки НЕ маскирует и не подменяет решением.
+ * Наружу отдаёт уже человеческий текст в err.message.
  */
 async function postSolve(payload) {
-  const res = await fetch(`${BACKEND_URL}/api/solve`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      // Бесплатный ngrok показывает браузеру HTML-заглушку вместо ответа API;
-      // этот заголовок её отключает. На проде безвреден.
-      "ngrok-skip-browser-warning": "true",
-      // Подписанная строка запуска: бэкенд проверяет её и понимает, кто пришёл.
-      ...(max.initData ? { "X-Max-Init-Data": max.initData } : {}),
-    },
-    body: JSON.stringify(payload),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    const err = new Error(data?.error || `Бэкенд ответил ${res.status}`);
-    err.status = res.status;
-    err.body = data;
-    throw err;
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/solve`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        // Бесплатный ngrok показывает браузеру HTML-заглушку вместо ответа API;
+        // этот заголовок её отключает. На проде безвреден.
+        "ngrok-skip-browser-warning": "true",
+        // Подписанная строка запуска: бэкенд проверяет её и понимает, кто пришёл.
+        ...(max.initData ? { "X-Max-Init-Data": max.initData } : {}),
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      const err = new Error(humanizeError(res.status, { serverMessage: data?.error }));
+      err.status = res.status;
+      err.body = data;
+      throw err;
+    }
+    return data;
+  } catch (err) {
+    if (err.status) throw err;                       // ответ был, текст уже человеческий
+    throw new Error(humanizeError(null, err));       // обрыв связи либо таймаут
+  } finally {
+    clearTimeout(timer);
   }
-  return data;
 }
 
 // ---------- отрисовка формул (KaTeX) ----------
