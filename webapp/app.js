@@ -153,7 +153,7 @@ function updateSetupCta() {
 }
 
 /** Режим задаёт и подсказку в кадре, и подпись кнопки: снимают разное. */
-function enterCapture(mode) {
+function applyMode(mode) {
   state.mode = mode;
   const check = mode === "check";
   document.querySelector(".capture-hint").textContent = check
@@ -164,6 +164,10 @@ function enterCapture(mode) {
     : "Можно добавить несколько снимков";
   btnSolve.textContent = check ? "Проверить" : "Решить";
   btnSolve.dataset.idleLabel = btnSolve.textContent;
+}
+
+function enterCapture(mode) {
+  applyMode(mode);
   showScreen("screen-capture");
 }
 
@@ -236,6 +240,7 @@ function resetPhoto() {
   cropTip.hidden = true;
   captureEmpty.hidden = false;
   hideCaptureError();
+  hideModePrompt();
 }
 
 document.getElementById("btn-remove-photo").addEventListener("click", resetPhoto);
@@ -394,6 +399,7 @@ function hideCaptureError() {
 
 btnSolve.addEventListener("click", async () => {
   hideCaptureError();
+  hideModePrompt();
 
   // Фото нет — это не ошибка, а сценарий «введу условие сам»: идём на confirm с пустым полем.
   // Подсказка живёт в placeholder, а не в value: иначе ученик отправил бы чужой пример.
@@ -406,40 +412,108 @@ btnSolve.addEventListener("click", async () => {
     return;
   }
 
-  const check = state.mode === "check";
+  // dataUrl уже в виде data:image/...;base64,... — vision.js принимает такой формат.
+  // Если рамку двигали, уйдёт только выделенное. Эндпоинты ждут массив — оборачиваем.
+  const payload = {
+    imagesBase64: [imageForUpload()],
+    grade: state.grade,
+    subject: state.subject,
+  };
+  await runRecognition(state.mode, payload);
+});
+
+/**
+ * Отправляет снимок в выбранном режиме и решает, что показать.
+ *
+ * @param {"solve"|"check"} mode
+ * @param {object} payload - тот же самый, что и при первой отправке: переспрос
+ *   не должен приводить к повторному распознаванию с нуля
+ * @param {boolean} [allowPrompt=true] - после переключения режима не переспрашиваем снова
+ */
+async function runRecognition(mode, payload, allowPrompt = true) {
+  const check = mode === "check";
   setButtonBusy(btnSolve, true, check ? "Проверяем…" : "Распознаём…");
   try {
-    // dataUrl уже в виде data:image/...;base64,... — vision.js принимает такой формат.
-    // Если рамку двигали, уйдёт только выделенное. Эндпоинты ждут массив — оборачиваем.
-    const payload = {
-      imagesBase64: [imageForUpload()],
-      grade: state.grade,
-      subject: state.subject,
-    };
-
-    if (check) {
+    const result = check
       // Проверка последовательно поднимает три модели, отсюда увеличенный таймаут.
-      const result = await postJson("/api/check-homework", payload, CHECK_TIMEOUT_MS);
-      state.check = result;
-      renderCheck(result);
-      showScreen("screen-check");
+      ? await postJson("/api/check-homework", payload, CHECK_TIMEOUT_MS)
+      : await postJson("/api/solve", payload, SOLVE_TIMEOUT_MS);
+
+    const suggested = allowPrompt ? suggestedMode(mode, result.recognition?.contentType) : null;
+    if (suggested) {
+      pendingResult = { mode, payload, result, suggested };
+      showModePrompt(suggested);
       return;
     }
-
-    const solution = await postJson("/api/solve", payload, SOLVE_TIMEOUT_MS);
-
-    // Кладём ответ целиком: recognizedText, steps, finalAnswer, verification и всё остальное.
-    state.solution = solution;
-    state.recognizedText = solution.recognizedText ?? "";
-    recognizedTextEl.value = state.recognizedText;
-    updateConfirmCta();
-    showScreen("screen-confirm");
+    showResult(mode, result);
   } catch (err) {
     // 422 — «не разобрали фото» или «печатного условия не найдено»: остаёмся на съёмке.
     showCaptureError(err.message);
   } finally {
     setButtonBusy(btnSolve, false);
   }
+}
+
+function showResult(mode, result) {
+  if (mode === "check") {
+    state.check = result;
+    renderCheck(result);
+    showScreen("screen-check");
+    return;
+  }
+  // Кладём ответ целиком: recognizedText, steps, finalAnswer, verification и всё остальное.
+  state.solution = result;
+  state.recognizedText = result.recognizedText ?? "";
+  recognizedTextEl.value = state.recognizedText;
+  updateConfirmCta();
+  showScreen("screen-confirm");
+}
+
+// ---------- переспрос о режиме ----------
+// Модель сообщает, что реально на снимке (recognition.contentType). Переспрашиваем
+// ТОЛЬКО при явном противоречии: unclear и совпадение — молчим. Смешанные фото
+// (условие и решение сразу) дают unclear и встречаются чаще всего, дёргать на них нельзя.
+const modePrompt = document.getElementById("mode-prompt");
+const modePromptText = document.getElementById("mode-prompt-text");
+
+let pendingResult = null;
+
+function suggestedMode(mode, contentType) {
+  if (mode === "solve" && contentType === "handwritten_work") return "check";
+  if (mode === "check" && contentType === "printed_task") return "solve";
+  return null;
+}
+
+function showModePrompt(suggested) {
+  modePromptText.textContent =
+    suggested === "check"
+      ? "Похоже, это уже решённая работа. Проверить её вместо решения?"
+      : "Похоже, это чистая задача без решения. Решить её вместо проверки?";
+  modePrompt.hidden = false;
+}
+
+function hideModePrompt() {
+  modePrompt.hidden = true;
+  pendingResult = null;
+}
+
+document.getElementById("mode-prompt-yes").addEventListener("click", async () => {
+  const p = pendingResult;
+  modePrompt.hidden = true;
+  pendingResult = null;
+  if (!p) return;
+
+  // Переснимать не заставляем: тот же payload уходит на другой эндпоинт.
+  applyMode(p.suggested);
+  await runRecognition(p.suggested, p.payload, false);
+});
+
+document.getElementById("mode-prompt-no").addEventListener("click", () => {
+  const p = pendingResult;
+  modePrompt.hidden = true;
+  pendingResult = null;
+  // Настоял на своём — показываем то, что уже посчитали в исходном режиме.
+  if (p) showResult(p.mode, p.result);
 });
 
 // ---------- экран 3: confirm ----------

@@ -89,6 +89,15 @@
 
         <p class="crop-tip" id="crop-tip" hidden>Потяни за уголки — выдели задачу</p>
 
+        <!-- Мягкий переспрос: только при явном противоречии режима содержимому снимка. -->
+        <div class="mode-prompt" id="mode-prompt" hidden>
+          <p class="mode-prompt-text" id="mode-prompt-text"></p>
+          <div class="mode-prompt-actions">
+            <button class="btn-light mode-prompt-yes" id="mode-prompt-yes" type="button">Да, переключить</button>
+            <button class="btn-light" id="mode-prompt-no" type="button">Нет, оставить</button>
+          </div>
+        </div>
+
         <div class="capture-actions">
           <button class="cta" id="btn-solve">Решить</button>
         </div>
