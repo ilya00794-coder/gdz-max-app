@@ -36,6 +36,14 @@ const RecognitionSchema = z.object({
   issues: z
     .array(z.string())
     .describe("Проблемы с фото, мешающие распознаванию (размыто, обрезано, блик, не видно условия). Пустой массив, если всё в порядке."),
+  contentType: z
+    .enum(["printed_task", "handwritten_work", "unclear"])
+    .describe(
+      "Что РЕАЛЬНО на фото, независимо от того, зачем тебя позвали: " +
+        "printed_task — печатное условие задачи из учебника или задачника; " +
+        "handwritten_work — рукописная работа ученика; " +
+        "unclear — определить однозначно нельзя."
+    ),
 });
 
 const SYSTEM_PROMPTS = {
@@ -69,7 +77,15 @@ const SYSTEM_PROMPTS = {
 - Таблицы переноси построчно, чертежи и рисунки описывай словами в квадратных скобках,
   например: [рисунок: треугольник ABC, прямой угол при C].
 - Если название учебника или номер задания напечатаны на странице — заполни поля textbook и taskNumber.
-- Ничего не выдумывай: чего не видно на фото, того нет в ответе.`,
+- Ничего не выдумывай: чего не видно на фото, того нет в ответе.
+
+Отдельно про поле contentType. Это твоё честное наблюдение о снимке, а НЕ о том,
+зачем тебя вызвали. Отвечай по факту, даже если он расходится с задачей режима:
+- printed_task — на фото печатное условие задачи из учебника или задачника;
+- handwritten_work — на фото рукописная работа ученика;
+- unclear — однозначно определить нельзя. Ставь unclear, если условие переписано
+  от руки, если на снимке одновременно и печатная задача, и решение к ней,
+  или если качество не позволяет отличить одно от другого.`,
 
   // Фото тетради: нужно вытащить ход решения ученика вместе с ошибками, как есть.
   studentWork: `Ты — модуль распознавания школьного приложения-помощника.
@@ -85,7 +101,15 @@ const SYSTEM_PROMPTS = {
 - Зачёркнутое помечай так: [зачёркнуто: ...].
 - Если есть условие задачи — перенеси и его, отделив строкой «--- Решение ученика ---».
 - Неразборчивые фрагменты помечай как [неразборчиво] и снижай confidence.
-- Ничего не додумывай за ученика.`,
+- Ничего не додумывай за ученика.
+
+Отдельно про поле contentType. Это твоё честное наблюдение о снимке, а НЕ о том,
+зачем тебя вызвали. Отвечай по факту, даже если он расходится с задачей режима:
+- printed_task — на фото печатное условие задачи из учебника или задачника;
+- handwritten_work — на фото рукописная работа ученика;
+- unclear — однозначно определить нельзя. Ставь unclear, если условие переписано
+  от руки, если на снимке одновременно и печатная задача, и решение к ней,
+  или если качество не позволяет отличить одно от другого.`,
 };
 
 /**
@@ -151,7 +175,7 @@ function sniffMediaType(buffer) {
  * @param {"task"|"studentWork"} [params.mode="task"] - что на фото: условие задачи или работа ученика
  * @param {number} [params.grade] - класс ученика, помогает выбрать терминологию
  * @param {string} [params.subject] - предмет, помогает разобрать неоднозначные символы
- * @returns {Promise<{ recognizedText: string, textbook: string|null, taskNumber: string|null, confidence: number, issues: string[] }>}
+ * @returns {Promise<{ recognizedText: string, textbook: string|null, taskNumber: string|null, confidence: number, issues: string[], contentType: "printed_task"|"handwritten_work"|"unclear" }>}
  */
 export async function recognizeFromPhotos({ imagesBase64, mode = "task", grade, subject }) {
   if (!Array.isArray(imagesBase64) || imagesBase64.length === 0) {
@@ -208,5 +232,8 @@ export async function recognizeFromPhotos({ imagesBase64, mode = "task", grade, 
     taskNumber: parsed.taskNumber.trim() || null,
     confidence: Math.min(1, Math.max(0, Number(parsed.confidence) || 0)),
     issues: parsed.issues ?? [],
+    // Наблюдение модели о содержимом снимка. Ни на что в пайплайне не влияет:
+    // порог confidence, режимы и 422 работают ровно как раньше.
+    contentType: parsed.contentType ?? "unclear",
   };
 }
