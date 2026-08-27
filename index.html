@@ -6,6 +6,12 @@
   <title>Решебник — MAX mini app</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Manrope:wght@500;700;800&display=swap" rel="stylesheet" />
+  <!-- KaTeX: решение приходит с бэкенда с формулами в LaTeX ($...$), их надо отрисовать,
+       а не показывать школьнику сырые $ и \dfrac{}{}. -->
+  <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.18.4/katex.min.css"
+        integrity="sha512-CjgvIbfXwhzjOCtP+wuQMPGJZ5uEY2kHZ4qPGvjIgfkTiFdnuDmF+oJW2B5glj7d7OkPPDX9BMu4hDio5MWTEA=="
+        crossorigin="anonymous" referrerpolicy="no-referrer" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -94,6 +100,14 @@
     </section>
 
   </div>
+
+  <!-- Обычные (не defer) скрипты: KaTeX и auto-render должны быть готовы к моменту загрузки app.js. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.18.4/katex.min.js"
+          integrity="sha512-xOYqegYY5pn2pdG9rJHu1MztSz15rwav1XS1Y7ccfLUD9oJcTIh4XOSo+Pj5BrWvYgU448s2s1XEZogXHQOLCw=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.18.4/contrib/auto-render.min.js"
+          integrity="sha512-0HzJcHCD+wBh9kNUUcm3DWH9IbNDfudsYyMD5EHwSuFK6aEsaa/UEPqqk4t0pm4bbmwR6A11yNsD7Q+nz6XF+Q=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
   <script src="config.js"></script>
   <script src="app.js"></script>
