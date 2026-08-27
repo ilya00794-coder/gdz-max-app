@@ -146,12 +146,20 @@ function updateSetupCta() {
 }
 
 btnToCapture.addEventListener("click", () => showScreen("screen-capture"));
-document.getElementById("btn-back-setup").addEventListener("click", () => showScreen("screen-setup"));
+// Возврат к выбору класса — это начало новой сессии, снимки прошлой задачи не нужны.
+document.getElementById("btn-back-setup").addEventListener("click", () => {
+  startNewTask();
+  showScreen("screen-setup");
+});
 
 // ---------- экран 2: capture ----------
 const fileInput = document.getElementById("file-input");
 const thumbRow = document.getElementById("thumb-row");
 const btnSolve = document.getElementById("btn-solve");
+
+// Снимкам нужен собственный идентификатор: по индексу удалять нельзя,
+// после первого же удаления индексы съедут.
+let photoSeq = 0;
 
 fileInput.addEventListener("change", async (e) => {
   const files = [...e.target.files];
@@ -159,17 +167,66 @@ fileInput.addEventListener("change", async (e) => {
   for (const file of files) {
     try {
       const dataUrl = await fileToDataUrl(file);
-      state.photos.push({ file, dataUrl });
-      const img = document.createElement("img");
-      img.className = "thumb";
-      img.src = dataUrl;
-      thumbRow.appendChild(img);
+      const photo = { id: ++photoSeq, file, dataUrl };
+      state.photos.push(photo);
+      thumbRow.appendChild(createThumb(photo));
     } catch (err) {
       // Один нечитаемый файл не должен ронять остальные и не должен подвешивать экран.
       showCaptureError(err.message);
     }
   }
+  // Иначе повторный выбор того же файла не вызовет change и снимок не добавится.
+  e.target.value = "";
 });
+
+/** Миниатюра с крестиком удаления. */
+function createThumb(photo) {
+  const item = document.createElement("div");
+  item.className = "thumb-item";
+  item.dataset.photoId = String(photo.id);
+
+  const img = document.createElement("img");
+  img.className = "thumb";
+  img.src = photo.dataUrl;
+  img.alt = "Снимок задачи";
+
+  const remove = document.createElement("button");
+  remove.className = "thumb-remove";
+  remove.type = "button";
+  remove.setAttribute("aria-label", "Удалить снимок");
+  remove.textContent = "×";
+  remove.addEventListener("click", () => removePhoto(photo.id));
+
+  item.append(img, remove);
+  return item;
+}
+
+function removePhoto(id) {
+  state.photos = state.photos.filter((p) => p.id !== id);
+  thumbRow.querySelector(`.thumb-item[data-photo-id="${id}"]`)?.remove();
+  hideCaptureError();
+}
+
+/** Обнуляет набор снимков: и состояние, и миниатюры. */
+function resetPhotos() {
+  state.photos = [];
+  thumbRow.innerHTML = "";
+  hideCaptureError();
+}
+
+/**
+ * Старт новой задачи. Вызывается только там, где ученик явно начинает следующую:
+ * кнопка «Новая задача» и возврат на выбор класса. При обычной навигации назад
+ * внутри одной задачи (capture ↔ confirm ↔ solution) ничего не сбрасывается —
+ * там снимки и распознанный текст должны сохраняться.
+ */
+function startNewTask() {
+  resetPhotos();
+  state.recognizedText = "";
+  state.solution = null;
+  recognizedTextEl.value = "";
+  updateConfirmCta();
+}
 
 const FILE_READ_ERROR = "Не удалось прочитать фото, попробуйте другой снимок.";
 
@@ -496,7 +553,10 @@ function renderSolution(solution) {
   document.querySelector(".sheet-scroll").scrollTop = 0;
 }
 
-btnNewTask.addEventListener("click", () => showScreen("screen-capture"));
+btnNewTask.addEventListener("click", () => {
+  startNewTask();
+  showScreen("screen-capture");
+});
 
 /** Пока это визуальная заглушка: приёма жалоб на бэкенде ещё нет, врать об отправке нельзя. */
 function showSheetNote(text) {
