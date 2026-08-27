@@ -28,18 +28,18 @@
   <div class="app">
 
     <!-- Экран 1: выбор класса и предмета -->
-    <section class="screen" id="screen-setup" data-active="true">
-      <header class="topbar">
-        <span class="brand">реш<span class="brand-accent">ёбник</span></span>
+    <section class="screen screen-light" id="screen-setup" data-active="true">
+      <header class="brand-topbar">
+        <img class="brand-logo" src="assets/logo-header.svg" alt="домашка в max" />
       </header>
 
       <div class="setup">
-        <p class="eyebrow">сфоткал — решил</p>
-        <h1 class="headline">Какой класс?</h1>
+        <p class="setup-lead">Сфотографируй задачу — покажем решение по шагам.</p>
 
+        <h1 class="setup-title">Класс</h1>
         <div class="chip-row" id="grade-row"></div>
 
-        <h2 class="subhead">Предмет</h2>
+        <h2 class="setup-title">Предмет</h2>
         <div class="chip-row" id="subject-row"></div>
 
         <button class="cta" id="btn-to-capture" disabled>Дальше</button>

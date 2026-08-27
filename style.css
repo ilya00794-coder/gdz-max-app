@@ -88,60 +88,6 @@ html, body {
 }
 
 /* ---------- экран 1: setup ---------- */
-.setup { padding: 12px 24px 40px; flex: 1; display: flex; flex-direction: column; }
-
-.eyebrow {
-  font-family: var(--font-body);
-  font-size: 13px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--marker-yellow);
-  margin: 4px 0 2px;
-}
-
-.headline {
-  font-family: var(--font-display);
-  font-size: 46px;
-  line-height: 1.05;
-  margin: 0 0 20px;
-  color: var(--chalk);
-}
-
-.subhead {
-  font-family: var(--font-display);
-  font-size: 28px;
-  margin: 28px 0 12px;
-  color: var(--chalk);
-}
-
-.chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.chip {
-  font-family: var(--font-body);
-  font-weight: 700;
-  font-size: 14px;
-  color: var(--board);
-  background: var(--chalk);
-  border: none;
-  padding: 10px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  transform: rotate(var(--tilt, 0deg));
-  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
-}
-.chip:nth-child(3n+1) { --tilt: -2deg; }
-.chip:nth-child(3n+2) { --tilt: 1.5deg; }
-.chip:nth-child(3n+3) { --tilt: -1deg; }
-
-.chip[data-selected="true"] {
-  background: var(--marker-yellow);
-  transform: rotate(0deg) scale(1.04);
-}
-
 .cta {
   font-family: var(--font-body);
   font-weight: 800;
@@ -402,4 +348,93 @@ html, body {
   font-size: 13px;
   line-height: 1.4;
   color: var(--l-muted);
+}
+
+/* =========================================================
+   Экран выбора класса и предмета — светлый стиль A
+   (docs/design-spec.md). Имена классов chip/chip-row/setup
+   сохранены: их создаёт и читает app.js, логика не менялась.
+   ========================================================= */
+.brand-topbar {
+  display: flex;
+  align-items: center;
+  padding: 16px 20px 12px;
+}
+
+.brand-logo { height: 22px; width: auto; display: block; }
+
+.setup {
+  flex: 1;
+  padding: 6px 20px 28px;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-system);
+}
+
+.setup-lead {
+  margin: 0 0 22px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--l-text-2);
+}
+
+.setup-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--l-muted);
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 24px;
+}
+
+.chip {
+  padding: 8px 14px;
+  border: 0.5px solid var(--l-line);
+  border-radius: 10px;
+  background: var(--l-bg);
+  color: var(--l-text);
+  font-family: var(--font-system);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.chip[data-selected="true"] {
+  background: var(--l-accent-soft);
+  border-color: var(--l-accent);
+  color: var(--l-accent-deep);
+  font-weight: 500;
+}
+
+/* Кнопка «Дальше» перекрашивается только на этом экране: класс .cta
+   продолжает использоваться тёмными экранами capture и confirm. */
+#screen-setup .cta {
+  margin-top: auto;
+  width: 100%;
+  padding: 13px 16px;
+  border: none;
+  border-radius: 10px;
+  background: var(--l-accent);
+  color: #fff;
+  font-family: var(--font-system);
+  font-size: 15px;
+  font-weight: 500;
+  transform: none;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+#screen-setup .cta:disabled {
+  background: var(--l-surface);
+  color: var(--l-muted);
+  opacity: 1;
+  cursor: not-allowed;
 }
