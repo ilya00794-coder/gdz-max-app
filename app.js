@@ -203,6 +203,9 @@ async function fetchSolution() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        // Бесплатный ngrok показывает браузеру HTML-заглушку вместо ответа API;
+        // этот заголовок её отключает. На проде безвреден.
+        "ngrok-skip-browser-warning": "true",
         // Подписанная строка запуска: бэкенд проверяет её и понимает, кто пришёл.
         ...(max.initData ? { "X-Max-Init-Data": max.initData } : {}),
       },

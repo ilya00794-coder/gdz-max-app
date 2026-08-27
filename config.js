@@ -10,5 +10,5 @@
 // Адрес намеренно задаётся файлом, а не параметром в URL: мини-приложение отправляет
 // на этот адрес фотографии ученика, и подставлять его снаружи ссылкой нельзя.
 window.APP_CONFIG = {
-  BACKEND_URL: "http://localhost:3000",
+  BACKEND_URL: "https://whacking-ramble-womb.ngrok-free.dev",
 };
