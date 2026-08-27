@@ -47,20 +47,22 @@
     </section>
 
     <!-- Экран 2: фото задачи -->
-    <section class="screen" id="screen-capture" data-active="false">
-      <header class="topbar">
-        <button class="icon-btn" id="btn-back-setup" aria-label="Назад">←</button>
-        <span class="brand">реш<span class="brand-accent">ёбник</span></span>
+    <section class="screen screen-light" id="screen-capture" data-active="false">
+      <header class="brand-topbar brand-topbar--back">
+        <button class="sheet-back" id="btn-back-setup" aria-label="Назад">←</button>
+        <img class="brand-logo" src="assets/logo-header.svg" alt="домашка в max" />
       </header>
 
       <div class="capture">
-        <div class="capture-frame">
-          <div class="capture-corner tl"></div>
-          <div class="capture-corner tr"></div>
-          <div class="capture-corner bl"></div>
-          <div class="capture-corner br"></div>
-          <p class="capture-hint">Наведи на задачу<br />можно сделать несколько фото</p>
-        </div>
+        <label class="capture-frame" for="file-input">
+          <svg class="capture-icon" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 8a2 2 0 0 1 2-2h1.6l1-1.6h6.8l1 1.6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+            <circle cx="12" cy="12.5" r="3.2" />
+          </svg>
+          <p class="capture-hint">Сфотографируй задачу из учебника</p>
+          <p class="capture-sub">Можно добавить несколько снимков</p>
+        </label>
 
         <div class="thumb-row" id="thumb-row"></div>
 
