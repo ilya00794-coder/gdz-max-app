@@ -289,7 +289,7 @@ btnConfirm.addEventListener("click", async () => {
   if (textUnchanged) {
     hideConfirmError();
     state.recognizedText = currentText;
-    renderReel(state.solution);
+    renderSolution(state.solution);
     showScreen("screen-solution");
     return;
   }
@@ -304,7 +304,7 @@ btnConfirm.addEventListener("click", async () => {
       grade: state.grade,
       subject: state.subject,
     });
-    renderReel(state.solution);
+    renderSolution(state.solution);
     showScreen("screen-solution");
   } catch {
     // Никакой подстановки готового решения: ученик должен узнать, что решения нет.
@@ -380,62 +380,86 @@ function renderMath(root) {
   }
 }
 
-// ---------- экран 4: solution (сигнатурный swipe-экран) ----------
-const reel = document.getElementById("reel");
-const progressStrip = document.getElementById("progress-strip");
-const stepCounter = document.getElementById("step-counter");
+// ---------- экран 4: решение (светлый стиль A, docs/design-spec.md) ----------
+// Свайпа нет: всё решение одним вертикальным списком, шаги пронумерованы кружками.
+const stepsList = document.getElementById("steps-list");
+const answerBlock = document.getElementById("answer-block");
+const solutionTask = document.getElementById("solution-task");
+const btnNewTask = document.getElementById("btn-new-task");
+const btnReport = document.getElementById("btn-report");
 
 /**
- * Пометка о проверке ответа под финальным ответом.
- * Данных о степени уверенности у нас нет — только verified true/false, его и показываем.
+ * Строка проверки под ответом.
+ * Данных о степени уверенности нет — только verified true/false, его и показываем.
  * Неверифицированное решение обязано выглядеть неверифицированным (см. правила проекта).
  */
-function verificationBadge(verification) {
+function verificationRow(verification) {
   const verified = verification?.verified === true;
-  const style =
-    "margin:10px 0 0;font-size:12px;line-height:1.35;display:flex;gap:6px;align-items:flex-start;" +
-    (verified ? "color:#3fbf6a;" : "color:rgba(255,255,255,.55);");
-  return verified
-    ? `<p class="reel-card-verified" style="${style}"><span>✓</span><span>Ответ проверен вычислением</span></p>`
-    : `<p class="reel-card-verified" style="${style}"><span>•</span><span>Решение не проверено автоматически</span></p>`;
+  const icon = verified
+    ? `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+         <circle cx="12" cy="12" r="9" /><path d="m9 12 2 2 4-4" />
+       </svg>`
+    : `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"
+            stroke-linecap="round" aria-hidden="true">
+         <circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" />
+       </svg>`;
+  const text = verified ? "Ответ проверен вычислением" : "Решение не проверено автоматически";
+  return `<p class="answer-verify" data-verified="${verified}">${icon}<span>${text}</span></p>`;
 }
 
-function renderReel(solution) {
-  reel.innerHTML = "";
-  progressStrip.innerHTML = "";
+function renderSolution(solution) {
+  // Краткое условие в шапке — чтобы было видно, что именно решаем.
+  solutionTask.textContent = state.recognizedText || "";
 
+  stepsList.innerHTML = "";
   solution.steps.forEach((step, i) => {
-    const seg = document.createElement("div");
-    seg.className = "progress-seg";
-    seg.dataset.state = i === 0 ? "current" : "upcoming";
-    progressStrip.appendChild(seg);
-
-    const card = document.createElement("div");
-    card.className = "reel-card";
-    const isLast = i === solution.steps.length - 1;
-    card.innerHTML = `
-      <h2 class="reel-card-title">${step.title}</h2>
-      <p class="reel-card-content">${step.content}</p>
-      ${isLast ? `
-        <div class="reel-card-final">
-          <p class="reel-card-final-label">Ответ</p>
-          <p class="reel-card-final-value">${solution.finalAnswer}</p>
-          ${verificationBadge(solution.verification)}
-        </div>` : ""}
+    const li = document.createElement("li");
+    li.className = "step";
+    li.innerHTML = `
+      <span class="step-num">${i + 1}</span>
+      <div class="step-body">
+        <h2 class="step-title">${step.title}</h2>
+        <p class="step-text">${step.content}</p>
+      </div>
     `;
-    reel.appendChild(card);
+    stepsList.appendChild(li);
   });
 
-  // Формулы отрисовываем после того, как все карточки уже в DOM.
-  renderMath(reel);
+  answerBlock.innerHTML = `
+    <p class="answer-label">Ответ</p>
+    <p class="answer-value">${solution.finalAnswer}</p>
+    ${verificationRow(solution.verification)}
+  `;
 
-  stepCounter.textContent = `1 / ${solution.steps.length}`;
+  // Формулы отрисовываем после того, как всё уже в DOM.
+  renderMath(stepsList);
+  renderMath(answerBlock);
 
-  reel.onscroll = () => {
-    const idx = Math.round(reel.scrollTop / reel.clientHeight);
-    stepCounter.textContent = `${idx + 1} / ${solution.steps.length}`;
-    [...progressStrip.children].forEach((seg, i) => {
-      seg.dataset.state = i < idx ? "done" : i === idx ? "current" : "upcoming";
-    });
-  };
+  hideSheetNote();
+  document.querySelector(".sheet-scroll").scrollTop = 0;
 }
+
+btnNewTask.addEventListener("click", () => showScreen("screen-capture"));
+
+/** Пока это визуальная заглушка: приёма жалоб на бэкенде ещё нет, врать об отправке нельзя. */
+function showSheetNote(text) {
+  let el = document.getElementById("sheet-note");
+  if (!el) {
+    el = document.createElement("p");
+    el.id = "sheet-note";
+    el.className = "sheet-note";
+    document.querySelector(".sheet-actions")?.insertAdjacentElement("beforebegin", el);
+  }
+  el.textContent = text;
+  el.hidden = false;
+}
+
+function hideSheetNote() {
+  const el = document.getElementById("sheet-note");
+  if (el) el.hidden = true;
+}
+
+btnReport.addEventListener("click", () => {
+  showSheetNote("Кнопка пока не отправляет сообщение — приём жалоб на ответ появится позже.");
+});
