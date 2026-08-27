@@ -175,48 +175,154 @@ function fileToDataUrl(file) {
 
 document.getElementById("btn-back-capture").addEventListener("click", () => showScreen("screen-setup"));
 
+const recognizedTextEl = document.getElementById("recognized-text");
+
+/** Минимальная индикация занятости кнопки: запрос с фото идёт 20–30 секунд. */
+function setButtonBusy(btn, busy, busyLabel) {
+  if (busy) {
+    btn.dataset.idleLabel = btn.dataset.idleLabel ?? btn.textContent;
+    btn.textContent = busyLabel;
+    btn.disabled = true;
+  } else {
+    btn.textContent = btn.dataset.idleLabel ?? btn.textContent;
+    btn.disabled = false;
+  }
+}
+
+/** Сообщение об ошибке прямо на экране съёмки — чтобы можно было переснять, не уходя дальше. */
+function showCaptureError(text) {
+  let el = document.getElementById("capture-error");
+  if (!el) {
+    el = document.createElement("p");
+    el.id = "capture-error";
+    el.style.cssText =
+      "margin:12px 0 0;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.4;" +
+      "background:rgba(220,38,38,.12);color:#b91c1c;";
+    document.querySelector(".capture-actions")?.insertAdjacentElement("beforebegin", el);
+  }
+  el.textContent = text;
+  el.hidden = false;
+}
+
+function hideCaptureError() {
+  const el = document.getElementById("capture-error");
+  if (el) el.hidden = true;
+}
+
 btnSolve.addEventListener("click", async () => {
-  // В проде: отправляем state.photos на /api/solve, получаем recognizedText для подтверждения.
-  // Здесь — мок, чтобы демонстрировать поток экранов без реального бэкенда/фото.
-  state.recognizedText =
-    state.photos.length > 0
-      ? "[распознано с фото] Пример: Реши уравнение 2x + 8 = 20"
-      : "Реши уравнение 2x + 8 = 20";
-  document.getElementById("recognized-text").value = state.recognizedText;
-  showScreen("screen-confirm");
+  hideCaptureError();
+
+  // Фото нет — это не ошибка, а сценарий «введу условие сам»: идём на confirm с пустым полем.
+  // Подсказка живёт в placeholder, а не в value: иначе ученик отправил бы чужой пример.
+  if (state.photos.length === 0) {
+    state.solution = null;
+    state.recognizedText = "";
+    recognizedTextEl.value = "";
+    updateConfirmCta();
+    showScreen("screen-confirm");
+    return;
+  }
+
+  setButtonBusy(btnSolve, true, "Распознаём…");
+  try {
+    // dataUrl уже в виде data:image/...;base64,... — vision.js принимает такой формат.
+    const solution = await postSolve({
+      imagesBase64: state.photos.map((p) => p.dataUrl),
+      grade: state.grade,
+      subject: state.subject,
+    });
+
+    // Кладём ответ целиком: recognizedText, steps, finalAnswer, verification и всё остальное.
+    state.solution = solution;
+    state.recognizedText = solution.recognizedText ?? "";
+    recognizedTextEl.value = state.recognizedText;
+    updateConfirmCta();
+    showScreen("screen-confirm");
+  } catch (err) {
+    // 422 — «не разобрали фото» или «печатного условия не найдено»: остаёмся на съёмке.
+    showCaptureError(err.message);
+  } finally {
+    setButtonBusy(btnSolve, false);
+  }
 });
 
 // ---------- экран 3: confirm ----------
 document.getElementById("btn-back-confirm")?.addEventListener("click", () => showScreen("screen-capture"));
 
-document.getElementById("btn-confirm").addEventListener("click", async () => {
-  state.recognizedText = document.getElementById("recognized-text").value;
-  state.solution = await fetchSolution();
-  renderReel(state.solution);
-  showScreen("screen-solution");
+const btnConfirm = document.getElementById("btn-confirm");
+
+/** Решать нечего, пока в поле пусто: placeholder — это подсказка, а не текст задачи. */
+function updateConfirmCta() {
+  btnConfirm.disabled = recognizedTextEl.value.trim().length === 0;
+}
+
+recognizedTextEl.addEventListener("input", updateConfirmCta);
+updateConfirmCta();
+
+btnConfirm.addEventListener("click", async () => {
+  const currentText = recognizedTextEl.value;
+  const recognized = state.solution?.recognizedText ?? null;
+  const textUnchanged = recognized !== null && currentText.trim() === recognized.trim();
+
+  // Текст не правили — решение уже пришло вместе с распознаванием, второй запрос не нужен.
+  if (textUnchanged) {
+    state.recognizedText = currentText;
+    renderReel(state.solution);
+    showScreen("screen-solution");
+    return;
+  }
+
+  // Пользователь поправил условие — решаем заново уже по тексту, без фото.
+  setButtonBusy(btnConfirm, true, "Решаем…");
+  try {
+    state.recognizedText = currentText;
+    state.solution = await solveWithFallback({
+      text: currentText,
+      grade: state.grade,
+      subject: state.subject,
+    });
+    renderReel(state.solution);
+    showScreen("screen-solution");
+  } finally {
+    setButtonBusy(btnConfirm, false);
+  }
 });
 
-// ---------- вызов backend (с fallback на мок, если backend недоступен) ----------
-async function fetchSolution() {
+// ---------- вызов backend ----------
+
+/**
+ * Голый запрос к /api/solve: ошибки НЕ маскирует, отдаёт текст ошибки от бэкенда.
+ * Используется для распознавания фото — там подмена ошибки моком недопустима:
+ * ученик должен узнать, что снимок не разобрали, а не получить решение чужой задачи.
+ */
+async function postSolve(payload) {
+  const res = await fetch(`${BACKEND_URL}/api/solve`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      // Бесплатный ngrok показывает браузеру HTML-заглушку вместо ответа API;
+      // этот заголовок её отключает. На проде безвреден.
+      "ngrok-skip-browser-warning": "true",
+      // Подписанная строка запуска: бэкенд проверяет её и понимает, кто пришёл.
+      ...(max.initData ? { "X-Max-Init-Data": max.initData } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const err = new Error(data?.error || `Бэкенд ответил ${res.status}`);
+    err.status = res.status;
+    err.body = data;
+    throw err;
+  }
+  return data;
+}
+
+/** Тот же запрос, но с откатом на мок — для автономного превью UI без бэкенда. */
+async function solveWithFallback(payload) {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/solve`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // Бесплатный ngrok показывает браузеру HTML-заглушку вместо ответа API;
-        // этот заголовок её отключает. На проде безвреден.
-        "ngrok-skip-browser-warning": "true",
-        // Подписанная строка запуска: бэкенд проверяет её и понимает, кто пришёл.
-        ...(max.initData ? { "X-Max-Init-Data": max.initData } : {}),
-      },
-      body: JSON.stringify({
-        text: state.recognizedText,
-        grade: state.grade,
-        subject: state.subject,
-      }),
-    });
-    if (!res.ok) throw new Error("backend недоступен");
-    return await res.json();
+    return await postSolve(payload);
   } catch {
     // Мок-решение для автономного превью UI без backend
     return {
