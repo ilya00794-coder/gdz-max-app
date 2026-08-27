@@ -55,21 +55,41 @@
       </header>
 
       <div class="capture">
-        <label class="capture-frame" for="file-input">
-          <svg class="capture-icon" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor"
+        <!-- До съёмки: одна крупная тап-цель на весь блок. -->
+        <label class="capture-frame" for="file-input" id="capture-empty">
+          <svg class="capture-icon" viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor"
                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M4 8a2 2 0 0 1 2-2h1.6l1-1.6h6.8l1 1.6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
             <circle cx="12" cy="12.5" r="3.2" />
           </svg>
-          <p class="capture-hint">Сфотографируй задачу из учебника</p>
-          <p class="capture-sub">Можно добавить несколько снимков</p>
+          <p class="capture-hint">Нажми, чтобы сфотографировать задачу</p>
+          <p class="capture-sub">Один снимок — одно задание</p>
         </label>
+        <input type="file" id="file-input" accept="image/*" capture="environment" hidden />
 
-        <div class="thumb-row" id="thumb-row"></div>
+        <!-- После съёмки: снимок крупно, рамка выделения сразу на нём. -->
+        <div class="capture-photo" id="capture-photo" hidden>
+          <div class="crop-frame" id="crop-frame">
+            <img class="crop-image" id="crop-image" alt="Снимок задачи" />
+            <div class="crop-box" id="crop-box">
+              <span class="crop-handle" data-handle="nw"></span>
+              <span class="crop-handle" data-handle="ne"></span>
+              <span class="crop-handle" data-handle="sw"></span>
+              <span class="crop-handle" data-handle="se"></span>
+            </div>
+          </div>
+
+          <button class="photo-remove" id="btn-remove-photo" type="button" aria-label="Убрать снимок">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6" />
+            </svg>
+          </button>
+        </div>
+
+        <p class="crop-tip" id="crop-tip" hidden>Потяни за уголки — выдели задачу</p>
 
         <div class="capture-actions">
-          <label class="cta cta-outline" for="file-input">+ Фото</label>
-          <input type="file" id="file-input" accept="image/*" capture="environment" multiple hidden />
           <button class="cta" id="btn-solve">Решить</button>
         </div>
       </div>
@@ -151,29 +171,6 @@
         </button>
       </div>
     </section>
-
-    <!-- Выделение области задания на фото. Поверх всех экранов, вне .app-потока. -->
-    <div class="crop-overlay" id="crop-overlay" hidden>
-      <header class="crop-topbar">
-        <button class="btn-light" id="crop-cancel" type="button">Отмена</button>
-        <span class="crop-title">Выдели задачу</span>
-        <button class="btn-light crop-done" id="crop-done" type="button">Готово</button>
-      </header>
-
-      <div class="crop-stage" id="crop-stage">
-        <div class="crop-frame" id="crop-frame">
-          <img class="crop-image" id="crop-image" alt="Снимок задачи" />
-          <div class="crop-box" id="crop-box">
-            <span class="crop-handle" data-handle="nw"></span>
-            <span class="crop-handle" data-handle="ne"></span>
-            <span class="crop-handle" data-handle="sw"></span>
-            <span class="crop-handle" data-handle="se"></span>
-          </div>
-        </div>
-      </div>
-
-      <p class="crop-hint">Потяни за углы рамки — на распознавание уйдёт только выделенное</p>
-    </div>
 
   </div>
 
