@@ -251,6 +251,27 @@ document.getElementById("btn-back-confirm")?.addEventListener("click", () => sho
 
 const btnConfirm = document.getElementById("btn-confirm");
 
+/** Ошибка на экране подтверждения. Мок-подстановки здесь нет и быть не должно:
+ *  показать чужое решение вместо честной ошибки — хуже, чем не показать ничего. */
+function showConfirmError(text) {
+  let el = document.getElementById("confirm-error");
+  if (!el) {
+    el = document.createElement("p");
+    el.id = "confirm-error";
+    el.style.cssText =
+      "margin:12px 0 0;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.4;" +
+      "background:rgba(220,38,38,.12);color:#b91c1c;";
+    btnConfirm.insertAdjacentElement("beforebegin", el);
+  }
+  el.textContent = text;
+  el.hidden = false;
+}
+
+function hideConfirmError() {
+  const el = document.getElementById("confirm-error");
+  if (el) el.hidden = true;
+}
+
 /** Решать нечего, пока в поле пусто: placeholder — это подсказка, а не текст задачи. */
 function updateConfirmCta() {
   btnConfirm.disabled = recognizedTextEl.value.trim().length === 0;
@@ -266,6 +287,7 @@ btnConfirm.addEventListener("click", async () => {
 
   // Текст не правили — решение уже пришло вместе с распознаванием, второй запрос не нужен.
   if (textUnchanged) {
+    hideConfirmError();
     state.recognizedText = currentText;
     renderReel(state.solution);
     showScreen("screen-solution");
@@ -273,16 +295,20 @@ btnConfirm.addEventListener("click", async () => {
   }
 
   // Пользователь поправил условие — решаем заново уже по тексту, без фото.
+  hideConfirmError();
   setButtonBusy(btnConfirm, true, "Решаем…");
   try {
     state.recognizedText = currentText;
-    state.solution = await solveWithFallback({
+    state.solution = await postSolve({
       text: currentText,
       grade: state.grade,
       subject: state.subject,
     });
     renderReel(state.solution);
     showScreen("screen-solution");
+  } catch {
+    // Никакой подстановки готового решения: ученик должен узнать, что решения нет.
+    showConfirmError("Не удалось получить решение, проверьте связь и попробуйте снова.");
   } finally {
     setButtonBusy(btnConfirm, false);
   }
@@ -317,25 +343,6 @@ async function postSolve(payload) {
     throw err;
   }
   return data;
-}
-
-/** Тот же запрос, но с откатом на мок — для автономного превью UI без бэкенда. */
-async function solveWithFallback(payload) {
-  try {
-    return await postSolve(payload);
-  } catch {
-    // Мок-решение для автономного превью UI без backend
-    return {
-      steps: [
-        { title: "Разбираем условие", content: "Дано линейное уравнение $2x+8=20$. Нужно найти значение $x$, при котором равенство верно." },
-        { title: "Переносим слагаемое", content: "Перенесём число $8$ из левой части в правую, изменив знак: $2x=20-8$, то есть $2x=12$." },
-        { title: "Делим на коэффициент", content: "Разделим обе части на коэффициент при $x$: $x=\\dfrac{12}{2}=6$." },
-        { title: "Проверка", content: "Подставим $x=6$ в исходное уравнение: $2\\cdot 6+8=12+8=20$. Равенство верное." },
-      ],
-      finalAnswer: "$x = 6$",
-      verification: { verified: false, method: "mock" },
-    };
-  }
 }
 
 // ---------- отрисовка формул (KaTeX) ----------
@@ -378,6 +385,21 @@ const reel = document.getElementById("reel");
 const progressStrip = document.getElementById("progress-strip");
 const stepCounter = document.getElementById("step-counter");
 
+/**
+ * Пометка о проверке ответа под финальным ответом.
+ * Данных о степени уверенности у нас нет — только verified true/false, его и показываем.
+ * Неверифицированное решение обязано выглядеть неверифицированным (см. правила проекта).
+ */
+function verificationBadge(verification) {
+  const verified = verification?.verified === true;
+  const style =
+    "margin:10px 0 0;font-size:12px;line-height:1.35;display:flex;gap:6px;align-items:flex-start;" +
+    (verified ? "color:#3fbf6a;" : "color:rgba(255,255,255,.55);");
+  return verified
+    ? `<p class="reel-card-verified" style="${style}"><span>✓</span><span>Ответ проверен вычислением</span></p>`
+    : `<p class="reel-card-verified" style="${style}"><span>•</span><span>Решение не проверено автоматически</span></p>`;
+}
+
 function renderReel(solution) {
   reel.innerHTML = "";
   progressStrip.innerHTML = "";
@@ -398,6 +420,7 @@ function renderReel(solution) {
         <div class="reel-card-final">
           <p class="reel-card-final-label">Ответ</p>
           <p class="reel-card-final-value">${solution.finalAnswer}</p>
+          ${verificationBadge(solution.verification)}
         </div>` : ""}
     `;
     reel.appendChild(card);
