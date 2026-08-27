@@ -627,3 +627,26 @@ html, body {
 }
 
 .crop-tip[hidden] { display: none; }
+
+/* =========================================================
+   Переспрос о режиме. Спокойная плашка, а не модальное окно:
+   пользователь всегда может настоять на своём выборе.
+   ========================================================= */
+.mode-prompt {
+  margin: 12px 0 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--l-accent-soft);
+  color: var(--l-accent-deep);
+  font-family: var(--font-system);
+}
+
+.mode-prompt[hidden] { display: none; }
+
+.mode-prompt-text { margin: 0 0 10px; font-size: 14px; line-height: 1.5; }
+
+.mode-prompt-actions { display: flex; gap: 8px; }
+
+.mode-prompt-actions .btn-light { flex: 1; padding: 10px 12px; font-size: 14px; }
+
+.mode-prompt-yes { background: var(--l-accent); border-color: var(--l-accent); color: #fff; }
