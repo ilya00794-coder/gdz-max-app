@@ -9,7 +9,7 @@ const app = express();
 app.use(
   cors({
     // Мини-приложение открывается с домена, отданного MAX, и шлёт строку запуска заголовком.
-    allowedHeaders: ["Content-Type", INIT_DATA_HEADER],
+    allowedHeaders: ["Content-Type", INIT_DATA_HEADER, "ngrok-skip-browser-warning"],
   })
 );
 app.use(express.json({ limit: "15mb" })); // фото в base64 могут быть тяжёлыми
