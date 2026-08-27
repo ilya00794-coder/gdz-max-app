@@ -113,6 +113,29 @@
       </div>
     </section>
 
+    <!-- Выделение области задания на фото. Поверх всех экранов, вне .app-потока. -->
+    <div class="crop-overlay" id="crop-overlay" hidden>
+      <header class="crop-topbar">
+        <button class="btn-light" id="crop-cancel" type="button">Отмена</button>
+        <span class="crop-title">Выдели задачу</span>
+        <button class="btn-light crop-done" id="crop-done" type="button">Готово</button>
+      </header>
+
+      <div class="crop-stage" id="crop-stage">
+        <div class="crop-frame" id="crop-frame">
+          <img class="crop-image" id="crop-image" alt="Снимок задачи" />
+          <div class="crop-box" id="crop-box">
+            <span class="crop-handle" data-handle="nw"></span>
+            <span class="crop-handle" data-handle="ne"></span>
+            <span class="crop-handle" data-handle="sw"></span>
+            <span class="crop-handle" data-handle="se"></span>
+          </div>
+        </div>
+      </div>
+
+      <p class="crop-hint">Потяни за углы рамки — на распознавание уйдёт только выделенное</p>
+    </div>
+
   </div>
 
   <!-- Обычные (не defer) скрипты: KaTeX и auto-render должны быть готовы к моменту загрузки app.js. -->

@@ -187,18 +187,38 @@ function createThumb(photo) {
 
   const img = document.createElement("img");
   img.className = "thumb";
-  img.src = photo.dataUrl;
+  img.src = photo.croppedDataUrl ?? photo.dataUrl;
   img.alt = "Снимок задачи";
+  // Тап по снимку открывает выделение области — точка входа именно на снимке,
+  // потому что кадров может быть несколько и выбирать надо конкретный.
+  img.addEventListener("click", () => openCrop(photo.id));
+
+  const badge = document.createElement("span");
+  badge.className = "thumb-crop-badge";
+  badge.innerHTML = `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+       stroke-width="2" stroke-linecap="round" aria-hidden="true">
+    <path d="M6 2v14a2 2 0 0 0 2 2h14M2 6h14a2 2 0 0 1 2 2v14" /></svg>`;
 
   const remove = document.createElement("button");
   remove.className = "thumb-remove";
   remove.type = "button";
   remove.setAttribute("aria-label", "Удалить снимок");
   remove.textContent = "×";
-  remove.addEventListener("click", () => removePhoto(photo.id));
+  remove.addEventListener("click", (e) => {
+    e.stopPropagation(); // иначе следом откроется выделение удалённого снимка
+    removePhoto(photo.id);
+  });
 
-  item.append(img, remove);
+  item.append(img, badge, remove);
   return item;
+}
+
+/** Перерисовывает миниатюру после обрезки. */
+function refreshThumb(photo) {
+  const item = thumbRow.querySelector(`.thumb-item[data-photo-id="${photo.id}"]`);
+  if (!item) return;
+  item.querySelector(".thumb").src = photo.croppedDataUrl ?? photo.dataUrl;
+  item.dataset.cropped = photo.croppedDataUrl ? "true" : "false";
 }
 
 function removePhoto(id) {
@@ -212,6 +232,7 @@ function resetPhotos() {
   state.photos = [];
   thumbRow.innerHTML = "";
   hideCaptureError();
+  closeCrop();
 }
 
 /**
@@ -227,6 +248,133 @@ function startNewTask() {
   recognizedTextEl.value = "";
   updateConfirmCta();
 }
+
+// ---------- выделение области задания ----------
+// Одно фото часто содержит несколько задач. Если область выделена, на распознавание
+// уходит только она: модель не цепляет соседние задания. Выделение необязательное —
+// без него уходит весь кадр, как раньше.
+const cropOverlay = document.getElementById("crop-overlay");
+const cropFrame = document.getElementById("crop-frame");
+const cropImage = document.getElementById("crop-image");
+const cropBox = document.getElementById("crop-box");
+
+const MIN_CROP_PX = 40; // меньше пальцем всё равно не выделить
+
+let cropPhotoId = null;
+let cropRect = null;    // {x, y, w, h} в пикселях ОТОБРАЖАЕМОГО изображения
+let cropDrag = null;
+
+function openCrop(photoId) {
+  const photo = state.photos.find((p) => p.id === photoId);
+  if (!photo) return;
+
+  cropPhotoId = photoId;
+  cropOverlay.hidden = false;
+
+  // Показываем всегда оригинал: так выделение можно переделать заново.
+  cropImage.onload = () => {
+    const w = cropImage.clientWidth;
+    const h = cropImage.clientHeight;
+    // Если рамку уже задавали, восстанавливаем её из долей, а не из пикселей:
+    // размер картинки на экране зависит от устройства и ориентации.
+    const n = photo.cropNorm;
+    cropRect = n
+      ? { x: n.x * w, y: n.y * h, w: n.w * w, h: n.h * h }
+      : { x: w * 0.1, y: h * 0.1, w: w * 0.8, h: h * 0.8 };
+    drawCropBox();
+  };
+  cropImage.src = photo.dataUrl;
+}
+
+function closeCrop() {
+  cropOverlay.hidden = true;
+  cropPhotoId = null;
+  cropRect = null;
+  cropDrag = null;
+}
+
+function drawCropBox() {
+  if (!cropRect) return;
+  cropBox.style.left = `${cropRect.x}px`;
+  cropBox.style.top = `${cropRect.y}px`;
+  cropBox.style.width = `${cropRect.w}px`;
+  cropBox.style.height = `${cropRect.h}px`;
+}
+
+const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
+
+cropFrame.addEventListener("pointerdown", (e) => {
+  if (!cropRect) return;
+  const handle = e.target.closest(".crop-handle")?.dataset.handle;
+  const insideBox = e.target === cropBox || e.target.closest(".crop-box");
+  if (!handle && !insideBox) return;
+
+  cropDrag = { handle: handle ?? null, startX: e.clientX, startY: e.clientY, start: { ...cropRect } };
+  cropFrame.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+
+cropFrame.addEventListener("pointermove", (e) => {
+  if (!cropDrag || !cropRect) return;
+  const w = cropImage.clientWidth;
+  const h = cropImage.clientHeight;
+  const dx = e.clientX - cropDrag.startX;
+  const dy = e.clientY - cropDrag.startY;
+  const s = cropDrag.start;
+
+  if (!cropDrag.handle) {
+    cropRect.x = clamp(s.x + dx, 0, w - s.w);
+    cropRect.y = clamp(s.y + dy, 0, h - s.h);
+  } else {
+    let { x, y } = s;
+    let right = s.x + s.w;
+    let bottom = s.y + s.h;
+    if (cropDrag.handle.includes("w")) x = clamp(s.x + dx, 0, right - MIN_CROP_PX);
+    if (cropDrag.handle.includes("e")) right = clamp(right + dx, x + MIN_CROP_PX, w);
+    if (cropDrag.handle.includes("n")) y = clamp(s.y + dy, 0, bottom - MIN_CROP_PX);
+    if (cropDrag.handle.includes("s")) bottom = clamp(bottom + dy, y + MIN_CROP_PX, h);
+    cropRect = { x, y, w: right - x, h: bottom - y };
+  }
+  drawCropBox();
+  e.preventDefault();
+});
+
+const endCropDrag = () => { cropDrag = null; };
+cropFrame.addEventListener("pointerup", endCropDrag);
+cropFrame.addEventListener("pointercancel", endCropDrag);
+
+document.getElementById("crop-cancel").addEventListener("click", closeCrop);
+
+document.getElementById("crop-done").addEventListener("click", () => {
+  const photo = state.photos.find((p) => p.id === cropPhotoId);
+  if (!photo || !cropRect) return closeCrop();
+
+  const dispW = cropImage.clientWidth;
+  const dispH = cropImage.clientHeight;
+  const scaleX = cropImage.naturalWidth / dispW;
+  const scaleY = cropImage.naturalHeight / dispH;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(cropRect.w * scaleX));
+  canvas.height = Math.max(1, Math.round(cropRect.h * scaleY));
+  canvas
+    .getContext("2d")
+    .drawImage(
+      cropImage,
+      cropRect.x * scaleX, cropRect.y * scaleY,
+      cropRect.w * scaleX, cropRect.h * scaleY,
+      0, 0, canvas.width, canvas.height
+    );
+
+  // JPEG: кроп фотографии в PNG весил бы кратно больше и упирался бы в лимит запроса.
+  photo.croppedDataUrl = canvas.toDataURL("image/jpeg", 0.92);
+  photo.cropNorm = {
+    x: cropRect.x / dispW, y: cropRect.y / dispH,
+    w: cropRect.w / dispW, h: cropRect.h / dispH,
+  };
+  refreshThumb(photo);
+  closeCrop();
+});
 
 const FILE_READ_ERROR = "Не удалось прочитать фото, попробуйте другой снимок.";
 
@@ -300,7 +448,8 @@ btnSolve.addEventListener("click", async () => {
   try {
     // dataUrl уже в виде data:image/...;base64,... — vision.js принимает такой формат.
     const solution = await postSolve({
-      imagesBase64: state.photos.map((p) => p.dataUrl),
+      // Если область выделена, отправляем только её — полный кадр не нужен.
+      imagesBase64: state.photos.map((p) => p.croppedDataUrl ?? p.dataUrl),
       grade: state.grade,
       subject: state.subject,
     });
