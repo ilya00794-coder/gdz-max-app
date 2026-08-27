@@ -68,8 +68,6 @@ html, body {
   gap: 12px;
   padding: 18px 20px 8px;
 }
-.topbar-on-dark { position: relative; z-index: 3; padding-top: 26px; }
-
 .brand {
   font-family: var(--font-display);
   font-size: 28px;
@@ -251,122 +249,157 @@ html, body {
   resize: none;
 }
 
-/* ---------- экран 4: solution — сигнатурный экран ---------- */
-#screen-solution {
-  background: var(--board-deep);
+/* =========================================================
+   Экран решения — светлый стиль A (docs/design-spec.md).
+   Свайпа больше нет: всё решение одним вертикальным списком.
+   ========================================================= */
+:root {
+  --l-bg: #ffffff;
+  --l-surface: #f1efe8;
+  --l-text: #2c2c2a;
+  --l-text-2: #444441;
+  --l-muted: #888780;
+  --l-accent: #185fa5;
+  --l-accent-soft: #e6f1fb;
+  --l-accent-deep: #04234f;
+  --l-success: #0f6e56;
+  --l-danger: #993c1d;
+  --l-line: rgba(44, 44, 42, 0.14);
+  --font-system: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-/* Прогресс в виде "разлинованных полосок тетради", как сторис */
-.progress-strip {
-  position: absolute;
-  top: 0; left: 0; right: 0;
+.screen-light {
+  background: var(--l-bg);
+  color: var(--l-text);
+  font-family: var(--font-system);
+  font-weight: 400;
+}
+
+.sheet-topbar {
   display: flex;
-  gap: 4px;
-  padding: 10px 16px 0;
-  z-index: 4;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 0.5px solid var(--l-line);
 }
-.progress-seg {
-  flex: 1;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(243,239,228,0.2);
-  overflow: hidden;
-}
-.progress-seg[data-state="done"] { background: var(--marker-yellow); }
-.progress-seg[data-state="current"] {
-  background: linear-gradient(90deg, var(--marker-yellow) 50%, rgba(243,239,228,0.2) 50%);
-  background-size: 200% 100%;
-  animation: fill 6s linear forwards;
-}
-@keyframes fill { from { background-position: 100% 0; } to { background-position: 0 0; } }
 
-.step-counter {
-  font-family: var(--font-body);
-  font-size: 13px;
-  color: var(--chalk-dim);
+.sheet-back {
+  border: 0.5px solid var(--l-line);
+  background: var(--l-bg);
+  color: var(--l-text);
+  border-radius: 10px;
+  width: 30px;
+  height: 30px;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sheet-title { font-size: 15px; font-weight: 500; color: var(--l-text); }
+
+.sheet-task {
   margin-left: auto;
+  font-size: 13px;
+  color: var(--l-muted);
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.reel {
-  flex: 1;
-  overflow-y: auto;
-  scroll-snap-type: y mandatory;
-  display: flex;
-  flex-direction: column;
-}
+.sheet-scroll { flex: 1; overflow-y: auto; padding: 18px 16px 8px; }
 
-.reel-card {
-  min-height: calc(100vh - 90px);
-  scroll-snap-align: start;
+/* --- список шагов --- */
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 18px; }
+
+.step { display: flex; gap: 12px; align-items: flex-start; }
+
+.step-num {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--l-accent-soft);
+  color: var(--l-accent);
+  font-size: 13px;
+  font-weight: 500;
   display: flex;
-  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  padding: 40px 28px 60px;
-  position: relative;
 }
 
-.reel-card::before {
-  /* акцентная маркерная полоса слева — сигнатурный штрих экрана решения */
-  content: "";
-  position: absolute;
-  left: 20px;
-  top: 40px;
-  bottom: 60px;
-  width: 4px;
-  border-radius: 2px;
-  background: var(--card-accent, var(--marker-yellow));
-}
+.step-body { flex: 1; min-width: 0; }
+.step-title { margin: 3px 0 4px; font-size: 15px; font-weight: 500; color: var(--l-text); }
+.step-text { margin: 0; font-size: 14px; line-height: 1.6; color: var(--l-text-2); }
+.step-text .katex { color: var(--l-accent); }
 
-.reel-card:nth-child(3n+1) { --card-accent: var(--marker-yellow); }
-.reel-card:nth-child(3n+2) { --card-accent: var(--marker-pink); }
-.reel-card:nth-child(3n+3) { --card-accent: var(--marker-blue); }
-
-.reel-card-title {
-  font-family: var(--font-display);
-  font-size: 34px;
-  color: var(--card-accent, var(--marker-yellow));
-  margin: 0 0 14px 28px;
-}
-
-.reel-card-content {
-  font-family: var(--font-body);
-  font-size: 17px;
-  line-height: 1.7;
-  color: var(--chalk);
-  margin: 0 0 0 28px;
-}
-
-.reel-card-final {
-  margin-top: 28px;
-  margin-left: 28px;
-  padding: 16px 18px;
+/* --- блок ответа --- */
+.answer-block {
+  margin: 22px 0 4px;
+  padding: 14px 16px;
   border-radius: 12px;
-  background: rgba(255, 210, 63, 0.12);
-  border: 1px solid rgba(255, 210, 63, 0.35);
+  background: var(--l-accent-soft);
 }
-.reel-card-final-label {
+
+.answer-label {
+  margin: 0 0 6px;
   font-size: 12px;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--marker-yellow);
-  margin: 0 0 4px;
+  color: var(--l-accent);
 }
-.reel-card-final-value {
-  font-family: var(--font-display);
-  font-size: 26px;
-  color: var(--chalk);
+
+.answer-value {
   margin: 0;
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--l-accent-deep);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-.swipe-hint {
-  text-align: center;
-  font-family: var(--font-body);
-  font-size: 12px;
-  color: var(--chalk-dim);
-  padding: 10px 0 16px;
-  opacity: 0.7;
+.answer-value .katex { color: var(--l-accent-deep); }
+
+.answer-verify {
+  margin: 10px 0 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+}
+.answer-verify[data-verified="true"] { color: var(--l-success); }
+.answer-verify[data-verified="false"] { color: var(--l-muted); }
+
+/* --- нижние кнопки --- */
+.sheet-actions {
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+  border-top: 0.5px solid var(--l-line);
 }
 
-@media (min-width: 481px) {
-  .app { border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+.btn-light {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 11px 12px;
+  border: 0.5px solid var(--l-line);
+  border-radius: 10px;
+  background: var(--l-bg);
+  color: var(--l-text);
+  font-family: var(--font-system);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-report { color: var(--l-danger); }
+
+.sheet-note {
+  margin: 0;
+  padding: 0 16px 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--l-muted);
 }
