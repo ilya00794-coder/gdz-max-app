@@ -253,8 +253,9 @@ html, body {
 
 /* Кнопка «Дальше» перекрашивается только на этом экране: класс .cta
    продолжает использоваться тёмными экранами capture и confirm. */
+.setup-actions { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+
 #screen-setup .cta {
-  margin-top: auto;
   width: 100%;
   padding: 13px 16px;
   border: none;
@@ -275,6 +276,14 @@ html, body {
   opacity: 1;
   cursor: not-allowed;
 }
+
+#screen-setup .cta-secondary {
+  background: var(--l-bg);
+  color: var(--l-text);
+  border: 0.5px solid var(--l-line);
+}
+
+#screen-setup .cta-secondary:disabled { background: var(--l-surface); color: var(--l-muted); border-color: transparent; }
 
 /* =========================================================
    Экран съёмки — светлый стиль A (docs/design-spec.md).
@@ -573,3 +582,117 @@ html, body {
   color: #fff;
   border-color: var(--l-accent);
 }
+
+/* =========================================================
+   Экран проверки домашней работы — светлый стиль A.
+   Тон подачи спокойный: учебная ошибка это не провал, красный
+   #993C1D здесь не используется, он остаётся для крайних случаев.
+   ========================================================= */
+.verdict {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: 12px;
+  margin-bottom: 18px;
+}
+
+.verdict[data-ok="true"] { background: #eaf4f0; color: var(--l-success); }
+.verdict[data-ok="false"] { background: var(--l-accent-soft); color: var(--l-accent-deep); }
+
+.verdict-title { margin: 0; font-size: 16px; font-weight: 500; }
+.verdict-sub { margin: 4px 0 0; font-size: 13px; line-height: 1.4; opacity: 0.85; }
+
+.check-section {
+  margin: 22px 0 10px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--l-muted);
+}
+.check-section:first-of-type { margin-top: 0; }
+
+/* --- работа ученика --- */
+.student-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+
+.student-step {
+  display: flex;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 0.5px solid transparent;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--l-text-2);
+}
+
+.student-step-num { flex: 0 0 20px; color: var(--l-muted); font-size: 13px; }
+
+/* Шаг, с которого началась ошибка, — подсвечен спокойно, а не тревожно. */
+.student-step[data-first-mistake="true"] {
+  background: var(--l-accent-soft);
+  border-color: var(--l-accent);
+  color: var(--l-accent-deep);
+}
+
+/* --- разбор --- */
+.mistake {
+  border: 0.5px solid var(--l-line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+
+.mistake-where { margin: 0 0 10px; font-size: 15px; font-weight: 500; color: var(--l-text); }
+.mistake-label {
+  margin: 0 0 4px;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--l-muted);
+}
+.mistake-text { margin: 0 0 12px; font-size: 14px; line-height: 1.6; color: var(--l-text-2); }
+.mistake-text:last-child { margin-bottom: 0; }
+.mistake-better { color: var(--l-accent-deep); }
+
+/* --- строки сверки, нечитаемого и расхождения --- */
+.check-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--l-surface);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--l-text-2);
+}
+
+.check-note[data-kind="verified"] { background: #eaf4f0; color: var(--l-success); }
+.check-note[data-kind="conflict"] { background: var(--l-accent-soft); color: var(--l-accent-deep); }
+.check-note ul { margin: 6px 0 0; padding-left: 18px; }
+
+/* --- эталон, свёрнут по умолчанию --- */
+.reference {
+  margin: 22px 0 4px;
+  border: 0.5px solid var(--l-line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.reference-summary {
+  padding: 14px 16px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--l-accent);
+  cursor: pointer;
+  list-style: none;
+}
+.reference-summary::-webkit-details-marker { display: none; }
+.reference-summary::before { content: "▸ "; }
+.reference[open] .reference-summary::before { content: "▾ "; }
+
+.reference-body { padding: 0 16px 16px; border-top: 0.5px solid var(--l-line); }
+.reference-body .steps { margin-top: 16px; }

@@ -93,6 +93,8 @@ const GRADES = Array.from({ length: 11 }, (_, i) => i + 1);
 const SUBJECTS = ["Математика", "Русский язык", "Физика", "Химия", "Биология", "История", "Английский"];
 
 const state = {
+  mode: "solve",
+  check: null, // последний результат проверки домашней работы // solve — решить задачу из учебника, check — проверить свою работу
   grade: null,
   subject: null,
   photos: [], // { file, dataUrl }
@@ -126,7 +128,8 @@ function selectChip(container, btn) {
 
 const gradeRow = document.getElementById("grade-row");
 const subjectRow = document.getElementById("subject-row");
-const btnToCapture = document.getElementById("btn-to-capture");
+const btnModeSolve = document.getElementById("btn-mode-solve");
+const btnModeCheck = document.getElementById("btn-mode-check");
 
 renderChips(gradeRow, GRADES.map((g) => `${g} класс`), (label, btn) => {
   state.grade = GRADES[[...gradeRow.children].indexOf(btn)];
@@ -142,10 +145,28 @@ renderChips(subjectRow, SUBJECTS, (label, btn) => {
 
 function updateSetupCta() {
   const bridgeBlocked = max.mode === "blocked" || max.mode === "loading";
-  btnToCapture.disabled = !(state.grade && state.subject) || bridgeBlocked;
+  const blocked = !(state.grade && state.subject) || bridgeBlocked;
+  btnModeSolve.disabled = blocked;
+  btnModeCheck.disabled = blocked;
 }
 
-btnToCapture.addEventListener("click", () => showScreen("screen-capture"));
+/** Режим задаёт и подсказку в кадре, и подпись кнопки: снимают разное. */
+function enterCapture(mode) {
+  state.mode = mode;
+  const check = mode === "check";
+  document.querySelector(".capture-hint").textContent = check
+    ? "Сфотографируй своё решение в тетради"
+    : "Сфотографируй задачу из учебника";
+  document.querySelector(".capture-sub").textContent = check
+    ? "Можно добавить несколько страниц"
+    : "Можно добавить несколько снимков";
+  btnSolve.textContent = check ? "Проверить" : "Решить";
+  btnSolve.dataset.idleLabel = btnSolve.textContent;
+  showScreen("screen-capture");
+}
+
+btnModeSolve.addEventListener("click", () => enterCapture("solve"));
+btnModeCheck.addEventListener("click", () => enterCapture("check"));
 // Возврат к выбору класса — это начало новой сессии, снимки прошлой задачи не нужны.
 document.getElementById("btn-back-setup").addEventListener("click", () => {
   startNewTask();
@@ -444,15 +465,24 @@ btnSolve.addEventListener("click", async () => {
     return;
   }
 
-  setButtonBusy(btnSolve, true, "Распознаём…");
+  const check = state.mode === "check";
+  setButtonBusy(btnSolve, true, check ? "Проверяем…" : "Распознаём…");
   try {
     // dataUrl уже в виде data:image/...;base64,... — vision.js принимает такой формат.
-    const solution = await postSolve({
-      // Если область выделена, отправляем только её — полный кадр не нужен.
-      imagesBase64: state.photos.map((p) => p.croppedDataUrl ?? p.dataUrl),
-      grade: state.grade,
-      subject: state.subject,
-    });
+    // Если область выделена, отправляем только её — полный кадр не нужен.
+    const images = state.photos.map((p) => p.croppedDataUrl ?? p.dataUrl);
+    const payload = { imagesBase64: images, grade: state.grade, subject: state.subject };
+
+    if (check) {
+      // Проверка последовательно поднимает три модели, отсюда увеличенный таймаут.
+      const result = await postJson("/api/check-homework", payload, CHECK_TIMEOUT_MS);
+      state.check = result;
+      renderCheck(result);
+      showScreen("screen-check");
+      return;
+    }
+
+    const solution = await postJson("/api/solve", payload, SOLVE_TIMEOUT_MS);
 
     // Кладём ответ целиком: recognizedText, steps, finalAnswer, verification и всё остальное.
     state.solution = solution;
@@ -522,11 +552,11 @@ btnConfirm.addEventListener("click", async () => {
   setButtonBusy(btnConfirm, true, "Решаем…");
   try {
     state.recognizedText = currentText;
-    state.solution = await postSolve({
-      text: currentText,
-      grade: state.grade,
-      subject: state.subject,
-    });
+    state.solution = await postJson(
+      "/api/solve",
+      { text: currentText, grade: state.grade, subject: state.subject },
+      SOLVE_TIMEOUT_MS
+    );
     renderSolution(state.solution);
     showScreen("screen-solution");
   } catch (err) {
@@ -540,7 +570,9 @@ btnConfirm.addEventListener("click", async () => {
 // ---------- вызов backend ----------
 
 // Распознавание + решение реально занимают 30–40 секунд, поэтому запас большой.
-const REQUEST_TIMEOUT_MS = 60000;
+const SOLVE_TIMEOUT_MS = 60000;
+// Проверка домашки поднимает три модели подряд: распознавание, эталон, сравнение.
+const CHECK_TIMEOUT_MS = 90000;
 
 /**
  * Превращает любой сбой в фразу, понятную школьнику.
@@ -569,15 +601,15 @@ function humanizeError(status, err) {
 }
 
 /**
- * Запрос к /api/solve: ошибки НЕ маскирует и не подменяет решением.
+ * Запрос к бэкенду: ошибки НЕ маскирует и ничем не подменяет.
  * Наружу отдаёт уже человеческий текст в err.message.
  */
-async function postSolve(payload) {
+async function postJson(path, payload, timeoutMs) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(`${BACKEND_URL}/api/solve`, {
+    const res = await fetch(`${BACKEND_URL}${path}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -649,6 +681,7 @@ const answerBlock = document.getElementById("answer-block");
 const solutionTask = document.getElementById("solution-task");
 const btnNewTask = document.getElementById("btn-new-task");
 const btnReport = document.getElementById("btn-report");
+const solutionScreen = document.getElementById("screen-solution");
 
 /**
  * Строка проверки под ответом.
@@ -670,36 +703,44 @@ function verificationRow(verification) {
   return `<p class="answer-verify" data-verified="${verified}">${icon}<span>${text}</span></p>`;
 }
 
-function renderSolution(solution) {
-  // Краткое условие в шапке — чтобы было видно, что именно решаем.
-  solutionTask.textContent = state.recognizedText || "";
+/** Разметка списка шагов — одна на экран решения и на эталон внутри проверки. */
+function stepsMarkup(steps) {
+  return steps
+    .map(
+      (step, i) => `
+      <li class="step">
+        <span class="step-num">${i + 1}</span>
+        <div class="step-body">
+          <h2 class="step-title">${step.title}</h2>
+          <p class="step-text">${step.content}</p>
+        </div>
+      </li>`
+    )
+    .join("");
+}
 
-  stepsList.innerHTML = "";
-  solution.steps.forEach((step, i) => {
-    const li = document.createElement("li");
-    li.className = "step";
-    li.innerHTML = `
-      <span class="step-num">${i + 1}</span>
-      <div class="step-body">
-        <h2 class="step-title">${step.title}</h2>
-        <p class="step-text">${step.content}</p>
-      </div>
-    `;
-    stepsList.appendChild(li);
-  });
-
-  answerBlock.innerHTML = `
+/** Разметка блока ответа вместе со строкой верификации. */
+function answerMarkup(solution) {
+  return `
     <p class="answer-label">Ответ</p>
     <p class="answer-value">${solution.finalAnswer}</p>
     ${verificationRow(solution.verification)}
   `;
+}
+
+function renderSolution(solution) {
+  // Краткое условие в шапке — чтобы было видно, что именно решаем.
+  solutionTask.textContent = state.recognizedText || "";
+
+  stepsList.innerHTML = stepsMarkup(solution.steps);
+  answerBlock.innerHTML = answerMarkup(solution);
 
   // Формулы отрисовываем после того, как всё уже в DOM.
   renderMath(stepsList);
   renderMath(answerBlock);
 
-  hideSheetNote();
-  document.querySelector(".sheet-scroll").scrollTop = 0;
+  hideSheetNote(solutionScreen);
+  solutionScreen.querySelector(".sheet-scroll").scrollTop = 0;
 }
 
 btnNewTask.addEventListener("click", () => {
@@ -707,24 +748,170 @@ btnNewTask.addEventListener("click", () => {
   showScreen("screen-capture");
 });
 
-/** Пока это визуальная заглушка: приёма жалоб на бэкенде ещё нет, врать об отправке нельзя. */
-function showSheetNote(text) {
-  let el = document.getElementById("sheet-note");
+/**
+ * Пока это визуальная заглушка: приёма жалоб на бэкенде ещё нет, врать об отправке нельзя.
+ * Экранов с такой кнопкой теперь два, поэтому заметка ищется внутри своего экрана.
+ */
+function showSheetNote(screen, text) {
+  let el = screen.querySelector(".sheet-note");
   if (!el) {
     el = document.createElement("p");
-    el.id = "sheet-note";
     el.className = "sheet-note";
-    document.querySelector(".sheet-actions")?.insertAdjacentElement("beforebegin", el);
+    screen.querySelector(".sheet-actions")?.insertAdjacentElement("beforebegin", el);
   }
   el.textContent = text;
   el.hidden = false;
 }
 
-function hideSheetNote() {
-  const el = document.getElementById("sheet-note");
+function hideSheetNote(screen) {
+  const el = screen.querySelector(".sheet-note");
   if (el) el.hidden = true;
 }
 
 btnReport.addEventListener("click", () => {
-  showSheetNote("Кнопка пока не отправляет сообщение — приём жалоб на ответ появится позже.");
+  showSheetNote(solutionScreen, "Кнопка пока не отправляет сообщение — приём жалоб на ответ появится позже.");
+});
+
+// ---------- экран 5: результат проверки домашней работы ----------
+// Подключение готового POST /api/check-homework. Тон подачи спокойный: учебная
+// ошибка — часть учёбы, а не провал, поэтому тревожный красный здесь не используется.
+const checkScreen = document.getElementById("screen-check");
+const checkVerdict = document.getElementById("check-verdict");
+const checkConflict = document.getElementById("check-conflict");
+const checkStudentSteps = document.getElementById("check-student-steps");
+const checkMistakes = document.getElementById("check-mistakes");
+const checkAnswerCheck = document.getElementById("check-answer-check");
+const checkUnreadable = document.getElementById("check-unreadable");
+const checkReference = document.getElementById("check-reference");
+const checkReferenceBody = document.getElementById("check-reference-body");
+
+const ICON_OK = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <circle cx="12" cy="12" r="9" /><path d="m9 12 2 2 4-4" /></svg>`;
+
+const ICON_LOOK = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <circle cx="11" cy="11" r="7" /><path d="m20 20-3.6-3.6" /></svg>`;
+
+function renderCheck(result) {
+  const c = result.comparison ?? {};
+  const ok = c.isCorrect === true;
+
+  // Вердикт. «Есть что поправить» вместо «ошибка» — разбираем, а не отчитываем.
+  const sub = [];
+  if (c.incomplete) sub.push("Решение не дописано до ответа");
+  if (!ok && c.firstMistakeStep) sub.push(`Разберём шаг ${c.firstMistakeStep}`);
+  checkVerdict.className = "verdict";
+  checkVerdict.dataset.ok = String(ok);
+  checkVerdict.innerHTML = `
+    <span>${ok ? ICON_OK : ICON_LOOK}</span>
+    <div>
+      <p class="verdict-title">${ok ? "Всё верно" : "Есть что поправить"}</p>
+      ${sub.length ? `<p class="verdict-sub">${sub.join(" · ")}</p>` : ""}
+    </div>`;
+
+  // Расхождение вердиктов не замалчиваем: показываем оба, не выбирая победителя.
+  if (result.verdictConflict) {
+    checkConflict.innerHTML = `
+      <div class="check-note" data-kind="conflict">
+        <div>
+          <strong>Наши проверки разошлись</strong>
+          <ul>
+            <li>Разбор по шагам: ${result.verdictConflict.stepByStepIsCorrect ? "верно" : "есть ошибка"}</li>
+            <li>Сверка ответа вычислением: ${result.verdictConflict.symbolicVerified ? "верно" : "не совпадает"}</li>
+          </ul>
+          Пока расхождение не разобрано, доверять вердикту нельзя — лучше проверить работу с учителем.
+        </div>
+      </div>`;
+  } else {
+    checkConflict.innerHTML = "";
+  }
+
+  // Работа ученика как есть, с подсветкой шага, с которого началась ошибка.
+  const steps = c.studentSteps ?? [];
+  checkStudentSteps.innerHTML = steps
+    .map(
+      (line, i) => `
+      <li class="student-step" data-first-mistake="${c.firstMistakeStep === i + 1}">
+        <span class="student-step-num">${i + 1}</span>
+        <span>${line}</span>
+      </li>`
+    )
+    .join("");
+
+  // Разбор: что получилось и как лучше — разными полями, как их и отдаёт бэкенд.
+  const mistakes = c.mistakes ?? [];
+  checkMistakes.innerHTML = mistakes.length
+    ? `<h2 class="check-section">Давай разберём</h2>` +
+      mistakes
+        .map(
+          (m) => `
+        <div class="mistake">
+          <p class="mistake-where">${m.stepDescription}</p>
+          <p class="mistake-label">Что получилось</p>
+          <p class="mistake-text">${m.whatStudentDid}</p>
+          <p class="mistake-label">Как лучше</p>
+          <p class="mistake-text mistake-better">${m.whatShouldBeDone}</p>
+        </div>`
+        )
+        .join("")
+    : "";
+
+  // Объективная сверка ответа. Спорим только когда SymPy реально посчитал.
+  const a = result.answerCheck ?? {};
+  if (a.method === "sympy") {
+    const missing = a.details?.missing ?? [];
+    const extra = a.details?.extra ?? [];
+    const detail = [
+      missing.length ? `не хватает: ${missing.join(", ")}` : "",
+      extra.length ? `лишнее: ${extra.join(", ")}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    checkAnswerCheck.innerHTML = `
+      <div class="check-note" data-kind="${a.verified ? "verified" : "plain"}">
+        <span>${a.verified ? ICON_OK : ICON_LOOK}</span>
+        <div>Ответ сверен вычислением: ${a.verified ? "совпадает" : "не совпадает"}${detail ? `<br>${detail}` : ""}</div>
+      </div>`;
+  } else {
+    checkAnswerCheck.innerHTML = `
+      <div class="check-note">
+        <div>Ответ проверить вычислением не получилось — сверка здесь неприменима.</div>
+      </div>`;
+  }
+
+  // Нечитаемое — не вина ученика, так и пишем.
+  const unreadable = c.unreadableFragments ?? [];
+  checkUnreadable.innerHTML = unreadable.length
+    ? `<div class="check-note">
+         <div>
+           <strong>Не удалось разобрать на фото</strong>
+           <ul>${unreadable.map((u) => `<li>${u}</li>`).join("")}</ul>
+           Это не считается ошибкой. Если фрагмент важен — переснимите его крупнее.
+         </div>
+       </div>`
+    : "";
+
+  // Эталон отдельным свёрнутым блоком: сначала своя работа, потом готовое решение.
+  const ref = result.referenceSolution;
+  checkReference.open = false;
+  checkReferenceBody.innerHTML = ref
+    ? `<ol class="steps">${stepsMarkup(ref.steps)}</ol>
+       <div class="answer-block">${answerMarkup(ref)}</div>`
+    : "";
+
+  renderMath(checkScreen);
+  hideSheetNote(checkScreen);
+  document.getElementById("check-scroll").scrollTop = 0;
+}
+
+document.getElementById("btn-back-check").addEventListener("click", () => showScreen("screen-capture"));
+
+document.getElementById("btn-new-check").addEventListener("click", () => {
+  startNewTask();
+  showScreen("screen-capture");
+});
+
+document.getElementById("btn-report-check").addEventListener("click", () => {
+  showSheetNote(checkScreen, "Кнопка пока не отправляет сообщение — приём жалоб на проверку появится позже.");
 });

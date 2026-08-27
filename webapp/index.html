@@ -40,7 +40,10 @@
         <h2 class="setup-title">Предмет</h2>
         <div class="chip-row" id="subject-row"></div>
 
-        <button class="cta" id="btn-to-capture" disabled>Дальше</button>
+        <div class="setup-actions">
+          <button class="cta" id="btn-mode-solve" disabled>Решить задачу</button>
+          <button class="cta cta-secondary" id="btn-mode-check" disabled>Проверить домашку</button>
+        </div>
       </div>
     </section>
 
@@ -109,6 +112,42 @@
             <path d="M5 5v16M5 5h11l-2 4 2 4H5" />
           </svg>
           Ошибка в ответе
+        </button>
+      </div>
+    </section>
+
+    <!-- Экран 5: результат проверки домашней работы -->
+    <section class="screen screen-light" id="screen-check" data-active="false">
+      <header class="sheet-topbar">
+        <button class="sheet-back" id="btn-back-check" aria-label="Назад">←</button>
+        <span class="sheet-title">Проверка работы</span>
+      </header>
+
+      <div class="sheet-scroll" id="check-scroll">
+        <div id="check-verdict"></div>
+        <div id="check-conflict"></div>
+
+        <h2 class="check-section">Твоя работа</h2>
+        <ol class="student-steps" id="check-student-steps"></ol>
+
+        <div id="check-mistakes"></div>
+        <div id="check-answer-check"></div>
+        <div id="check-unreadable"></div>
+
+        <details class="reference" id="check-reference">
+          <summary class="reference-summary">Как решить правильно</summary>
+          <div class="reference-body" id="check-reference-body"></div>
+        </details>
+      </div>
+
+      <div class="sheet-actions">
+        <button class="btn-light" id="btn-new-check" type="button">Новая проверка</button>
+        <button class="btn-light btn-report" id="btn-report-check" type="button">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 5v16M5 5h11l-2 4 2 4H5" />
+          </svg>
+          Ошибка в проверке
         </button>
       </div>
     </section>
