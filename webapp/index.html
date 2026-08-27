@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Решебник — MAX mini app</title>
   <link rel="icon" type="image/svg+xml" href="assets/logo-icon.svg" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Manrope:wght@500;700;800&display=swap" rel="stylesheet" />
   <!-- KaTeX: решение приходит с бэкенда с формулами в LaTeX ($...$), их надо отрисовать,
        а не показывать школьнику сырые $ и \dfrac{}{}. -->
   <link rel="stylesheet"
@@ -75,14 +73,15 @@
     </section>
 
     <!-- Экран 3: подтверждение распознанного текста -->
-    <section class="screen" id="screen-confirm" data-active="false">
-      <header class="topbar">
-        <button class="icon-btn" id="btn-back-capture" aria-label="Назад">←</button>
-        <span class="brand">реш<span class="brand-accent">ёбник</span></span>
+    <section class="screen screen-light" id="screen-confirm" data-active="false">
+      <header class="brand-topbar brand-topbar--back">
+        <button class="sheet-back" id="btn-back-capture" aria-label="Назад">←</button>
+        <img class="brand-logo" src="assets/logo-header.svg" alt="домашка в max" />
       </header>
 
       <div class="confirm">
-        <p class="eyebrow">мы это распознали, всё верно?</p>
+        <h1 class="confirm-title">Проверь условие</h1>
+        <p class="confirm-lead">Так мы прочитали задачу. Поправь, если что-то распозналось неверно.</p>
         <textarea class="recognized-text" id="recognized-text"
                   placeholder="Введи условие задачи своими словами…"></textarea>
         <button class="cta" id="btn-confirm">Верно, решай →</button>
