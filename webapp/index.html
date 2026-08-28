@@ -115,8 +115,12 @@
       <div class="confirm">
         <h1 class="confirm-title">Проверь условие</h1>
         <p class="confirm-lead">Так мы прочитали задачу. Поправь, если что-то распозналось неверно.</p>
-        <textarea class="recognized-text" id="recognized-text"
+        <!-- По умолчанию — отрисованные формулы, сырой LaTeX ученик читать не должен. -->
+        <div class="recognized-view" id="recognized-view"></div>
+        <textarea class="recognized-text" id="recognized-text" hidden
                   placeholder="Введи условие задачи своими словами…"></textarea>
+
+        <button class="btn-light confirm-edit" id="btn-edit-text" type="button">Исправить</button>
         <button class="cta" id="btn-confirm">Верно, решай →</button>
       </div>
     </section>
