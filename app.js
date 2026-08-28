@@ -31,18 +31,28 @@ function looksLikeMaxEnvironment() {
   return launchParams || framed;
 }
 
-/** Скрипт Bridge грузится асинхронно, поэтому ждём появления window.WebApp. */
-function waitForBridge(timeoutMs = 3000, stepMs = 50) {
+/** Непустая строка запуска или null. Пробелы не считаются данными. */
+function launchDataOf(bridge) {
+  const raw = bridge?.initData;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+
+/**
+ * Ждём не появления window.WebApp, а появления строки запуска.
+ *
+ * Скрипт Bridge создаёт window.WebApp даже в обычном браузере вне MAX — проверено:
+ * объект есть, а initData пустой. Значит наличие объекта ничего не доказывает,
+ * признак настоящего MAX — подписанная строка запуска.
+ */
+function waitForLaunchData(timeoutMs = 3000, stepMs = 50) {
   return new Promise((resolve) => {
-    if (window.WebApp) return resolve(window.WebApp);
+    const done = () => ({ bridge: window.WebApp ?? null, initData: launchDataOf(window.WebApp) });
+    if (launchDataOf(window.WebApp)) return resolve(done());
     const startedAt = Date.now();
     const timer = setInterval(() => {
-      if (window.WebApp) {
+      if (launchDataOf(window.WebApp) || Date.now() - startedAt >= timeoutMs) {
         clearInterval(timer);
-        resolve(window.WebApp);
-      } else if (Date.now() - startedAt >= timeoutMs) {
-        clearInterval(timer);
-        resolve(null);
+        resolve(done());
       }
     }, stepMs);
   });
@@ -63,14 +73,14 @@ function showSetupNotice(text, tone) {
 }
 
 async function initMaxBridge() {
-  const bridge = await waitForBridge();
+  const { bridge, initData } = await waitForLaunchData();
 
-  if (bridge) {
+  if (initData) {
     max.mode = "max";
     // initData — подписанная строка запуска, её проверяет бэкенд. Доверять данным
     // из initDataUnsafe на клиенте нельзя, они только для отрисовки.
-    max.initData = bridge.initData ?? null;
-    max.user = bridge.initDataUnsafe?.user ?? null;
+    max.initData = initData;
+    max.user = bridge?.initDataUnsafe?.user ?? null;
   } else if (looksLikeMaxEnvironment()) {
     // Мы внутри MAX, но Bridge не поднялся — дальше setup не пускаем:
     // без initData бэкенд не сможет понять, кто пришёл.
