@@ -368,14 +368,16 @@ html, body {
   font-family: var(--font-system);
 }
 
-.confirm-title {
+.confirm-title,
+.tasks-title {
   margin: 0 0 6px;
   font-size: 20px;
   font-weight: 500;
   color: var(--l-text);
 }
 
-.confirm-lead {
+.confirm-lead,
+.tasks-lead {
   margin: 0 0 16px;
   font-size: 14px;
   line-height: 1.5;
@@ -738,3 +740,57 @@ body.crop-dragging {
   overscroll-behavior: none;
   touch-action: none;
 }
+
+/* =========================================================
+   Экран выбора задачи, когда на фото их несколько.
+   ========================================================= */
+.tasks {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 20px calc(20px + env(safe-area-inset-bottom));
+  font-family: var(--font-system);
+}
+
+.task-list { display: flex; flex-direction: column; gap: 10px; }
+
+.task-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+
+/* Заголовок варианта — неброский разделитель, а не второй уровень навигации. */
+.task-group {
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--l-muted);
+}
+.task-group:first-child { margin-top: 0; }
+
+.task-card {
+  padding: 14px 16px;
+  border: 0.5px solid var(--l-line);
+  border-radius: 12px;
+  background: var(--l-bg);
+  cursor: pointer;
+}
+
+.task-card:active { background: var(--l-accent-soft); }
+
+.task-card-num {
+  margin: 0 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--l-accent);
+}
+
+.task-card-text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--l-text-2);
+}
+
+.task-card-line { margin: 0 0 4px; }
+.task-card-line:last-child { margin-bottom: 0; }
+.task-card-text .katex { color: var(--l-accent); }
