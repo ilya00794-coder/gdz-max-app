@@ -773,7 +773,7 @@ function renderSolution(solution) {
   renderMath(stepsList);
   renderMath(answerBlock);
 
-  hideSheetNote(solutionScreen);
+  resetFeedback(solutionScreen);
   solutionScreen.querySelector(".sheet-scroll").scrollTop = 0;
 }
 
@@ -782,28 +782,71 @@ btnNewTask.addEventListener("click", () => {
   showScreen("screen-capture");
 });
 
-/**
- * Пока это визуальная заглушка: приёма жалоб на бэкенде ещё нет, врать об отправке нельзя.
- * Экранов с такой кнопкой теперь два, поэтому заметка ищется внутри своего экрана.
- */
-function showSheetNote(screen, text) {
-  let el = screen.querySelector(".sheet-note");
-  if (!el) {
-    el = document.createElement("p");
-    el.className = "sheet-note";
-    screen.querySelector(".sheet-actions")?.insertAdjacentElement("beforebegin", el);
-  }
-  el.textContent = text;
-  el.hidden = false;
+// ---------- сообщение об ошибке в ответе / проверке ----------
+// Жалоба реально уходит на /api/feedback и сохраняется в базе, поэтому «спасибо»
+// здесь честное. Фотографии не отправляются — только текст и структура показанного.
+const FEEDBACK_TIMEOUT_MS = 15000;
+
+function feedbackPayload(type, comment) {
+  return {
+    type,
+    grade: state.grade,
+    subject: state.subject,
+    recognizedText: state.recognizedText,
+    solutionSnapshot: type === "check" ? state.check : state.solution,
+    userComment: comment,
+  };
 }
 
-function hideSheetNote(screen) {
-  const el = screen.querySelector(".sheet-note");
-  if (el) el.hidden = true;
+/** Создаёт форму жалобы внутри своего экрана (их два) либо возвращает уже созданную. */
+function feedbackForm(screen, type) {
+  let box = screen.querySelector(".feedback");
+  if (box) return box;
+
+  box = document.createElement("div");
+  box.className = "feedback";
+  box.innerHTML = `
+    <p class="feedback-title">Что не так?</p>
+    <textarea class="feedback-text" rows="3"
+              placeholder="Например: неправильный ответ / не та задача / ошибка в шаге 3"></textarea>
+    <div class="feedback-actions">
+      <button class="btn-light feedback-send" type="button">Отправить</button>
+      <button class="btn-light feedback-cancel" type="button">Отмена</button>
+    </div>
+    <p class="feedback-status" hidden></p>`;
+  screen.querySelector(".sheet-actions")?.insertAdjacentElement("beforebegin", box);
+
+  box.querySelector(".feedback-cancel").addEventListener("click", () => box.remove());
+  box.querySelector(".feedback-send").addEventListener("click", () => sendFeedback(box, type));
+  return box;
+}
+
+async function sendFeedback(box, type) {
+  const send = box.querySelector(".feedback-send");
+  const status = box.querySelector(".feedback-status");
+  const comment = box.querySelector(".feedback-text").value;
+
+  status.hidden = true;
+  setButtonBusy(send, true, "Отправляем…");
+  try {
+    await postJson("/api/feedback", feedbackPayload(type, comment), FEEDBACK_TIMEOUT_MS);
+    // Жалоба записана в базу — только теперь можно благодарить.
+    box.innerHTML = `<p class="feedback-done">Спасибо, передали на проверку</p>`;
+  } catch (err) {
+    // Не делаем вид, что отправлено: показываем причину и оставляем форму с текстом.
+    status.textContent = err.message;
+    status.hidden = false;
+    setButtonBusy(send, false);
+  }
+}
+
+/** Убирает форму при перерисовке экрана: новая задача — новая жалоба. */
+function resetFeedback(screen) {
+  screen.querySelector(".feedback")?.remove();
 }
 
 btnReport.addEventListener("click", () => {
-  showSheetNote(solutionScreen, "Кнопка пока не отправляет сообщение — приём жалоб на ответ появится позже.");
+  feedbackForm(solutionScreen, "solve").querySelector(".feedback-text").focus();
 });
 
 // ---------- экран 5: результат проверки домашней работы ----------
@@ -935,7 +978,7 @@ function renderCheck(result) {
     : "";
 
   renderMath(checkScreen);
-  hideSheetNote(checkScreen);
+  resetFeedback(checkScreen);
   document.getElementById("check-scroll").scrollTop = 0;
 }
 
@@ -947,5 +990,5 @@ document.getElementById("btn-new-check").addEventListener("click", () => {
 });
 
 document.getElementById("btn-report-check").addEventListener("click", () => {
-  showSheetNote(checkScreen, "Кнопка пока не отправляет сообщение — приём жалоб на проверку появится позже.");
+  feedbackForm(checkScreen, "check").querySelector(".feedback-text").focus();
 });
