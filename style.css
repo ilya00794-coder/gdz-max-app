@@ -149,8 +149,8 @@ html, body {
   align-items: center;
   font-size: 13px;
 }
+/* Пометка рисуется только при подтверждённой верификации, серого варианта больше нет. */
 .answer-verify[data-verified="true"] { color: var(--l-success); }
-.answer-verify[data-verified="false"] { color: var(--l-muted); }
 
 /* --- нижние кнопки --- */
 .sheet-actions {

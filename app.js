@@ -778,23 +778,21 @@ const btnReport = document.getElementById("btn-report");
 const solutionScreen = document.getElementById("screen-solution");
 
 /**
- * Строка проверки под ответом.
- * Данных о степени уверенности нет — только verified true/false, его и показываем.
- * Неверифицированное решение обязано выглядеть неверифицированным (см. правила проекта).
+ * Строка проверки под ответом — показывается ТОЛЬКО когда ответ реально сверен.
+ *
+ * SymPy берёт лишь то, что сводится к уравнениям: геометрические построения,
+ * доказательства и гуманитарные предметы верифицировать нечем. Постоянная серая
+ * пометка «не проверено» на них создавала бы ложную тревогу и обесценивала бы
+ * саму галочку. Молчание — не выдача непроверенного за проверенное: галочка
+ * появляется исключительно при настоящей верификации.
  */
 function verificationRow(verification) {
-  const verified = verification?.verified === true;
-  const icon = verified
-    ? `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"
-            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-         <circle cx="12" cy="12" r="9" /><path d="m9 12 2 2 4-4" />
-       </svg>`
-    : `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"
-            stroke-linecap="round" aria-hidden="true">
-         <circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" />
-       </svg>`;
-  const text = verified ? "Ответ проверен вычислением" : "Решение не проверено автоматически";
-  return `<p class="answer-verify" data-verified="${verified}">${icon}<span>${text}</span></p>`;
+  if (verification?.verified !== true) return "";
+  return `<p class="answer-verify" data-verified="true">
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" /><path d="m9 12 2 2 4-4" />
+    </svg><span>Ответ проверен вычислением</span></p>`;
 }
 
 /** Разметка списка шагов — одна на экран решения и на эталон внутри проверки. */
@@ -1011,10 +1009,8 @@ function renderCheck(result) {
         <div>Ответ сверен вычислением: ${a.verified ? "совпадает" : "не совпадает"}${detail ? `<br>${detail}` : ""}</div>
       </div>`;
   } else {
-    checkAnswerCheck.innerHTML = `
-      <div class="check-note">
-        <div>Ответ проверить вычислением не получилось — сверка здесь неприменима.</div>
-      </div>`;
+    // Сверить было нечем — молчим по той же причине, что и на экране решения.
+    checkAnswerCheck.innerHTML = "";
   }
 
   // Нечитаемое — не вина ученика, так и пишем.
