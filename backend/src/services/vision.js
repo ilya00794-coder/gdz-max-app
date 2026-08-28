@@ -20,7 +20,7 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
  * надёжнее работает на простых типах, поэтому «неизвестно» = пустая строка,
  * а в null конвертируем уже на нашей стороне.
  */
-const RecognitionSchema = z.object({
+const BaseRecognitionSchema = z.object({
   recognizedText: z
     .string()
     .describe("Полный текст того, что видно на фото, в виде обычного текста. Формулы — в LaTeX внутри $...$."),
@@ -45,6 +45,36 @@ const RecognitionSchema = z.object({
         "unclear — определить однозначно нельзя."
     ),
 });
+
+/**
+ * Для режима task дополнительно размечаем список отдельных заданий.
+ * Схема расширена только здесь: у studentWork она остаётся прежней,
+ * а значит его промпт и ответ не меняются вообще.
+ */
+const TaskRecognitionSchema = BaseRecognitionSchema.extend({
+  tasks: z
+    .array(
+      z.object({
+        variant: z
+          .string()
+          .describe(
+            "Метка варианта, если на фото их несколько: «I», «II», «1», «2» — ровно как на листе. " +
+              "Если вариант один или разобрать нельзя — пустая строка."
+          ),
+        number: z
+          .string()
+          .describe("Номер задания как на фото: «1», «6*», «21». Если номера нет — пустая строка."),
+        text: z
+          .string()
+          .describe("Условие именно этого задания. Формулы — в LaTeX внутри $...$."),
+      })
+    )
+    .describe(
+      "Отдельные задания с фото. Одна задача на фото — массив из одного элемента."
+    ),
+});
+
+const SCHEMAS = { task: TaskRecognitionSchema, studentWork: BaseRecognitionSchema };
 
 const SYSTEM_PROMPTS = {
   // Фото учебника/задачника: нужно вытащить ТОЛЬКО печатное условие.
@@ -78,6 +108,21 @@ const SYSTEM_PROMPTS = {
   например: [рисунок: треугольник ABC, прямой угол при C].
 - Если название учебника или номер задания напечатаны на странице — заполни поля textbook и taskNumber.
 - Ничего не выдумывай: чего не видно на фото, того нет в ответе.
+
+Отдельно про поле tasks — разметка отдельных заданий.
+- На фото может быть и одно задание, и целая страница задачника или контрольная.
+  Разложи то, что видишь, по отдельным заданиям: каждому свой элемент массива.
+- number — номер задания ровно как на фото («1», «6*», «21»); если номера нет, пустая строка.
+- text — условие ИМЕННО этого задания, без соседних.
+- Одно задание на фото — массив из одного элемента, это нормально.
+- Если на листе несколько вариантов работы (I и II, 1 и 2), проставь каждому заданию
+  variant по принадлежности — номера заданий в вариантах повторяются, и без метки
+  их не различить. Вариант один или неясен — variant пустая строка.
+- НЕ дроби одну задачу на части. Система уравнений — это ОДНА задача, а не две.
+  Пункты а), б), в) внутри одного задания — тоже одно задание, перенеси их в его text.
+  Разделяй только реально самостоятельные задания.
+- Если условие задания видно лишь частично (закрыто, обрезано), включай его только тогда,
+  когда понятно, что именно требуется; иначе пропусти и отметь это в issues.
 
 Отдельно про поле contentType. Это твоё честное наблюдение о снимке, а НЕ о том,
 зачем тебя вызвали. Отвечай по факту, даже если он расходится с задачей режима:
@@ -175,7 +220,7 @@ function sniffMediaType(buffer) {
  * @param {"task"|"studentWork"} [params.mode="task"] - что на фото: условие задачи или работа ученика
  * @param {number} [params.grade] - класс ученика, помогает выбрать терминологию
  * @param {string} [params.subject] - предмет, помогает разобрать неоднозначные символы
- * @returns {Promise<{ recognizedText: string, textbook: string|null, taskNumber: string|null, confidence: number, issues: string[], contentType: "printed_task"|"handwritten_work"|"unclear" }>}
+ * @returns {Promise<{ recognizedText: string, textbook: string|null, taskNumber: string|null, confidence: number, issues: string[], contentType: "printed_task"|"handwritten_work"|"unclear", tasks: {variant: string|null, number: string|null, text: string}[]|null }>}
  */
 export async function recognizeFromPhotos({ imagesBase64, mode = "task", grade, subject }) {
   if (!Array.isArray(imagesBase64) || imagesBase64.length === 0) {
@@ -210,7 +255,7 @@ export async function recognizeFromPhotos({ imagesBase64, mode = "task", grade, 
     system,
     thinking: { type: "adaptive" },
     output_config: {
-      format: zodOutputFormat(RecognitionSchema, "recognition"),
+      format: zodOutputFormat(SCHEMAS[mode], "recognition"),
       effort: VISION_EFFORT,
     },
     messages: [
@@ -235,5 +280,14 @@ export async function recognizeFromPhotos({ imagesBase64, mode = "task", grade, 
     // Наблюдение модели о содержимом снимка. Ни на что в пайплайне не влияет:
     // порог confidence, режимы и 422 работают ровно как раньше.
     contentType: parsed.contentType ?? "unclear",
+    // Список отдельных заданий — только для режима task. null означает,
+    // что режим такую разметку не делает (studentWork).
+    tasks: parsed.tasks
+      ? parsed.tasks.map((t) => ({
+          variant: t.variant?.trim() || null,
+          number: t.number?.trim() || null,
+          text: t.text.trim(),
+        }))
+      : null,
   };
 }

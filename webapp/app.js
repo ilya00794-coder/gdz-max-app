@@ -485,6 +485,15 @@ function showResult(mode, result) {
     showScreen("screen-check");
     return;
   }
+
+  // На фото несколько заданий — сначала спрашиваем, какое решать.
+  const tasks = result.recognition?.tasks;
+  if (Array.isArray(tasks) && tasks.length > 1) {
+    renderTaskList(tasks);
+    showScreen("screen-tasks");
+    return;
+  }
+
   // Кладём ответ целиком: recognizedText, steps, finalAnswer, verification и всё остальное.
   state.solution = result;
   state.recognizedText = result.recognizedText ?? "";
@@ -539,6 +548,79 @@ document.getElementById("mode-prompt-no").addEventListener("click", () => {
   // Настоял на своём — показываем то, что уже посчитали в исходном режиме.
   if (p) showResult(p.mode, p.result);
 });
+
+// ---------- экран 2.5: выбор задачи ----------
+// Показывается, только если vision разметил на фото больше одного задания.
+// Для одиночной задачи поток остался прежним.
+const taskList = document.getElementById("task-list");
+
+/** Карточка задания. index — позиция в исходном массиве, order — номер по порядку в группе. */
+function taskCardMarkup(task, index, order) {
+  const label = task.number ? `Задание ${escapeHtml(task.number)}` : `Задача ${order}`;
+  const text = task.text
+    .split("\n")
+    .map((line) => `<p class="task-card-line">${escapeHtml(line)}</p>`)
+    .join("");
+  return `
+    <li class="task-card" data-index="${index}">
+      <p class="task-card-num">${label}</p>
+      <div class="task-card-text">${text}</div>
+    </li>`;
+}
+
+function renderTaskList(tasks) {
+  // Варианты размечены — группируем: в контрольной номера 1–7 повторяются в каждом
+  // варианте, и без разделителей список превращается в кашу.
+  const grouped = tasks.some((t) => t.variant);
+
+  if (!grouped) {
+    taskList.innerHTML = `<ol class="task-cards">${tasks
+      .map((task, i) => taskCardMarkup(task, i, i + 1))
+      .join("")}</ol>`;
+  } else {
+    const order = [];
+    const byVariant = new Map();
+    tasks.forEach((task, i) => {
+      const key = task.variant ?? "";
+      if (!byVariant.has(key)) {
+        byVariant.set(key, []);
+        order.push(key);
+      }
+      byVariant.get(key).push({ task, index: i });
+    });
+
+    taskList.innerHTML = order
+      .map((key) => {
+        const items = byVariant
+          .get(key)
+          .map(({ task, index }, n) => taskCardMarkup(task, index, n + 1))
+          .join("");
+        // Пустой ключ — задания без метки варианта, заголовок им не нужен.
+        const title = key ? `<p class="task-group">Вариант ${escapeHtml(key)}</p>` : "";
+        return `${title}<ol class="task-cards">${items}</ol>`;
+      })
+      .join("");
+  }
+
+  // Формулы отрисовываем после вставки: сырой LaTeX выбрать невозможно.
+  renderMath(taskList);
+
+  taskList.querySelectorAll(".task-card").forEach((card) => {
+    card.addEventListener("click", () => selectTask(tasks[Number(card.dataset.index)]));
+  });
+}
+
+function selectTask(task) {
+  // Решение из первого ответа относилось ко всему снимку сразу, к выбранной
+  // задаче оно не подходит — сбрасываем, чтобы экран подтверждения решил заново.
+  state.solution = null;
+  state.recognizedText = task.text;
+  recognizedTextEl.value = task.text;
+  setRecognizedEditing(false);
+  showScreen("screen-confirm");
+}
+
+document.getElementById("btn-back-tasks").addEventListener("click", () => showScreen("screen-capture"));
 
 // ---------- экран 3: confirm ----------
 // Кнопка на экране решения — назад к подтверждению условия.

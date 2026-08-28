@@ -65,6 +65,19 @@ router.post("/", async (req, res) => {
           recognition,
         });
       }
+
+      // На фото несколько заданий — решать нечего: неизвестно, какое из них нужно ученику.
+      // Решение всего листа целиком было бы двойной бесполезной работой (фронт его
+      // выбрасывает и перерешивает выбранную задачу) и на контрольной из 14 заданий
+      // выходило за таймаут запроса. Отдаём только разметку, фронт спросит, что решать.
+      if (recognition.tasks?.length > 1) {
+        return res.json({
+          source: "recognized",
+          multipleTasks: true,
+          recognizedText,
+          recognition,
+        });
+      }
     }
 
     const cacheKey = buildCacheKey({ textbook, grade, subject, taskNumber, rawText: recognizedText });

@@ -105,6 +105,20 @@
       </div>
     </section>
 
+    <!-- Экран 2.5: выбор задачи, если на фото их несколько -->
+    <section class="screen screen-light" id="screen-tasks" data-active="false">
+      <header class="brand-topbar brand-topbar--back">
+        <button class="sheet-back" id="btn-back-tasks" aria-label="Назад">←</button>
+        <img class="brand-logo" src="assets/logo-header.svg" alt="домашка в max" />
+      </header>
+
+      <div class="tasks">
+        <h1 class="tasks-title">Нашли несколько задач</h1>
+        <p class="tasks-lead">Выбери, какую решить.</p>
+        <div class="task-list" id="task-list"></div>
+      </div>
+    </section>
+
     <!-- Экран 3: подтверждение распознанного текста -->
     <section class="screen screen-light" id="screen-confirm" data-active="false">
       <header class="brand-topbar brand-topbar--back">
