@@ -18,8 +18,29 @@ export const INIT_DATA_HEADER = "x-max-init-data";
 /** Токен бота с платформы MAX. Только из окружения, в репозитории его быть не должно. */
 const BOT_TOKEN = process.env.MAX_BOT_TOKEN || "";
 
-/** Насколько старую строку запуска считаем протухшей (для будущей строгой проверки). */
+/** Насколько старую строку запуска считаем протухшей. */
 const MAX_AGE_SECONDS = Number(process.env.MAX_INIT_DATA_MAX_AGE || 24 * 60 * 60);
+
+/**
+ * Строгий режим: отвергать запросы без валидной подписи.
+ * По умолчанию выключен — включается осознанно, когда будем готовы блокировать
+ * неподписанных. Пока это инфраструктура готовности, а не боевая защита.
+ */
+const STRICT = ["1", "true", "yes"].includes(String(process.env.STRICT_INIT_DATA || "").toLowerCase());
+
+/**
+ * Запрос пришёл с этой же машины?
+ *
+ * Одного адреса мало: ngrok проксирует на localhost, поэтому у КАЖДОГО туннельного
+ * запроса remoteAddress тоже 127.0.0.1 — исключение по адресу отключило бы защиту
+ * целиком. Отличаем по X-Forwarded-For: у проксированных запросов он есть,
+ * у настоящих локальных его нет.
+ */
+export function isLocalRequest(req) {
+  if (req.get("x-forwarded-for")) return false;
+  const ip = req.socket?.remoteAddress ?? "";
+  return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+}
 
 /**
  * Разбирает initData в параметры и строку для подписи.
@@ -94,15 +115,31 @@ function extractUserId(params) {
   }
 }
 
+/** Один ответ на все случаи отказа: подробности наружу не выносим. */
+function reject(res) {
+  return res.status(401).json({
+    error: "Не удалось подтвердить, что запрос пришёл из MAX. Откройте приложение заново.",
+  });
+}
+
 /**
- * Мидлвара: разбирает initData, кладёт разбор в req.max и пишет в лог.
- * Никогда не отвергает запрос — это наблюдение, а не защита.
+ * Мидлвара: разбирает initData и кладёт разбор в req.max.
+ *
+ * При STRICT_INIT_DATA=off (по умолчанию) — только наблюдает и логирует, никого
+ * не отвергает. При STRICT_INIT_DATA=on отвергает запросы без подписи, с неверной
+ * подписью и с протухшей строкой; локальные запросы пропускает всегда, иначе
+ * разработка и наши тесты встали бы.
  */
-export function maxInitData(req, _res, next) {
+export function maxInitData(req, res, next) {
   const raw = req.get(INIT_DATA_HEADER) || req.body?.initData || null;
+  const local = isLocalRequest(req);
 
   if (!raw) {
-    req.max = { present: false, status: "absent", userId: null, params: null };
+    req.max = { present: false, status: "absent", userId: null, params: null, local };
+    if (STRICT && !local) {
+      console.warn("[max-init-data] отказ: строки запуска нет", { path: req.path });
+      return reject(res);
+    }
     return next();
   }
 
@@ -117,6 +154,7 @@ export function maxInitData(req, _res, next) {
     expired: check.ageSeconds !== null && check.ageSeconds > MAX_AGE_SECONDS,
     userId,
     params: parsed?.params ?? null,
+    local,
   };
 
   console.log("[max-init-data]", {
@@ -125,8 +163,21 @@ export function maxInitData(req, _res, next) {
     подпись: check.status,
     возрастСек: check.ageSeconds,
     протухла: req.max.expired,
+    локальный: local,
+    строгийРежим: STRICT,
     userId,
   });
+
+  if (STRICT && !local) {
+    if (check.status !== "valid") {
+      console.warn("[max-init-data] отказ: подпись не подтверждена", { path: req.path, статус: check.status });
+      return reject(res);
+    }
+    if (req.max.expired) {
+      console.warn("[max-init-data] отказ: строка запуска протухла", { path: req.path, возрастСек: check.ageSeconds });
+      return reject(res);
+    }
+  }
 
   next();
 }
