@@ -62,10 +62,11 @@
             <path d="M4 8a2 2 0 0 1 2-2h1.6l1-1.6h6.8l1 1.6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
             <circle cx="12" cy="12.5" r="3.2" />
           </svg>
-          <p class="capture-hint">Нажми, чтобы сфотографировать задачу</p>
+          <p class="capture-hint">Сфотографируй задачу или выбери из галереи</p>
           <p class="capture-sub">Один снимок — одно задание</p>
         </label>
-        <input type="file" id="file-input" accept="image/*" capture="environment" hidden />
+        <!-- Без capture: система сама предложит снять камерой или выбрать готовое фото. -->
+        <input type="file" id="file-input" accept="image/*" hidden />
 
         <!-- После съёмки: снимок крупно, рамка выделения сразу на нём. -->
         <div class="capture-photo" id="capture-photo" hidden>

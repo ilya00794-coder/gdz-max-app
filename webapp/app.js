@@ -157,11 +157,11 @@ function applyMode(mode) {
   state.mode = mode;
   const check = mode === "check";
   document.querySelector(".capture-hint").textContent = check
-    ? "Сфотографируй своё решение в тетради"
-    : "Сфотографируй задачу из учебника";
+    ? "Сфотографируй своё решение или выбери из галереи"
+    : "Сфотографируй задачу или выбери из галереи";
   document.querySelector(".capture-sub").textContent = check
-    ? "Можно добавить несколько страниц"
-    : "Можно добавить несколько снимков";
+    ? "Один снимок — одна работа"
+    : "Один снимок — одно задание";
   btnSolve.textContent = check ? "Проверить" : "Решить";
   btnSolve.dataset.idleLabel = btnSolve.textContent;
 }
@@ -235,6 +235,7 @@ function resetPhoto() {
   state.photo = null;
   cropRect = null;
   cropDrag = null;
+  lockScroll(false);
   cropImage.removeAttribute("src");
   capturePhoto.hidden = true;
   cropTip.hidden = true;
@@ -269,51 +270,72 @@ function drawCropBox() {
 
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
-cropFrame.addEventListener("pointerdown", (e) => {
-  if (!cropRect) return;
-  const handle = e.target.closest(".crop-handle")?.dataset.handle;
-  const insideBox = e.target === cropBox || e.target.closest(".crop-box");
-  if (!handle && !insideBox) return;
+/** На время перетаскивания замораживаем страницу: иначе жест уезжает в прокрутку. */
+function lockScroll(on) {
+  document.body.classList.toggle("crop-dragging", on);
+}
 
-  cropDrag = { handle: handle ?? null, startX: e.clientX, startY: e.clientY, start: { ...cropRect } };
-  cropFrame.setPointerCapture(e.pointerId);
-  e.preventDefault();
-});
+cropFrame.addEventListener(
+  "pointerdown",
+  (e) => {
+    if (!cropRect) return;
+    const handle = e.target.closest(".crop-handle")?.dataset.handle;
+    const insideBox = e.target === cropBox || e.target.closest(".crop-box");
+    if (!handle && !insideBox) return;
 
-cropFrame.addEventListener("pointermove", (e) => {
-  if (!cropDrag || !cropRect) return;
-  const w = cropImage.clientWidth;
-  const h = cropImage.clientHeight;
-  const dx = e.clientX - cropDrag.startX;
-  const dy = e.clientY - cropDrag.startY;
-  const s = cropDrag.start;
+    cropDrag = { handle: handle ?? null, startX: e.clientX, startY: e.clientY, start: { ...cropRect } };
+    // Захват указателя: палец не теряет рамку, даже если ушёл за её край.
+    cropFrame.setPointerCapture(e.pointerId);
+    lockScroll(true);
+    e.preventDefault();
+  },
+  { passive: false }
+);
 
-  if (!cropDrag.handle) {
-    cropRect.x = clamp(s.x + dx, 0, w - s.w);
-    cropRect.y = clamp(s.y + dy, 0, h - s.h);
-  } else {
-    let { x, y } = s;
-    let right = s.x + s.w;
-    let bottom = s.y + s.h;
-    if (cropDrag.handle.includes("w")) x = clamp(s.x + dx, 0, right - MIN_CROP_PX);
-    if (cropDrag.handle.includes("e")) right = clamp(right + dx, x + MIN_CROP_PX, w);
-    if (cropDrag.handle.includes("n")) y = clamp(s.y + dy, 0, bottom - MIN_CROP_PX);
-    if (cropDrag.handle.includes("s")) bottom = clamp(bottom + dy, y + MIN_CROP_PX, h);
-    cropRect = { x, y, w: right - x, h: bottom - y };
-  }
+// passive: false обязателен — иначе preventDefault в обработчике игнорируется.
+cropFrame.addEventListener(
+  "pointermove",
+  (e) => {
+    if (!cropDrag || !cropRect) return;
+    const w = cropImage.clientWidth;
+    const h = cropImage.clientHeight;
+    const dx = e.clientX - cropDrag.startX;
+    const dy = e.clientY - cropDrag.startY;
+    const s = cropDrag.start;
 
-  // Рамку тронули — значит выделение осознанное, отправлять будем только его.
-  if (state.photo) {
-    state.photo.cropTouched = true;
-    state.photo.cropNorm = { x: cropRect.x / w, y: cropRect.y / h, w: cropRect.w / w, h: cropRect.h / h };
-  }
-  drawCropBox();
-  e.preventDefault();
-});
+    if (!cropDrag.handle) {
+      cropRect.x = clamp(s.x + dx, 0, w - s.w);
+      cropRect.y = clamp(s.y + dy, 0, h - s.h);
+    } else {
+      let { x, y } = s;
+      let right = s.x + s.w;
+      let bottom = s.y + s.h;
+      if (cropDrag.handle.includes("w")) x = clamp(s.x + dx, 0, right - MIN_CROP_PX);
+      if (cropDrag.handle.includes("e")) right = clamp(right + dx, x + MIN_CROP_PX, w);
+      if (cropDrag.handle.includes("n")) y = clamp(s.y + dy, 0, bottom - MIN_CROP_PX);
+      if (cropDrag.handle.includes("s")) bottom = clamp(bottom + dy, y + MIN_CROP_PX, h);
+      cropRect = { x, y, w: right - x, h: bottom - y };
+    }
 
-const endCropDrag = () => { cropDrag = null; };
+    // Рамку тронули — значит выделение осознанное, отправлять будем только его.
+    if (state.photo) {
+      state.photo.cropTouched = true;
+      state.photo.cropNorm = { x: cropRect.x / w, y: cropRect.y / h, w: cropRect.w / w, h: cropRect.h / h };
+    }
+    drawCropBox();
+    e.preventDefault();
+  },
+  { passive: false }
+);
+
+const endCropDrag = () => {
+  cropDrag = null;
+  lockScroll(false);
+};
 cropFrame.addEventListener("pointerup", endCropDrag);
 cropFrame.addEventListener("pointercancel", endCropDrag);
+// Страховка: если захват указателя потерян, страница не должна остаться замороженной.
+cropFrame.addEventListener("lostpointercapture", endCropDrag);
 
 /**
  * Что уходит на бэкенд: обрезка, если рамку двигали, иначе весь кадр.
