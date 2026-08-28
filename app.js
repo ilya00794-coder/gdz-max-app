@@ -257,6 +257,7 @@ function startNewTask() {
   state.solution = null;
   state.check = null;
   recognizedTextEl.value = "";
+  renderRecognizedView();
   updateConfirmCta();
 }
 
@@ -429,7 +430,8 @@ btnSolve.addEventListener("click", async () => {
     state.solution = null;
     state.recognizedText = "";
     recognizedTextEl.value = "";
-    updateConfirmCta();
+    // Показывать нечего — сразу поле ввода.
+    setRecognizedEditing(true);
     showScreen("screen-confirm");
     return;
   }
@@ -487,7 +489,7 @@ function showResult(mode, result) {
   state.solution = result;
   state.recognizedText = result.recognizedText ?? "";
   recognizedTextEl.value = state.recognizedText;
-  updateConfirmCta();
+  setRecognizedEditing(false);
   showScreen("screen-confirm");
 }
 
@@ -564,6 +566,42 @@ function hideConfirmError() {
   const el = document.getElementById("confirm-error");
   if (el) el.hidden = true;
 }
+
+const recognizedView = document.getElementById("recognized-view");
+const btnEditText = document.getElementById("btn-edit-text");
+
+/**
+ * Показывает условие отрисованным: сырой $\\sqrt[3]{...}$ ученик прочитать не может,
+ * а проверить распознавание должен именно он. Каждая строка — своим абзацем,
+ * чтобы в контрольной из нескольких заданий формулы не слипались.
+ */
+function renderRecognizedView() {
+  recognizedView.innerHTML = recognizedTextEl.value
+    .split("\n")
+    .map((line) => `<p class="recognized-line">${escapeHtml(line)}</p>`)
+    .join("");
+  // throwOnError: false внутри renderMath — кривой LaTeX останется текстом,
+  // экран не упадёт, а поправить его можно через «Исправить».
+  renderMath(recognizedView);
+}
+
+/**
+ * Переключает просмотр и правку. Значение всегда живёт в textarea, поэтому
+ * сравнение «текст менялся или нет» на кнопке «Верно, решай» работает как прежде.
+ */
+function setRecognizedEditing(editing) {
+  recognizedTextEl.hidden = !editing;
+  recognizedView.hidden = editing;
+  btnEditText.textContent = editing ? "Готово" : "Исправить";
+  if (editing) {
+    recognizedTextEl.focus();
+  } else {
+    renderRecognizedView();
+  }
+  updateConfirmCta();
+}
+
+btnEditText.addEventListener("click", () => setRecognizedEditing(recognizedTextEl.hidden));
 
 /** Решать нечего, пока в поле пусто: placeholder — это подсказка, а не текст задачи. */
 function updateConfirmCta() {

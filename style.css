@@ -382,6 +382,39 @@ html, body {
   color: var(--l-text-2);
 }
 
+.recognized-view {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+  border: 0.5px solid var(--l-line);
+  border-radius: 12px;
+  background: var(--l-bg);
+  color: var(--l-text);
+  font-family: var(--font-system);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.recognized-view[hidden] { display: none; }
+
+/* Каждая строка условия — своим абзацем: в контрольной из нескольких заданий
+   формулы не должны слипаться в одну простыню. */
+.recognized-line { margin: 0 0 6px; }
+.recognized-line:last-child { margin-bottom: 0; }
+.recognized-line:empty { height: 10px; }
+.recognized-line .katex { color: var(--l-accent); }
+
+/* Вторичная кнопка: большинство её не тронет. */
+.confirm-edit {
+  /* .btn-light несёт flex: 1, а .confirm — колонка: без сброса кнопка растянулась бы во всю высоту. */
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin-top: 12px;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: var(--l-accent);
+}
+
 .recognized-text {
   flex: 1;
   min-height: 180px;
@@ -397,6 +430,7 @@ html, body {
   resize: none;
 }
 
+.recognized-text[hidden] { display: none; }
 .recognized-text::placeholder { color: var(--l-muted); }
 .recognized-text:focus { outline: none; border-color: var(--l-accent); }
 
