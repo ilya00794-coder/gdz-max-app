@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import solveRouter from "./src/routes/solve.js";
 import checkHomeworkRouter from "./src/routes/checkHomework.js";
+import feedbackRouter from "./src/routes/feedback.js";
 import { assertDatabaseReady, DATABASE_URL } from "./src/services/cache.js";
 import { maxInitData, INIT_DATA_HEADER } from "./src/middleware/maxInitData.js";
 
@@ -19,6 +20,7 @@ app.use("/api", maxInitData);
 
 app.use("/api/solve", solveRouter);
 app.use("/api/check-homework", checkHomeworkRouter);
+app.use("/api/feedback", feedbackRouter);
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 

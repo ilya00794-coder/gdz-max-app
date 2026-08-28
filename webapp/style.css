@@ -179,13 +179,6 @@ html, body {
 
 .btn-report { color: var(--l-danger); }
 
-.sheet-note {
-  margin: 0;
-  padding: 0 16px 10px;
-  font-size: 13px;
-  line-height: 1.4;
-  color: var(--l-muted);
-}
 
 /* =========================================================
    Экран выбора класса и предмета — светлый стиль A
@@ -650,3 +643,51 @@ html, body {
 .mode-prompt-actions .btn-light { flex: 1; padding: 10px 12px; font-size: 14px; }
 
 .mode-prompt-yes { background: var(--l-accent); border-color: var(--l-accent); color: #fff; }
+
+/* =========================================================
+   Форма сообщения об ошибке в ответе или проверке.
+   ========================================================= */
+.feedback {
+  margin: 0;
+  padding: 14px 16px;
+  border-top: 0.5px solid var(--l-line);
+  background: var(--l-surface);
+  font-family: var(--font-system);
+}
+
+.feedback-title { margin: 0 0 8px; font-size: 14px; font-weight: 500; color: var(--l-text); }
+
+.feedback-text {
+  width: 100%;
+  padding: 10px 12px;
+  border: 0.5px solid var(--l-line);
+  border-radius: 10px;
+  background: var(--l-bg);
+  color: var(--l-text);
+  font-family: var(--font-system);
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+}
+
+.feedback-text::placeholder { color: var(--l-muted); }
+.feedback-text:focus { outline: none; border-color: var(--l-accent); }
+
+.feedback-actions { display: flex; gap: 8px; margin-top: 10px; }
+.feedback-actions .btn-light { flex: 1; padding: 10px 12px; }
+.feedback-send { background: var(--l-accent); border-color: var(--l-accent); color: #fff; }
+
+.feedback-status {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--l-danger);
+}
+.feedback-status[hidden] { display: none; }
+
+.feedback-done {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--l-success);
+}

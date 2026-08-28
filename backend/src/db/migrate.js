@@ -18,27 +18,27 @@ async function main() {
   console.log(`Применяю схему к ${DATABASE_URL.replace(/:[^:@/]*@/, ":***@")}`);
   await pool.query(schema);
 
-  const { rows } = await pool.query(`
-    SELECT column_name, data_type, is_nullable, column_default
-    FROM information_schema.columns
-    WHERE table_name = 'solutions_cache'
-    ORDER BY ordinal_position
-  `);
+  for (const table of ["solutions_cache", "feedback"]) {
+    const { rows } = await pool.query(
+      `SELECT column_name, data_type, is_nullable, column_default
+       FROM information_schema.columns
+       WHERE table_name = $1
+       ORDER BY ordinal_position`,
+      [table]
+    );
+    if (!rows.length) throw new Error(`Таблица ${table} не найдена после миграции`);
 
-  if (!rows.length) {
-    throw new Error("Таблица solutions_cache не найдена после миграции");
+    console.log(`\nТаблица ${table}:`);
+    for (const r of rows) {
+      console.log(`  ${r.column_name.padEnd(20)} ${r.data_type.padEnd(26)} ${r.is_nullable === "NO" ? "NOT NULL" : ""} ${r.column_default ?? ""}`);
+    }
+
+    const { rows: indexes } = await pool.query(
+      `SELECT indexname FROM pg_indexes WHERE tablename = $1 ORDER BY indexname`,
+      [table]
+    );
+    console.log("  индексы:", indexes.map((i) => i.indexname).join(", "));
   }
-
-  console.log("\nТаблица solutions_cache:");
-  for (const r of rows) {
-    console.log(`  ${r.column_name.padEnd(20)} ${r.data_type.padEnd(26)} ${r.is_nullable === "NO" ? "NOT NULL" : ""} ${r.column_default ?? ""}`);
-  }
-
-  const { rows: indexes } = await pool.query(
-    `SELECT indexname FROM pg_indexes WHERE tablename = 'solutions_cache' ORDER BY indexname`
-  );
-  console.log("\nИндексы:");
-  for (const i of indexes) console.log(`  ${i.indexname}`);
 
   await pool.end();
   console.log("\nМиграция применена.");
