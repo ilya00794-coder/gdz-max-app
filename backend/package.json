@@ -11,7 +11,8 @@
     "migrate": "node --env-file-if-exists=.env src/db/migrate.js",
     "catch-chat-id": "node --env-file-if-exists=.env src/tools/catch-chat-id.js",
     "ocr-eval": "node --env-file-if-exists=.env src/tools/ocr-eval.js",
-    "model-compare": "node --env-file-if-exists=.env src/tools/model-compare.js"
+    "model-compare": "node --env-file-if-exists=.env src/tools/model-compare.js",
+    "prompt-gaps": "node --env-file-if-exists=.env src/tools/prompt-gaps.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
