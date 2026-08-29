@@ -40,6 +40,7 @@ const PRICES = {
 };
 
 const SOLVE_TIMEOUT_MS = 180_000;
+const WORKER_CONCURRENCY = 3;
 
 // ---------- режим воркера: решает все задачи одной моделью ----------
 
@@ -49,7 +50,8 @@ async function workerMain(model, tasksFile) {
   const { getClient } = await import("../services/anthropicClient.js");
 
   // Обёртка только в процессе воркера: снимает usage, ничего не меняя в продукте.
-  let lastUsage = null;
+  const usageQueue = [];
+  const takeUsage = () => usageQueue.shift() ?? null;
   const client = getClient();
   const originalParse = client.messages.parse.bind(client.messages);
   // Haiku 4.5 — модель до 4.6: thinking «adaptive» не поддерживает (канарейка
@@ -67,19 +69,26 @@ async function workerMain(model, tasksFile) {
       patched = { ...args, thinking: { type: "enabled", budget_tokens: 8000 }, output_config: outputConfig };
     }
     const resp = await originalParse(patched);
-    lastUsage = resp.usage ?? null;
+    usageQueue.push(resp.usage ?? null);
     return resp;
   };
 
   const tasks = JSON.parse(fs.readFileSync(tasksFile, "utf8"));
-  const results = [];
-  for (const task of tasks) {
-    lastUsage = null;
+  // Пул из WORKER_CONCURRENCY задач: последовательный прогон 110 задач занял бы
+  // ~30 минут на модель. Побочный эффект: первые задачи одной пары (класс,
+  // предмет) могут параллельно писать один и тот же промпт-кэш — чуть дороже.
+  // usage снимается через замыкание конкретного вызова, а не lastUsage.
+  const results = new Array(tasks.length);
+  let next = 0;
+  async function runOne(i) {
+    const task = tasks[i];
     const t0 = Date.now();
     let entry = { id: task.id };
+    let usageCapture = null;
     try {
       const solution = await Promise.race([
-        solveTask({ recognizedText: task.task, grade: task.grade, subject: task.subject }),
+        solveTask({ recognizedText: task.task, grade: task.grade, subject: task.subject })
+          .then((sol) => { usageCapture = takeUsage(); return sol; }),
         new Promise((_, rej) => setTimeout(() => rej(new Error(`таймаут ${SOLVE_TIMEOUT_MS / 1000} с`)), SOLVE_TIMEOUT_MS)),
       ]);
       entry.finalAnswer = solution.finalAnswer;
@@ -90,10 +99,14 @@ async function workerMain(model, tasksFile) {
       entry.error = err.message;
     }
     entry.ms = Date.now() - t0;
-    entry.usage = lastUsage;
-    results.push(entry);
+    entry.usage = usageCapture;
+    results[i] = entry;
     console.error(`[${model}] ${task.id}: ${entry.error ? "ОШИБКА " + entry.error : entry.finalAnswer} (${(entry.ms / 1000).toFixed(1)} с)`);
   }
+  async function pump() {
+    while (next < tasks.length) await runOne(next++);
+  }
+  await Promise.all(Array.from({ length: WORKER_CONCURRENCY }, pump));
   process.stdout.write("RESULT_JSON:" + JSON.stringify(results) + "\n");
 }
 
@@ -105,16 +118,46 @@ function decimalCommasToDots(text) {
 }
 
 /**
+ * Чистит одно значение перед SymPy: π → pi (с неявным умножением: 25π → 25*pi),
+ * градусы и юникод-степени единиц (см², см³) — прочь. Кириллицу единиц убирает
+ * сам parseCandidateAnswer; здесь — то, что не покрыто им.
+ */
+/**
+ * Числа → Rational: python-eval считает 1/3 и 0.3 флоатом ещё до SymPy, и
+ * simplify((0.3)-(0.3)) капризничает на Float/Integer. Копия numbersToRationals
+ * из misread.js (она там не экспортируется); баг с ведущим нулём «0.3» →
+ * Rational(03,10), найденный при написании этой копии, в misread.js починен.
+ */
+function numbersToRationals(expr) {
+  return expr.replace(/\d+\.\d+|\d+/g, (m) => {
+    const dot = m.indexOf(".");
+    if (dot === -1) return `Rational(${m})`;
+    const frac = m.length - dot - 1;
+    const digits = m.replace(".", "").replace(/^0+(?=\d)/, "");
+    return `Rational(${digits},1${"0".repeat(frac)})`;
+  });
+}
+
+function cleanValue(value) {
+  return String(value)
+    .replace(/(\d)\s*π/g, "$1*pi")
+    .replace(/π/g, "pi")
+    .replace(/[°²³]/g, "")
+    .trim();
+}
+
+/**
  * Совпадает ли ответ модели с известным. Оба разбираются parseCandidateAnswer
  * (та же логика, что в verify.js), значения сопоставляются биекцией через
  * simplify(a−b)==0 — порядок и форма записи не важны.
  */
-async function answersMatch(modelAnswer, knownSympy, helpers) {
+export async function answersMatch(modelAnswer, knownSympy, helpers) {
   const { parseCandidateAnswer, runPython } = helpers;
-  const got = parseCandidateAnswer(decimalCommasToDots(modelAnswer));
+  const gotRaw = parseCandidateAnswer(decimalCommasToDots(modelAnswer));
+  const got = gotRaw === null ? null : gotRaw.map(cleanValue).filter(Boolean);
   const known = String(knownSympy).trim() === ""
     ? []
-    : decimalCommasToDots(knownSympy).split(";").map((s) => s.trim()).filter(Boolean);
+    : decimalCommasToDots(knownSympy).split(";").map((s) => cleanValue(s)).filter(Boolean);
   if (got === null) return { match: false, reason: "ответ модели не разобрался" };
   if (got.length !== known.length) return { match: false, reason: `значений ${got.length}, ожидалось ${known.length}` };
 
@@ -124,7 +167,7 @@ async function answersMatch(modelAnswer, knownSympy, helpers) {
     let found = false;
     for (let i = 0; i < got.length; i++) {
       if (used.has(i)) continue;
-      const expr = `simplify((${k}) - (${got[i]}))`;
+      const expr = `simplify((${numbersToRationals(k)}) - (${numbersToRationals(got[i])}))`;
       if (!isExpressionSafe(expr)) continue;
       // runPython возвращает {code, stdout}; вердикт — внутри JSON в stdout
       // (см. checkArithmetic в misread.js — тот же контракт).
@@ -256,7 +299,10 @@ async function main() {
   console.log(`\nПолные результаты (с шагами решений и usage): ${dump}`);
 }
 
-main().catch((err) => {
-  console.error("model-compare не удался:", err.message);
-  process.exit(1);
-});
+// Запускаем только как entry point: при импорте (сухие тесты сверки) main не нужен.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error("model-compare не удался:", err.message);
+    process.exit(1);
+  });
+}
