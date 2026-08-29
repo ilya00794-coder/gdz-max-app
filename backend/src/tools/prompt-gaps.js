@@ -77,6 +77,19 @@ const JUDGE_SYSTEM = `Ты — опытный методист начально�
 3. Что лишнее: методы/термины старше класса, избыточная строгость.
 Будь конкретен и краток. Не переписывай решение, только оценивай.`;
 
+// Предметные акценты судьи (запрос пользователя, 7 класс): геометрия без
+// чертежа и единицы измерения в физике.
+const SUBJECT_FOCUS = {
+  "Геометрия":
+    "ОСОБОЕ ВНИМАНИЕ: ученик НЕ видит чертежа. Оцени, понятно ли решение БЕЗ него: " +
+    "можно ли из одного текста однозначно понять, о каком угле, какой стороне, какой точке идёт речь. " +
+    "Если текст без чертежа неоднозначен — обязательно запиши это в missingForAge с конкретным местом.",
+  "Физика":
+    "ОСОБОЕ ВНИМАНИЕ: единицы измерения. У каждой ли величины они написаны, показан ли перевод единиц " +
+    "(км/ч → м/с, г → кг, см² → м²), есть ли проверка размерности финального ответа. " +
+    "Отсутствие любого из этого — в missingForAge.",
+};
+
 async function judge(task, solution) {
   const client = getClient();
   const stepsText = (solution.steps ?? [])
@@ -102,7 +115,7 @@ ${task.task}
 РЕШЕНИЕ, ПОКАЗАННОЕ УЧЕНИКУ:
 ${stepsText}
 
-ФИНАЛЬНЫЙ ОТВЕТ РЕШЕНИЯ: ${solution.finalAnswer}`,
+ФИНАЛЬНЫЙ ОТВЕТ РЕШЕНИЯ: ${solution.finalAnswer}${SUBJECT_FOCUS[task.subject] ? "\n\n" + SUBJECT_FOCUS[task.subject] : ""}`,
       },
     ],
   });
@@ -132,8 +145,26 @@ async function main() {
   const tasks = JSON.parse(fs.readFileSync(tasksFile, "utf8"));
   console.error(`Класс ${gradeArg}: задач ${tasks.length}; solver ×2 модели, судья ${JUDGE_MODEL}.\n`);
 
-  const [opusResults, haikuResults] = await Promise.all(MODELS.map((m) => runWorker(m, tasksFile)));
-  const byModel = { [MODELS[0]]: opusResults, [MODELS[1]]: haikuResults };
+  // Чекпойнт solver-фазы: решения пишутся на диск сразу, как получены.
+  // Урок 7 класса: судейство упало по таймауту, и оплаченные 110 решений
+  // пропали — теперь при рестарте solver не перезапускается.
+  const checkpointFile = path.join(DATA_DIR, `solver-checkpoint-g${gradeArg}.json`);
+  let byModel;
+  if (fs.existsSync(checkpointFile)) {
+    byModel = JSON.parse(fs.readFileSync(checkpointFile, "utf8"));
+    const complete = MODELS.every((m) => (byModel[m] ?? []).length === tasks.length);
+    if (complete) {
+      console.error(`Найден чекпойнт solver-фазы (${checkpointFile}) — решатели НЕ перезапускаются.`);
+    } else {
+      byModel = null;
+    }
+  }
+  if (!byModel) {
+    const [opusResults, haikuResults] = await Promise.all(MODELS.map((m) => runWorker(m, tasksFile)));
+    byModel = { [MODELS[0]]: opusResults, [MODELS[1]]: haikuResults };
+    fs.writeFileSync(checkpointFile, JSON.stringify(byModel));
+    console.error(`Чекпойнт solver-фазы записан: ${checkpointFile}`);
+  }
 
   // Судейство: пары (задача, модель) — вперемешку, судья слеп к автору.
   const jobs = [];
@@ -219,6 +250,7 @@ async function main() {
     JSON.stringify(judged.map(({ task, model, r, verdict, sympyCorrect }) => ({ task, model, r, verdict, sympyCorrect })), null, 2)
   );
   console.log(`\nПолный дамп: ${dump}`);
+  fs.rmSync(checkpointFile, { force: true }); // прогон завершён — чекпойнт больше не нужен
 }
 
 main().catch((err) => {
