@@ -88,37 +88,49 @@ export async function checkSubscription(userId) {
 }
 
 /**
- * Мидлвара gating. В shadow решение только логируется; в on «не подписан» → 403,
- * ошибка проверки → пускаем (fail-open). Запросы без userId пропускаются:
- * при включённом STRICT без подписи сюда доходят только локальные.
+ * Мидлвара gating. shadow: проверка уходит в фон, next() сразу — пользователь
+ * не ждёт MAX API, решение только логируется. on: решение ждём, «не подписан» → 403,
+ * ошибка проверки → fail-open. Без userId — decision "no_user", в MAX не ходим.
  */
 export function subscriptionGate(req, res, next) {
   if (GATING_MODE === "off") return next();
 
   const userId = req.max?.userId;
   if (!userId) {
-    console.log("[gating]", { режим: GATING_MODE, path: req.path, решение: "пропуск: нет userId" });
+    // strict=off или локальный запрос: проверять нечего, в MAX не ходим.
+    console.log("[gating]", { режим: GATING_MODE, path: req.path, decision: "no_user" });
     return next();
   }
 
-  checkSubscription(userId)
-    .then(({ status, raw }) => {
-      // Одна строка на решение. Ключи members[0], а не значения: нужен ответ,
-      // есть ли поле статуса в записи, — имена и аватары в лог не пишем.
-      console.log("[gating]", {
-        режим: GATING_MODE,
-        userId,
-        решение: status,
-        httpStatus: raw?.httpStatus ?? null,
-        membersДлина: raw?.members?.length ?? null,
-        ключиЗаписи: raw?.members?.[0] ? Object.keys(raw.members[0]).sort() : null,
-        изКэша: raw === null,
-      });
+  const startedAt = Date.now();
+  const decide = ({ status, raw }) => {
+    // Одна строка на решение; имена и аватарки в лог не пишем.
+    console.log("[gating]", {
+      режим: GATING_MODE,
+      userId,
+      decision: status,
+      httpStatus: raw?.httpStatus ?? null,
+      membersДлина: raw?.members?.length ?? null,
+      изКэша: raw === null,
+      duration_ms: Date.now() - startedAt,
+    });
+    return status;
+  };
 
-      if (GATING_MODE === "on" && status === "not_subscribed") {
-        return res.status(403).json({ error: "not_subscribed" });
-      }
-      next(); // subscribed, error (fail-open) и весь shadow
+  if (GATING_MODE === "shadow") {
+    // Без await: пользователь не должен ждать MAX API ради лога.
+    checkSubscription(userId)
+      .then(decide)
+      .catch((err) => console.error("[gating] shadow: сбой проверки:", err.message));
+    return next();
+  }
+
+  // on: решение нужно ДО ответа.
+  checkSubscription(userId)
+    .then(decide)
+    .then((status) => {
+      if (status === "not_subscribed") return res.status(403).json({ error: "not_subscribed" });
+      next(); // subscribed и error (fail-open)
     })
     .catch((err) => {
       console.error("[gating] сбой проверки, пускаю (fail-open):", err.message);
