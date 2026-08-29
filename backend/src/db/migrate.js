@@ -18,7 +18,7 @@ async function main() {
   console.log(`Применяю схему к ${DATABASE_URL.replace(/:[^:@/]*@/, ":***@")}`);
   await pool.query(schema);
 
-  for (const table of ["solutions_cache", "feedback"]) {
+  for (const table of ["solutions_cache", "feedback", "reference_solutions"]) {
     const { rows } = await pool.query(
       `SELECT column_name, data_type, is_nullable, column_default
        FROM information_schema.columns
