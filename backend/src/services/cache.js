@@ -73,7 +73,10 @@ export function buildCacheKey({ textbook, grade, subject, taskNumber, rawText })
     .replace(/\s+/g, " ")
     .trim();
   const hash = crypto.createHash("sha256").update(normalized).digest("hex").slice(0, 24);
-  return `text:${hash}`;
+  // Класс и предмет — часть ключа: одно и то же условие для 5 и 8 класса решается
+  // по-разному (белый список методов curriculum.js), общий кэш обесценивал бы его.
+  // book:-ветка выше содержит их изначально.
+  return `text:${grade}:${subject}:${hash}`.toLowerCase();
 }
 
 /**

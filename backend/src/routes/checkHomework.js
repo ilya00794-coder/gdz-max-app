@@ -3,6 +3,7 @@ import { recognizeFromPhotos } from "../services/vision.js";
 import { solveTask } from "../services/solver.js";
 import { compareWithReference, crossCheckVerdicts } from "../services/compare.js";
 import { verifyAnswer } from "../services/verify.js";
+import { isSubjectAllowedForGrade, getSubjectsForGrade } from "../services/subjects.js";
 import { ConfigError, InputError, describeApiError } from "../services/anthropicClient.js";
 import { detectMisread } from "../services/misread.js";
 
@@ -33,6 +34,14 @@ router.post("/", async (req, res) => {
     }
     if (!Number.isInteger(grade) || grade < 1 || grade > 11) {
       return res.status(400).json({ error: "grade должен быть целым числом от 1 до 11" });
+    }
+
+    // Та же сверка пары (класс, предмет) с учебным планом, что в solve.js:
+    // защита от кривого клиента, а не от пользователя.
+    if (!isSubjectAllowedForGrade(grade, subject)) {
+      return res.status(400).json({
+        error: `Предмет «${subject}» не изучается в ${grade} классе. Доступны: ${getSubjectsForGrade(grade).join(", ")}`,
+      });
     }
 
     const parsedQuarter = quarter === undefined ? 4 : Number(quarter);
