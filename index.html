@@ -37,8 +37,12 @@
         <h1 class="setup-title">Класс</h1>
         <div class="chip-row" id="grade-row"></div>
 
-        <h2 class="setup-title">Предмет</h2>
-        <div class="chip-row" id="subject-row"></div>
+        <!-- Скрыт, пока не выбран класс: список предметов зависит от класса
+             и приходит с бэкенда (GET /api/subjects). -->
+        <div id="subject-block" hidden>
+          <h2 class="setup-title">Предмет</h2>
+          <div class="chip-row" id="subject-row"></div>
+        </div>
 
         <div class="setup-actions">
           <button class="cta" id="btn-mode-solve" disabled>Решить задачу</button>
