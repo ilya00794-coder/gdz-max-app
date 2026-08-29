@@ -4,6 +4,7 @@ import { solveTask } from "../services/solver.js";
 import { compareWithReference, crossCheckVerdicts } from "../services/compare.js";
 import { verifyAnswer } from "../services/verify.js";
 import { ConfigError, InputError, describeApiError } from "../services/anthropicClient.js";
+import { detectMisread } from "../services/misread.js";
 
 const router = Router();
 
@@ -52,6 +53,10 @@ router.post("/", async (req, res) => {
         recognition: recognized,
       });
     }
+
+    // Проверка внутренней согласованности выкладок — в фоне, без await:
+    // только лог при MISREAD_DETECTION=on, на ответ и вердикт не влияет.
+    detectMisread(recognized.recognizedText, { grade, subject });
 
     const referenceSolution = await solveTask({
       recognizedText: recognized.recognizedText,

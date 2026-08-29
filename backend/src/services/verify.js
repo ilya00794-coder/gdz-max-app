@@ -37,7 +37,7 @@ const SAFE_CHARS = /^[A-Za-z0-9_+\-*/(),.\s=]+$/;
  * Приводит строку к машинному виду: юникод-минусы, неразрывные пробелы, десятичная запятая.
  * Ответ приходит от LLM в человеческом формате, где «−» — это U+2212, а не дефис.
  */
-function normalizeMathText(text) {
+export function normalizeMathText(text) {
   return String(text ?? "")
     .replace(/[−–—‐‑]/g, "-") // −, –, —, ‐, ‑ → -
     .replace(/[   ]/g, " ") // неразрывные пробелы
@@ -55,7 +55,7 @@ function repairEquals(expression) {
 }
 
 /** Проверяет, что строка состоит только из разрешённых символов и известных имён. */
-function isExpressionSafe(expression) {
+export function isExpressionSafe(expression) {
   if (!expression || expression.length > 2000) return false;
   if (!SAFE_CHARS.test(expression)) return false;
   if (expression.includes("__")) return false;
@@ -96,7 +96,7 @@ export function parseCandidateAnswer(candidateAnswer) {
  * Запускает verify_sympy.py отдельным процессом, передаёт задание в stdin.
  * Таймаут считаем сами: процесс убивается SIGKILL, чтобы зависший SymPy не держал запрос.
  */
-function runPython(payload) {
+export function runPython(payload) {
   return new Promise((resolve, reject) => {
     const child = spawn(PYTHON_BIN, [SCRIPT_PATH], { stdio: ["pipe", "pipe", "pipe"] });
 
