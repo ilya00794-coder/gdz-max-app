@@ -64,9 +64,12 @@ const NUMERIC_PART = /^[0-9+\-*/(). ]+$/;
 function numbersToRationals(expr) {
   return expr.replace(/\d+\.\d+|\d+/g, (m) => {
     const dot = m.indexOf(".");
-    if (dot === -1) return `Rational(${m})`;
+    // Ведущие нули срезаем: «0.3» иначе дал бы Rational(03,10), а целочисленный
+    // литерал с ведущим нулём — SyntaxError в Python 3.
+    if (dot === -1) return `Rational(${m.replace(/^0+(?=\d)/, "")})`;
     const frac = m.length - dot - 1;
-    return `Rational(${m.replace(".", "")},1${"0".repeat(frac)})`;
+    const digits = m.replace(".", "").replace(/^0+(?=\d)/, "");
+    return `Rational(${digits},1${"0".repeat(frac)})`;
   });
 }
 
