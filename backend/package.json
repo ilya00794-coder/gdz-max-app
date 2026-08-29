@@ -9,7 +9,8 @@
     "dev": "node --watch --env-file-if-exists=.env server.js",
     "start:env": "node --env-file-if-exists=.env server.js",
     "migrate": "node --env-file-if-exists=.env src/db/migrate.js",
-    "catch-chat-id": "node --env-file-if-exists=.env src/tools/catch-chat-id.js"
+    "catch-chat-id": "node --env-file-if-exists=.env src/tools/catch-chat-id.js",
+    "ocr-eval": "node --env-file-if-exists=.env src/tools/ocr-eval.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
