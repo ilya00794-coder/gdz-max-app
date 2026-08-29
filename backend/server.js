@@ -3,6 +3,7 @@ import cors from "cors";
 import solveRouter from "./src/routes/solve.js";
 import checkHomeworkRouter from "./src/routes/checkHomework.js";
 import feedbackRouter from "./src/routes/feedback.js";
+import subjectsRouter from "./src/routes/subjects.js";
 import { assertDatabaseReady, DATABASE_URL } from "./src/services/cache.js";
 import { maxInitData, INIT_DATA_HEADER } from "./src/middleware/maxInitData.js";
 import { subscriptionGate, assertGatingReady } from "./src/subscription.js";
@@ -22,6 +23,7 @@ app.use("/api", maxInitData);
 // /health не под /api и в gating не попадает.
 app.use("/api", subscriptionGate);
 
+app.use("/api/subjects", subjectsRouter);
 app.use("/api/solve", solveRouter);
 app.use("/api/check-homework", checkHomeworkRouter);
 app.use("/api/feedback", feedbackRouter);

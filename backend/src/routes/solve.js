@@ -3,6 +3,7 @@ import { buildCacheKey, getCached, setCached } from "../services/cache.js";
 import { recognizeFromPhotos } from "../services/vision.js";
 import { solveTask } from "../services/solver.js";
 import { verifyAnswer } from "../services/verify.js";
+import { isSubjectAllowedForGrade, getSubjectsForGrade } from "../services/subjects.js";
 import { ConfigError, InputError, describeApiError } from "../services/anthropicClient.js";
 
 const router = Router();
@@ -27,6 +28,15 @@ router.post("/", async (req, res) => {
     }
     if (!Number.isInteger(grade) || grade < 1 || grade > 11) {
       return res.status(400).json({ error: "grade должен быть целым числом от 1 до 11" });
+    }
+
+    // Пара (класс, предмет) сверяется с федеральным учебным планом (services/subjects.js).
+    // Это защита от кривого клиента, а не от пользователя: штатный фронт такую пару
+    // отправить не даст, но молчаливый проход «3 класс + физика» в solver ещё хуже 400.
+    if (!isSubjectAllowedForGrade(grade, subject)) {
+      return res.status(400).json({
+        error: `Предмет «${subject}» не изучается в ${grade} классе. Доступны: ${getSubjectsForGrade(grade).join(", ")}`,
+      });
     }
 
     // Четверть необязательна: без неё считаем программу за весь учебный год.
