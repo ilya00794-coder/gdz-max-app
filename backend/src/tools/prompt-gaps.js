@@ -146,10 +146,16 @@ async function main() {
     async (job) => {
       let verdict = null;
       if (!job.r.error) {
+        // Одна повторная попытка: structured output изредка падает на парсинге
+        // (оборванная JSON-строка) — на 3 классе это стоило одного вердикта.
         try {
           verdict = await judge(job.task, job.r.solution);
-        } catch (err) {
-          verdict = { judgeError: err.message };
+        } catch {
+          try {
+            verdict = await judge(job.task, job.r.solution);
+          } catch (err) {
+            verdict = { judgeError: err.message };
+          }
         }
       }
       // Для sympy-задач правильность решает SymPy по эталону, не судья.
