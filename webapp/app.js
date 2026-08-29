@@ -100,7 +100,6 @@ async function initMaxBridge() {
 document.addEventListener("DOMContentLoaded", initMaxBridge);
 
 const GRADES = Array.from({ length: 11 }, (_, i) => i + 1);
-const SUBJECTS = ["Математика", "Русский язык", "Физика", "Химия", "Биология", "История", "Английский"];
 
 const state = {
   mode: "solve",
@@ -140,20 +139,119 @@ function selectChip(container, btn) {
 
 const gradeRow = document.getElementById("grade-row");
 const subjectRow = document.getElementById("subject-row");
+const subjectBlock = document.getElementById("subject-block");
 const btnModeSolve = document.getElementById("btn-mode-solve");
 const btnModeCheck = document.getElementById("btn-mode-check");
 
 renderChips(gradeRow, GRADES.map((g) => `${g} класс`), (label, btn) => {
   state.grade = GRADES[[...gradeRow.children].indexOf(btn)];
   selectChip(gradeRow, btn);
+  loadSubjects(state.grade);
   updateSetupCta();
 });
 
-renderChips(subjectRow, SUBJECTS, (label, btn) => {
-  state.subject = label;
-  selectChip(subjectRow, btn);
+// ---------- предметы: список зависит от класса и приходит с бэкенда ----------
+
+const SUBJECTS_TIMEOUT_MS = 15_000;
+const subjectsCache = {}; // класс → список; в рамках сессии список не меняется
+
+// Ответы могут приходить не в том порядке, в котором кликали классы:
+// применяем только ответ на ПОСЛЕДНИЙ запрос.
+let subjectsRequestId = 0;
+
+async function getJson(path, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${BACKEND_URL}${path}`, {
+      headers: {
+        // ngrok без этого заголовка отдаёт браузеру HTML-заглушку вместо API.
+        "ngrok-skip-browser-warning": "true",
+        ...(max.initData ? { "X-Max-Init-Data": max.initData } : {}),
+      },
+      signal: controller.signal,
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      const err = new Error(humanizeError(res.status, { serverMessage: data?.error }));
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  } catch (err) {
+    if (err.status) throw err;
+    throw new Error(humanizeError(null, err));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function loadSubjects(grade) {
+  subjectBlock.hidden = false;
+  const requestId = ++subjectsRequestId;
+
+  if (subjectsCache[grade]) {
+    renderSubjectChips(subjectsCache[grade]);
+    return;
+  }
+
+  renderSubjectSkeleton();
+  try {
+    const data = await getJson(`/api/subjects?grade=${grade}`, SUBJECTS_TIMEOUT_MS);
+    if (requestId !== subjectsRequestId) return; // уже выбрали другой класс
+    subjectsCache[grade] = data.subjects;
+    renderSubjectChips(data.subjects);
+  } catch (err) {
+    if (requestId !== subjectsRequestId) return;
+    renderSubjectError(err.message, grade);
+  }
+}
+
+function renderSubjectChips(subjects) {
+  renderChips(subjectRow, subjects, (label, btn) => {
+    state.subject = label;
+    selectChip(subjectRow, btn);
+    updateSetupCta();
+  });
+
+  // Смена класса при выбранном предмете: если предмет есть и в новом списке —
+  // сохраняем выбор; если нет (был 8 класс + Геометрия, стал 5) — сбрасываем,
+  // иначе бэкенд ответит 400 на невозможную пару.
+  if (state.subject) {
+    const idx = subjects.indexOf(state.subject);
+    if (idx !== -1) {
+      selectChip(subjectRow, subjectRow.children[idx]);
+    } else {
+      state.subject = null;
+    }
+  }
   updateSetupCta();
-});
+}
+
+function renderSubjectSkeleton() {
+  // Место под чипы, чтобы экран не мигал пустотой на время запроса.
+  subjectRow.innerHTML = "";
+  for (const width of [96, 120, 84, 108, 90] ) {
+    const stub = document.createElement("span");
+    stub.className = "chip chip-skeleton";
+    stub.style.width = `${width}px`;
+    subjectRow.appendChild(stub);
+  }
+}
+
+function renderSubjectError(message, grade) {
+  subjectRow.innerHTML = "";
+  const box = document.createElement("div");
+  box.className = "subject-error";
+  const text = document.createElement("span");
+  text.textContent = message;
+  const retry = document.createElement("button");
+  retry.className = "chip";
+  retry.textContent = "Повторить";
+  retry.addEventListener("click", () => loadSubjects(grade));
+  box.append(text, retry);
+  subjectRow.appendChild(box);
+}
 
 function updateSetupCta() {
   const bridgeBlocked = max.mode === "blocked" || max.mode === "loading";

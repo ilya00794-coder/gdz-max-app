@@ -794,3 +794,25 @@ body.crop-dragging {
 .task-card-line { margin: 0 0 4px; }
 .task-card-line:last-child { margin-bottom: 0; }
 .task-card-text .katex { color: var(--l-accent); }
+
+/* Заглушки чипов на время загрузки списка предметов */
+.chip-skeleton {
+  height: 34px;
+  border-color: transparent;
+  background: var(--l-panel, #F1EFE8);
+  animation: chip-pulse 1.1s ease-in-out infinite;
+}
+@keyframes chip-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+/* Ошибка загрузки списка предметов: сообщение + кнопка повтора */
+.subject-error {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13px;
+  color: var(--l-muted, #888780);
+}
