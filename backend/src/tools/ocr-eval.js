@@ -30,8 +30,26 @@ function norm(line) {
     .trim();
 }
 
-/** Ключ сравнения: пробелы внутри строки не считаются расхождением ($x=2$ и $x = 2$ — одно). */
-const key = (s) => norm(s).replace(/ /g, "");
+/**
+ * Ключ сравнения. Не считаются расхождением: пробелы, обёртка $...$,
+ * синонимичные LaTeX-команды и юникод-эквиваленты математических знаков —
+ * «$x \\ge 2$» и «x≥2» суть одно и то же содержание.
+ */
+function key(s) {
+  return norm(s)
+    .replace(/\$/g, "")
+    .replace(/\\left|\\right/g, "")
+    .replace(/\\geq|\\ge\b/g, "≥").replace(/\\leq|\\le\b/g, "≤")
+    .replace(/\\neq|\\ne\b/g, "≠")
+    .replace(/\\cdot|[·×]/g, "*")
+    .replace(/\\sqrt/g, "√")
+    .replace(/\\d?frac\{([^{}]*)\}\{([^{}]*)\}/g, "$1/$2")
+    .replace(/\\in\b/g, "∈").replace(/\\infty/g, "∞")
+    .replace(/\\cup/g, "∪")
+    .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, (c) => "^" + "⁰¹²³⁴⁵⁶⁷⁸⁹".indexOf(c))
+    .replace(/[₀₁₂₃₄₅₆₇₈₉]/g, (c) => "_" + "₀₁₂₃₄₅₆₇₈₉".indexOf(c))
+    .replace(/ /g, "");
+}
 
 const DIGITS = /[0-9]/g;
 const SIGNS = /[+\-*/=<>±·√^_]/g;
@@ -59,52 +77,99 @@ const digitsOf = (s) => (key(s).match(DIGITS) || []).join("");
 const signsOf = (s) => (key(s).match(SIGNS) || []).join("");
 
 /**
- * Классификация расхождений — по СЛОВАМ склеенного текста, не по строкам:
- * vision волен переносить строки иначе, чем на фото (склеивает абзацы),
- * и это не ошибка распознавания. Разбиение по строкам сравнивается отдельно
- * как справка (lineInfo), в ошибки не идёт.
+ * Классификация расхождений — посимвольный дифф нормализованного текста.
  *
- * Типы: цифра, знак, буква/слово (замена), пропущено (слово из эталона
- * не распознано), галлюцинация (распознано слово, которого нет).
+ * Слова — неверная гранулярность для математики: «4·120=480» у ученика одно
+ * «слово», у vision «$4 \\cdot 120 = 480$» — пять. Посимвольное сравнение по key()
+ * безразлично к пробелам, переносам строк, склейке строк и LaTeX-синонимам.
+ * Разбиение по строкам остаётся справкой (lineInfo), в ошибки не идёт.
  *
- * @returns {{fullMatch: boolean, errors: {type: string, truth?: string, got?: string}[],
- *            lineInfo: {truthLines: number, recognizedLines: number}}}
+ * Типы: цифра, знак, буква/слово (замена), пропущено, галлюцинация.
  */
+const HAS_DIGIT = /[0-9]/;
+const ONLY_SIGNS = /^[+\-*/=<>≤≥≠±√∈∞∪(){}\[\];:,.?!]*$/;
+
 export function classifyDiff(truthText, recognizedText) {
   const lineInfo = {
     truthLines: truthText.split("\n").map(norm).filter(Boolean).length,
     recognizedLines: recognizedText.split("\n").map(norm).filter(Boolean).length,
   };
 
-  // Перенос слова через дефис на границе строки — артефакт разбиения, не ошибка OCR.
-  const words = (text) => norm(text.replace(/-\n\s*/g, "").replace(/\n/g, " ")).split(" ").filter(Boolean);
-  const T = words(truthText);
-  const R = words(recognizedText);
+  const flat = (text) => key(text.replace(/-\n\s*/g, "").replace(/\n/g, " "));
+  const A = flat(truthText);
+  const B = flat(recognizedText);
+  if (A === B) return { fullMatch: true, errors: [], lineInfo };
 
-  // LCS по словам (сравнение через key: пробелы/пунктуация-хвосты не в счёт).
-  const dp = Array.from({ length: T.length + 1 }, () => new Array(R.length + 1).fill(0));
-  for (let i = T.length - 1; i >= 0; i--)
-    for (let j = R.length - 1; j >= 0; j--)
-      dp[i][j] = key(T[i]) === key(R[j]) ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const m = A.length, n = B.length;
+  if ((m + 1) * (n + 1) > 16_000_000) {
+    return { fullMatch: false, lineInfo,
+      errors: [{ type: "структура", truth: "(текст слишком велик для посимвольного сравнения)" }] };
+  }
 
-  const errors = [];
-  let i = 0, j = 0;
-  while (i < T.length && j < R.length) {
-    if (key(T[i]) === key(R[j])) { i++; j++; continue; }
-    // Замена одного слова другим: и следующий шаг LCS не тянет ни туда, ни сюда.
-    if (dp[i + 1][j] === dp[i][j + 1] && dp[i + 1][j + 1] === dp[i + 1][j]) {
-      const t = T[i++], r = R[j++];
-      if (digitsOf(t) !== digitsOf(r)) errors.push({ type: "цифра", truth: t, got: r });
-      else if (signsOf(t) !== signsOf(r)) errors.push({ type: "знак", truth: t, got: r });
-      else errors.push({ type: "буква/слово", truth: t, got: r });
-    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      errors.push({ type: "пропущено", truth: T[i++] });
-    } else {
-      errors.push({ type: "галлюцинация", got: R[j++] });
+  // Левенштейн с восстановлением пути.
+  const W = n + 1;
+  const dp = new Uint16Array((m + 1) * W);
+  for (let j = 0; j <= n; j++) dp[j] = j;
+  for (let i = 1; i <= m; i++) {
+    dp[i * W] = i;
+    for (let j = 1; j <= n; j++) {
+      dp[i * W + j] = A[i - 1] === B[j - 1]
+        ? dp[(i - 1) * W + j - 1]
+        : 1 + Math.min(dp[(i - 1) * W + j - 1], dp[(i - 1) * W + j], dp[i * W + j - 1]);
     }
   }
-  while (i < T.length) errors.push({ type: "пропущено", truth: T[i++] });
-  while (j < R.length) errors.push({ type: "галлюцинация", got: R[j++] });
+
+  // Путь → пооперационный список, затем группировка соседних правок в регионы.
+  const ops = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && A[i - 1] === B[j - 1] && dp[i * W + j] === dp[(i - 1) * W + j - 1]) {
+      ops.push({ op: "=", a: A[--i], b: B[--j] });
+    } else if (i > 0 && j > 0 && dp[i * W + j] === dp[(i - 1) * W + j - 1] + 1) {
+      ops.push({ op: "~", a: A[--i], b: B[--j] });
+    } else if (i > 0 && dp[i * W + j] === dp[(i - 1) * W + j] + 1) {
+      ops.push({ op: "-", a: A[--i] });
+    } else {
+      ops.push({ op: "+", b: B[--j] });
+    }
+  }
+  ops.reverse();
+
+  const errors = [];
+  let region = null;
+  let posA = 0;
+  const GAP = 2; // до двух совпавших символов между правками — один регион
+
+  const flush = () => {
+    if (!region) return;
+    const del = region.del, ins = region.ins;
+    let type;
+    if (del && !ins) type = "пропущено";
+    else if (!del && ins) type = "галлюцинация";
+    else if (HAS_DIGIT.test(del) || HAS_DIGIT.test(ins)) type = "цифра";
+    else if (ONLY_SIGNS.test(del) && ONLY_SIGNS.test(ins)) type = "знак";
+    else type = "буква/слово";
+    const ctx = (from, len) => A.slice(Math.max(0, from - 10), Math.min(m, from + len + 10));
+    errors.push({ type, truth: del ? `…${ctx(region.startA, del.length)}…` : `…${ctx(region.startA, 0)}…`,
+                  got: `${del || "∅"} → ${ins || "∅"}` });
+    region = null;
+  };
+
+  let gap = 0;
+  for (const o of ops) {
+    if (o.op === "=") {
+      if (region && ++gap > GAP) flush();
+      if (!region) gap = 0;
+      posA++;
+      continue;
+    }
+    if (!region) region = { startA: posA, del: "", ins: "" };
+    else gap = 0;
+    if (o.op === "~") { region.del += o.a; region.ins += o.b; posA++; }
+    else if (o.op === "-") { region.del += o.a; posA++; }
+    else region.ins += o.b;
+  }
+  flush();
 
   return { fullMatch: errors.length === 0, errors, lineInfo };
 }
