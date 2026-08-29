@@ -5,6 +5,7 @@ import checkHomeworkRouter from "./src/routes/checkHomework.js";
 import feedbackRouter from "./src/routes/feedback.js";
 import { assertDatabaseReady, DATABASE_URL } from "./src/services/cache.js";
 import { maxInitData, INIT_DATA_HEADER } from "./src/middleware/maxInitData.js";
+import { subscriptionGate, assertGatingReady } from "./src/subscription.js";
 
 const app = express();
 app.use(
@@ -17,6 +18,9 @@ app.use(express.json({ limit: "15mb" })); // фото в base64 могут бы�
 
 // Разбор строки запуска MAX. Пока только логирует, запросы не отвергает.
 app.use("/api", maxInitData);
+// Gating подписки — строго ПОСЛЕ maxInitData: userId берётся из req.max.
+// /health не под /api и в gating не попадает.
+app.use("/api", subscriptionGate);
 
 app.use("/api/solve", solveRouter);
 app.use("/api/check-homework", checkHomeworkRouter);
@@ -41,6 +45,15 @@ try {
   console.error("    2) создана ли база:      createdb gdz_max");
   console.error("    3) применена ли схема:   npm run migrate");
   console.error("    4) верен ли DATABASE_URL в .env\n");
+  process.exit(1);
+}
+
+// Отдельно от базы: у ошибок конфигурации gating свой текст, а не советы про Postgres.
+try {
+  await assertGatingReady();
+} catch (err) {
+  console.error("\nОШИБКА КОНФИГУРАЦИИ GATING — сервер не запущен.");
+  console.error(`  ${err.message}\n`);
   process.exit(1);
 }
 

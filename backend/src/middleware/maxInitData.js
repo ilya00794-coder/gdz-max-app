@@ -28,6 +28,9 @@ const MAX_AGE_SECONDS = Number(process.env.MAX_INIT_DATA_MAX_AGE || 24 * 60 * 60
  */
 const STRICT = ["1", "true", "yes"].includes(String(process.env.STRICT_INIT_DATA || "").toLowerCase());
 
+/** Экспорт для интерлока gating: gating=on без строгого initData бессмыслен. */
+export const STRICT_INIT_DATA_ENABLED = STRICT;
+
 /**
  * Запрос пришёл с этой же машины?
  *
