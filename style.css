@@ -115,7 +115,11 @@ html, body {
 .step-title { margin: 3px 0 4px; font-size: 15px; font-weight: 500; color: var(--l-text); }
 /* pre-line: solver отдаёт списки и «Дано» переносами строк — без этого браузер
    схлопывал ВСЮ структуру шага в одну строку (жило с правки «пункты списком»). */
-.step-text { margin: 0; font-size: 14px; line-height: 1.6; color: var(--l-text-2); white-space: pre-line; }
+.step-text { margin: 0; font-size: 14px; line-height: 1.6; color: var(--l-text-2); white-space: pre-line; overflow-x: auto; }
+/* Длинная формула KaTeX не переносится — пусть шаг скроллится вбок, а не режет её краем. */
+.answer-value { overflow-x: auto; }
+/* Моноширинный блок: запись столбиком/уголком из ```-ограждений солвера. */
+.step-pre { display: block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.45; white-space: pre; overflow-x: auto; background: var(--l-bg-soft, #F4F3EC); border-radius: 8px; padding: 8px 10px; margin: 6px 0; }
 .step-text .katex { color: var(--l-accent); }
 
 /* --- таблицы в шагах (сравнение, образец записи) --- */
