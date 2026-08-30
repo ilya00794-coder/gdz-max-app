@@ -160,6 +160,12 @@ def evaluate(expression):
 
 def to_solution_list(result):
     """Приводит результат к списку решений, доразрешая уравнение, если это ещё не решения."""
+    # Чистая арифметика ("128 + 236") вычисляется питоном в обычный int/float,
+    # а не в sympy-объект — без этой ветки она падала в "непонятный результат",
+    # и вся арифметика началки оставалась без верификации.
+    if isinstance(result, (int, float)):
+        return [sympy.S(result)]
+
     if isinstance(result, dict):
         return list(result.values())
 
