@@ -275,6 +275,10 @@ export async function verifyAnswer({ subject, expression, candidateAnswer, answe
   }
 
   if (!report.ok) {
+    if (/не независима/.test(report.reason ?? "")) {
+      // Модель подставила готовый ответ вместо формализации из условия.
+      console.error("[verify] ФОРМАЛИЗАЦИЯ-ЛИТЕРАЛ — дефект solver'а:", { expression, candidateAnswer });
+    }
     if (/ЛОЖНОЕ числовое утверждение/.test(report.reason ?? "")) {
       // Модель формализовала неверное равенство — дефект solver'а, видим отдельно.
       console.error("[verify] ЛОЖНАЯ ФОРМАЛИЗАЦИЯ — дефект solver'а:", { expression, candidateAnswer });

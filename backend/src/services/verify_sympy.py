@@ -147,6 +147,44 @@ def build_namespace(tree):
     return namespace
 
 
+class NumbersToRational(ast.NodeTransformer):
+    """Каждая числовая константа → sympy.Rational ДО вычисления.
+
+    Корень float-класса: python-eval считает 36/4 и 0.002 флоатами раньше,
+    чем их увидит SymPy, и сравнение Float/Integer капризничает. Мы латали
+    это текстовыми обёртками в трёх местах (misread, инвариант any,
+    Rational-запятая) — четвёртое всплытие (голые списки [36/4, ...])
+    закрыло класс здесь, на уровне узлов. Строковый аргумент для float —
+    Rational("2.5") представляет конечную десятичную точно; bool не трогаем
+    (подкласс int, см. комментарий в фильтре констант).
+    Применяется ПОСЛЕ проверки белым списком: строковая константа внутри
+    Rational(...) — артефакт трансформации, а не вход пользователя.
+    """
+
+    def visit_Constant(self, node):  # noqa: N802 — имя задано ast
+        if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
+            return node
+        arg = ast.Constant(value=node.value if isinstance(node.value, int) else repr(node.value))
+        return ast.Call(func=ast.Name(id="Rational", ctx=ast.Load()), args=[arg], keywords=[])
+
+
+def is_literal_expression(expression):
+    """Выражение — одна числовая константа (возможно с минусом)?
+
+    Такая «формализация» не независима: она не строит ответ из условия,
+    а подставляет готовый. Честных формализаций-литералов не бывает
+    (в 160 дампах — ноль), ложные срабатывания исключены по построению.
+    """
+    try:
+        tree = ast.parse(expression, mode="eval")
+    except SyntaxError:
+        return False
+    node = tree.body
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+        node = node.operand
+    return isinstance(node, ast.Constant) and isinstance(node.value, (int, float))
+
+
 def evaluate(expression):
     """Разбирает и вычисляет выражение в изолированном окружении."""
     if len(expression) > MAX_EXPRESSION_LENGTH:
@@ -162,6 +200,9 @@ def evaluate(expression):
     tree = ast.fix_missing_locations(EqualityRewriter().visit(tree))
 
     namespace = build_namespace(tree)
+    # Числа в Rational — после белого списка (см. NumbersToRational).
+    namespace.setdefault("Rational", sympy.Rational)
+    tree = ast.fix_missing_locations(NumbersToRational().visit(tree))
     compiled = compile(tree, "<verify>", "eval")
     return eval(compiled, {"__builtins__": {}}, namespace)  # noqa: S307 — AST уже отфильтрован
 
@@ -372,6 +413,13 @@ def main():
 
     expression = payload.get("expression") or ""
     raw_candidates = payload.get("candidates") or []
+
+    if is_literal_expression(expression):
+        print(json.dumps({
+            "ok": False,
+            "reason": "формализация не независима: выражение — готовое число, а не соотношение из условия",
+        }, ensure_ascii=False))
+        return
 
     try:
         result = evaluate(expression)
