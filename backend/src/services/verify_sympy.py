@@ -13,6 +13,7 @@
 
 import ast
 import json
+import re
 import sys
 
 import sympy
@@ -48,12 +49,12 @@ ALLOWED_CALLS = {
     "limit": sympy.limit,
 }
 
-# Константы, разрешённые как имена.
+# Константы, разрешённые как имена. Только pi: у него нет школьного конкурента.
+# I (сила тока), E (энергия), oo — убраны: преднасев затенял школьные переменные
+# (solve(Eq(I, 12/4), I) молча возвращал пусто — I был мнимой единицей).
+# Экспонента доступна через exp().
 ALLOWED_CONSTANTS = {
     "pi": sympy.pi,
-    "E": sympy.E,
-    "oo": sympy.oo,
-    "I": sympy.I,
 }
 
 # Разрешённые типы узлов AST. Всё, чего здесь нет, — отказ.
@@ -130,8 +131,11 @@ def build_namespace(tree):
                 namespace[name] = ALLOWED_CALLS[name]
             elif name in ALLOWED_CONSTANTS:
                 continue
-            elif len(name) <= 3 and name.isalnum():
-                # Одно-трёхбуквенное имя считаем переменной: x, y, x1, a, b.
+            elif re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", name):
+                # Имя из латиницы и цифр, не занятое константой или функцией, —
+                # переменная. Лимита длины нет НАМЕРЕННО: он резал школьные
+                # alpha/beta/gamma/theta/omega, и класс закрыт правилом, а не
+                # списком. Защита — белый список узлов AST и вызовов, не длина.
                 namespace[name] = sympy.Symbol(name)
             else:
                 raise Rejected(f"неизвестное имя: {name}")

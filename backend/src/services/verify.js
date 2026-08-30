@@ -27,7 +27,7 @@ const ALLOWED_NAMES = new Set([
   "solve", "solveset", "Eq", "sqrt", "cbrt", "root", "Abs", "exp", "log", "ln",
   "sin", "cos", "tan", "cot", "asin", "acos", "atan", "factorial", "binomial",
   "Rational", "simplify", "expand", "factor", "diff", "integrate", "limit",
-  "pi", "E", "oo", "I",
+  "pi", // E, oo, I убраны из констант (см. verify_sympy.py) — теперь это обычные переменные
 ]);
 
 /** Только математические символы: буквы, цифры, операторы, скобки, запятая, точка. */
@@ -66,7 +66,10 @@ export function isExpressionSafe(expression) {
   if (expression.includes("__")) return false;
 
   const names = expression.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
-  return names.every((name) => ALLOWED_NAMES.has(name) || (name.length <= 3 && /^[a-zA-Z][a-zA-Z0-9]*$/.test(name)));
+  // Лимита длины имени нет намеренно (парная правка с verify_sympy.py):
+  // он резал alpha/beta/gamma. Неизвестные ВЫЗОВЫ отвергает python-сторона
+  // по белому списку; здесь — только грубый фильтр символов.
+  return names.every((name) => ALLOWED_NAMES.has(name) || /^[a-zA-Z][a-zA-Z0-9]*$/.test(name));
 }
 
 /** Ответы, означающие пустое множество решений. */
