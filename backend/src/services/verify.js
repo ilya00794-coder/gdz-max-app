@@ -34,6 +34,11 @@ const COMPUTABLE_SUBJECTS = [
   "информатика",
 ];
 
+/** Проверяется ли предмет символьно (SymPy). Нужен инструментам замера. */
+export function isComputableSubject(subject) {
+  return COMPUTABLE_SUBJECTS.includes(String(subject || "").trim().toLowerCase().replace(/ё/g, "е"));
+}
+
 /**
  * Приводит строку к машинному виду: юникод-минусы, неразрывные пробелы, десятичная запятая.
  * Ответ приходит от LLM в человеческом формате, где «−» — это U+2212, а не дефис.
