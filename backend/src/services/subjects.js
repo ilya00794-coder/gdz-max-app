@@ -9,7 +9,7 @@
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { grades } = require("../data/curriculum/subjects.json");
+const { grades, computable } = require("../data/curriculum/subjects.json");
 
 /** Та же нормализация, что в curriculum.js: регистр, пробелы, ё→е. */
 function normalize(subject) {
@@ -53,4 +53,34 @@ export function isSubjectAllowedForGrade(grade, subject) {
     return [...MATH_COURSES].some((course) => normalizedList.has(course));
   }
   return false;
+}
+
+// Нормализованная карта вычислимости: ключи — как normalize() выше.
+const COMPUTABLE_BY_SUBJECT = new Map(
+  Object.entries(computable ?? {}).map(([name, flag]) => [normalize(name), Boolean(flag)])
+);
+
+/**
+ * Проверяется ли финальный ответ предмета символьно (SymPy).
+ * ЕДИНСТВЕННАЯ точка входа для прода (verify.js) и стенда — флаг живёт
+ * в subjects.json при данных учебного плана, не в коде.
+ * Предмет без записи в карте — ошибка конфигурации, а не «false»:
+ * молчаливое false уже прятало алгебру 10–11 от верификации.
+ * Полнота карты для всех предметов плана проверяется на старте сервера.
+ */
+export function isComputableSubject(subject) {
+  const flag = COMPUTABLE_BY_SUBJECT.get(normalize(subject));
+  if (flag === undefined) {
+    throw new Error(
+      `предмет «${subject}» отсутствует в карте computable (src/data/curriculum/subjects.json) — добавь запись true/false`
+    );
+  }
+  return flag;
+}
+
+/** Все предметы учебного плана (объединение по классам) — для стартовых проверок полноты. */
+export function allPlanSubjects() {
+  const seen = new Set();
+  for (const list of Object.values(grades)) for (const s of list) seen.add(s);
+  return [...seen];
 }

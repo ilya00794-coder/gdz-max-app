@@ -19,25 +19,11 @@ const SCRIPT_PATH = path.join(HERE, "verify_sympy.py");
 const PYTHON_BIN = process.env.PYTHON_BIN || "python3";
 const TIMEOUT_MS = Number(process.env.VERIFY_TIMEOUT_MS || 5000);
 
-/** Предметы, где ответ можно проверить символьно. Сверка — через ту же
- * нормализацию, что везде (регистр, ё→е). «Алгебра и начала математического
- * анализа» отсутствовала по недосмотру — вся алгебра 10–11 уходила в
- * «предмет не проверяется» (найдено картой покрытия 01.09.2026). */
-const COMPUTABLE_SUBJECTS = [
-  "математика",
-  "алгебра",
-  "алгебра и начала математического анализа",
-  "геометрия",
-  "физика",
-  "химия",
-  "вероятность и статистика",
-  "информатика",
-];
-
-/** Проверяется ли предмет символьно (SymPy). Нужен инструментам замера. */
-export function isComputableSubject(subject) {
-  return COMPUTABLE_SUBJECTS.includes(String(subject || "").trim().toLowerCase().replace(/ё/g, "е"));
-}
+// Вычислимость предмета живёт в subjects.json при данных учебного плана —
+// isComputableSubject из services/subjects.js единственная точка входа
+// для прода и стенда (реэкспортируется ниже ради verifyHelpers стенда).
+import { isComputableSubject } from "./subjects.js";
+export { isComputableSubject };
 
 /**
  * Приводит строку к машинному виду: юникод-минусы, неразрывные пробелы, десятичная запятая.
@@ -240,7 +226,7 @@ export async function verifyAnswer({ subject, expression, candidateAnswer, answe
   const normalizedSubject = String(subject || "").trim().toLowerCase().replace(/ё/g, "е");
   let invariantViolation = null; // уходит в details для телеметрии (п.8)
 
-  if (!COMPUTABLE_SUBJECTS.includes(normalizedSubject)) {
+  if (!isComputableSubject(normalizedSubject)) {
     return { verified: false, confidence: 0, method: "unsupported", details: { reason: "предмет не проверяется символьно" } };
   }
 
