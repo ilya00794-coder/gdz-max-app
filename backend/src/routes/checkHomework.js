@@ -58,7 +58,7 @@ router.post("/", async (req, res) => {
 
     if (!recognized.recognizedText || recognized.confidence < 0.4) {
       return res.status(422).json({
-        error: "Не удалось разобрать написанное в тетради — переснимите ближе и при лучшем свете",
+        error: "Не удалось разобрать написанное в тетради — пересними ближе и при лучшем свете",
         recognition: recognized,
       });
     }
