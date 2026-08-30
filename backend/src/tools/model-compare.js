@@ -182,8 +182,16 @@ export async function answersMatch(modelAnswer, knownSympy, helpers, answerValue
   // первична; парсинг человеческой строки finalAnswer — только fallback.
   // Причина: строка несёт бонусы для человека («3000 Н (3 кН)», «16 г CuO»),
   // и стенд шумел громче измеряемого — три ложных конфликта на 9 классе.
+  // Единица «%» — часть значения: {value: "25", unit: "%"} означает 0.25
+  // (строковый парсер это делал через процентный суффикс, машинный путь обязан тоже).
   const machineValues = Array.isArray(answerValues?.values)
-    ? answerValues.values.map((v) => cleanValue(decimalCommasToDots(String(v.value)))).filter(Boolean)
+    ? answerValues.values
+        .map((v) => {
+          const cleaned = cleanValue(decimalCommasToDots(String(v.value)));
+          if (!cleaned) return null;
+          return String(v.unit ?? "").includes("%") ? `(${cleaned})/100` : cleaned;
+        })
+        .filter(Boolean)
     : null;
   const gotRaw = machineValues?.length
     ? machineValues
