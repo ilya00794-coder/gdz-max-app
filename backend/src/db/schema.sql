@@ -153,8 +153,14 @@ CREATE TABLE IF NOT EXISTS verify_events (
   -- Ученик правил распознанный текст перед решением (второй solve по тексту).
   -- Сам текст НЕ хранится. По частоте правок решается судьба жадной схемы
   -- «решаем до подтверждения» (см. docs/backlog.md).
-  text_edited         boolean
+  text_edited         boolean,
+  -- Каким путём прошёл запрос: stream (NDJSON-поток) | post (обычный POST) |
+  -- fallback (фронт откатился с потока на POST). Без этого «поток сломался»
+  -- неотличим от «поток не включился». Кэш-хиты событий не пишут — слепое пятно.
+  transport           text
 );
+
+ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS transport text;
 
 -- Дозаливка колонки в уже существующие базы: CREATE IF NOT EXISTS выше её не добавит.
 ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS text_edited boolean;

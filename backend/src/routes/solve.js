@@ -18,7 +18,7 @@ const router = Router();
  * onStep(step, index) — шаги по мере генерации (только не-кэш, не-мульти путь);
  * onRecognized(recognizedText, recognition) — итог vision до начала решения.
  */
-async function runSolvePipeline({ body, source, startedAt, onStep, onRecognized }) {
+async function runSolvePipeline({ body, source, startedAt, transport, onStep, onRecognized }) {
   const { imagesBase64, text, subject, quarter, textEdited } = body;
   const grade = Number(body.grade);
 
@@ -141,6 +141,7 @@ async function runSolvePipeline({ body, source, startedAt, onStep, onRecognized 
     invariantViolation: verification.details?.invariantViolation ?? null,
     durationMs: Date.now() - startedAt,
     textEdited: imagesBase64?.length ? null : (textEdited === true ? true : null),
+    transport,
   }); // fire-and-forget: ответ ученика не ждёт телеметрию
 
   // Кладём в кэш только реально верифицированные решения — не мок-заглушки.
@@ -152,7 +153,7 @@ async function runSolvePipeline({ body, source, startedAt, onStep, onRecognized 
 }
 
 /** Общая обработка ошибок ядра: телеметрия + человеческий текст. */
-function errorResponse(err, { source, startedAt }) {
+function errorResponse(err, { source, startedAt, transport }) {
   console.error(err);
   if (err instanceof InputError) {
     return { code: 400, body: { error: describeApiError(err) } };
@@ -161,6 +162,7 @@ function errorResponse(err, { source, startedAt }) {
     route: "solve", source, durationMs: Date.now() - startedAt,
     errorKind: err instanceof ConfigError ? "config" : (err.stage ?? "start"),
     reason: String(err.message).slice(0, 200),
+    transport,
   });
   if (err instanceof ConfigError) {
     return { code: 503, body: { error: describeApiError(err) } };
@@ -175,11 +177,13 @@ function errorResponse(err, { source, startedAt }) {
 router.post("/", async (req, res) => {
   const startedAt = Date.now();
   const source = isLocalRequest(req) ? "local" : "remote";
+  // streamFallback выставляет фронт, когда откатывается с потока на POST.
+  const transport = req.body?.streamFallback === true ? "fallback" : "post";
   try {
-    const { code, body } = await runSolvePipeline({ body: req.body, source, startedAt });
+    const { code, body } = await runSolvePipeline({ body: req.body, source, startedAt, transport });
     res.status(code).json(body);
   } catch (err) {
-    const { code, body } = errorResponse(err, { source, startedAt });
+    const { code, body } = errorResponse(err, { source, startedAt, transport });
     res.status(code).json(body);
   }
 });
@@ -208,13 +212,13 @@ router.post("/stream", async (req, res) => {
 
   try {
     const { code, body } = await runSolvePipeline({
-      body: req.body, source, startedAt,
+      body: req.body, source, startedAt, transport: "stream",
       onRecognized: (recognizedText, recognition) => send({ type: "recognized", recognizedText, recognition }),
       onStep: (step, index) => send({ type: "step", index, step }),
     });
     send({ type: "final", code, body });
   } catch (err) {
-    const { code, body } = errorResponse(err, { source, startedAt });
+    const { code, body } = errorResponse(err, { source, startedAt, transport: "stream" });
     send({ type: "error", code, body });
   } finally {
     if (!closed) res.end();
