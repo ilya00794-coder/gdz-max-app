@@ -19,3 +19,19 @@ export function normalizeNotation(text) {
     .replace(/[${}]/g, "")
     .replace(/\s+/g, " ");
 }
+
+// ---- кириллица и границы слов ----
+//
+// JS-\w и \b НЕ считают кириллицу словесной: /разбит\w+/ не берёт
+// «разбитого», /\bили\b/ не находит « или ». Это дало ЧЕТЫРЕ ложных FAIL
+// канареек и один настоящий прод-баг (parseCandidateAnswer, «или»/«и»).
+// Класс закрыт: для слов используй эти помощники, а не \w и \b.
+
+export function wordRegex(stem, flags = "i") {
+  // «разбит» → берёт «разбит», «разбитого», «разбитым»; граница — не-буква.
+  return new RegExp(`(?:^|[^а-яёa-z0-9_])${stem}[а-яё]*`, flags);
+}
+
+export function hasWord(text, stem) {
+  return wordRegex(stem).test(String(text ?? ""));
+}
