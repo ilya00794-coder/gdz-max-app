@@ -590,6 +590,13 @@ async function runRecognition(mode, payload, allowPrompt = true) {
 
 function showResult(mode, result) {
   if (mode === "check") {
+    // На листе несколько задач — выбор, как в solve-пути; проверять будем фрагмент.
+    const checkTasks = result.multipleTasks ? result.recognition?.tasks : null;
+    if (Array.isArray(checkTasks) && checkTasks.length > 1) {
+      renderCheckTaskList(checkTasks);
+      showScreen("screen-tasks");
+      return;
+    }
     state.check = result;
     renderCheck(result);
     showScreen("screen-check");
@@ -678,7 +685,60 @@ function taskCardMarkup(task, index, order) {
     </li>`;
 }
 
+/** Экран выбора для ПРОВЕРКИ: карточка — условие (если ученик его переписал),
+ *  иначе фрагмент работы; задачи без финального ответа — приглушённые, но
+ *  кликабельные, с пометкой «без ответа» (описывает лист, а не ребёнка). */
+function renderCheckTaskList(tasks) {
+  document.querySelector("#screen-tasks .tasks-title").textContent = "Нашли несколько задач в тетради";
+  document.querySelector("#screen-tasks .tasks-lead").textContent = "Выбери, какую проверить.";
+  taskList.innerHTML = `<ol class="task-cards">${tasks
+    .map((task, i) => {
+      const source = (task.condition ?? "").trim() || task.work;
+      const snippet = source.length > 180 ? source.slice(0, 180) + "…" : source;
+      const label = task.number ? escapeHtml(task.number) : String(i + 1);
+      const badge = task.hasAnswer ? "" : `<span class="task-badge">без ответа</span>`;
+      return `
+      <li>
+        <button class="task-card${task.hasAnswer ? "" : " task-card--muted"}" data-check-index="${i}">
+          <span class="task-num">${label}</span>
+          <span class="task-text">${escapeHtml(snippet)}</span>
+          ${badge}
+        </button>
+      </li>`;
+    })
+    .join("")}</ol>`;
+  renderMath(taskList);
+  for (const btn of taskList.querySelectorAll("[data-check-index]")) {
+    btn.addEventListener("click", () => checkFragment(tasks[Number(btn.dataset.checkIndex)]));
+  }
+}
+
+/** Второй запрос: проверка фрагмента выбранной задачи. Vision не повторяется. */
+async function checkFragment(task) {
+  setButtonBusy(btnSolve, true, "Читаем твою работу…");
+  startCheckStages(btnSolve);
+  showScreen("screen-capture");
+  try {
+    const result = await postJson("/api/check-homework", {
+      workText: task.work,
+      condition: (task.condition ?? "").trim() || undefined,
+      grade: state.grade,
+      subject: state.subject,
+    }, CHECK_TIMEOUT_MS);
+    state.check = result;
+    renderCheck(result);
+    showScreen("screen-check");
+  } catch (err) {
+    showCaptureError(err.message);
+  } finally {
+    stopCheckStages();
+    setButtonBusy(btnSolve, false);
+  }
+}
+
 function renderTaskList(tasks) {
+  document.querySelector("#screen-tasks .tasks-title").textContent = "Нашли несколько задач";
+  document.querySelector("#screen-tasks .tasks-lead").textContent = "Выбери, какую решить.";
   // Варианты размечены — группируем: в контрольной номера 1–7 повторяются в каждом
   // варианте, и без разделителей список превращается в кашу.
   const grouped = tasks.some((t) => t.variant);
