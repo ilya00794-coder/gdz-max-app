@@ -115,6 +115,10 @@ def build_namespace(tree):
             raise Rejected(f"запрещённая конструкция: {type(node).__name__}")
 
         if isinstance(node, ast.Constant) and not isinstance(node.value, (int, float)):
+            # Внимание: bool — подкласс int, поэтому True/False проходят эту
+            # проверку (например, keyword-аргумент dict=True). Установлено
+            # живой пробой; вреда не выявлено — sympy трактует их как 1/0,
+            # а вызовы всё равно ограничены белым списком.
             raise Rejected("разрешены только числовые константы")
 
         if isinstance(node, ast.Call):

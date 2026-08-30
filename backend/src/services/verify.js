@@ -22,17 +22,6 @@ const TIMEOUT_MS = Number(process.env.VERIFY_TIMEOUT_MS || 5000);
 /** Предметы, где ответ можно проверить символьно. */
 const COMPUTABLE_SUBJECTS = ["математика", "алгебра", "геометрия", "физика", "химия"];
 
-/** Функции, разрешённые в formalExpression. Должны совпадать с белым списком в verify_sympy.py. */
-const ALLOWED_NAMES = new Set([
-  "solve", "solveset", "Eq", "sqrt", "cbrt", "root", "Abs", "exp", "log", "ln",
-  "sin", "cos", "tan", "cot", "asin", "acos", "atan", "factorial", "binomial",
-  "Rational", "simplify", "expand", "factor", "diff", "integrate", "limit",
-  "pi", // E, oo, I убраны из констант (см. verify_sympy.py) — теперь это обычные переменные
-]);
-
-/** Только математические символы: буквы, цифры, операторы, скобки, запятая, точка. */
-const SAFE_CHARS = /^[A-Za-z0-9_+\-*/(),.\s=]+$/;
-
 /**
  * Приводит строку к машинному виду: юникод-минусы, неразрывные пробелы, десятичная запятая.
  * Ответ приходит от LLM в человеческом формате, где «−» — это U+2212, а не дефис.
@@ -59,17 +48,27 @@ function repairEquals(expression) {
   return expression.replace(/(?<![=!<>])=(?!=)/g, "==");
 }
 
-/** Проверяет, что строка состоит только из разрешённых символов и известных имён. */
+/**
+ * НЕГАТИВНЫЙ предохранитель, а не описание допустимых выражений.
+ *
+ * Единственный судья допустимого — белый список AST-узлов и вызовов в
+ * verify_sympy.py, и он ВСЕГДА выполняется после этого фильтра (проверено
+ * по всем пяти местам вызова: formalExpression, candidates, инвариант any,
+ * misread, graph). Здесь режется только категорический мусор. Дублировать
+ * позитивные правила (операторы, имена, длину) тут НЕЛЬЗЯ: это трижды
+ * давало ложный unsupported — лимит длины имени, скобки систем, знак %.
+ */
+const FORBIDDEN_CHARS = /["'`;\\{}@#$?!:&|^~<>]/;
+const NON_ASCII = /[^\x20-\x7E\n\t]/;
+
 export function isExpressionSafe(expression) {
   if (!expression || expression.length > 2000) return false;
-  if (!SAFE_CHARS.test(expression)) return false;
   if (expression.includes("__")) return false;
-
-  const names = expression.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
-  // Лимита длины имени нет намеренно (парная правка с verify_sympy.py):
-  // он резал alpha/beta/gamma. Неизвестные ВЫЗОВЫ отвергает python-сторона
-  // по белому списку; здесь — только грубый фильтр символов.
-  return names.every((name) => ALLOWED_NAMES.has(name) || /^[a-zA-Z][a-zA-Z0-9]*$/.test(name));
+  // Формализации латинские; кириллица ученических ответов вырезается раньше
+  // (parseCandidateAnswer), сюда не доходит.
+  if (NON_ASCII.test(expression)) return false;
+  if (FORBIDDEN_CHARS.test(expression)) return false;
+  return true;
 }
 
 /** Ответы, означающие пустое множество решений. */
