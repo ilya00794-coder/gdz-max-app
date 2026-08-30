@@ -642,7 +642,7 @@ function startSolveStream(payload, { allowEarlyConfirm, allowPrompt }) {
       if (st.final) return;
       // ФОЛБЭК: любой сбой потока → обычный POST тем же payload.
       try {
-        const body = await postJson("/api/solve", payload, SOLVE_TIMEOUT_MS);
+        const body = await postJson("/api/solve", { ...payload, streamFallback: true }, SOLVE_TIMEOUT_MS);
         finish({ code: 200, body });
       } catch (postErr) {
         st.error = postErr;
