@@ -101,6 +101,11 @@ document.addEventListener("DOMContentLoaded", initMaxBridge);
 
 const GRADES = Array.from({ length: 11 }, (_, i) => i + 1);
 
+// Версия фронта: видима на экране настройки и в консоли — так с телефона
+// можно убедиться, что кэш не подсунул старый app.js.
+console.log("Домашка в МАХ, фронт " + (window.APP_VERSION ?? "dev"));
+document.getElementById("app-version").textContent = "версия " + (window.APP_VERSION ?? "dev");
+
 const state = {
   mode: "solve",
   check: null, // последний результат проверки домашней работы // solve — решить задачу из учебника, check — проверить свою работу
