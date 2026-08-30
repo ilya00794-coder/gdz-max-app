@@ -28,7 +28,9 @@ import { getClient } from "../services/anthropicClient.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(HERE, "../../eval-data/prompt-gaps");
-const MODELS = ["claude-opus-5", "claude-haiku-4-5"];
+// PG_MODELS=claude-opus-5 — прогон одной моделью (контрольный замер эффекта
+// правок промпта: модели не сравниваем, меряем сам промпт).
+const MODELS = (process.env.PG_MODELS || "claude-opus-5,claude-haiku-4-5").split(",");
 const JUDGE_MODEL = "claude-opus-5";
 const JUDGE_CONCURRENCY = 3;
 
@@ -64,6 +66,15 @@ const JudgeSchema = z.object({
     .describe(
       "Что в решении лишнее для этого класса: методы и термины старших классов, избыточная строгость, взрослые формулировки. Пусто, если ничего."
     ),
+  blockFit: z
+    .string()
+    .describe(
+      "Если в решении видны специальные предметные приёмы — буквенные обозначения и словесное " +
+        "описание конфигурации в геометрии, единицы и проверка размерности в физике, произношение " +
+        "слов в английском, опора на текст произведения, ограничение объёма ответа — оцени одним-двумя " +
+        "предложениями, помогают ли они на ЭТОМ уровне сложности или выглядят неуместно/мешают. " +
+        "Если таких приёмов не видно — пустая строка."
+    ),
   comment: z.string().describe("Итог одним-двумя предложениями."),
 });
 
@@ -80,6 +91,12 @@ const JUDGE_SYSTEM = `Ты — опытный методист начально�
 // Предметные акценты судьи (запрос пользователя, 7 класс): геометрия без
 // чертежа и единицы измерения в физике.
 const SUBJECT_FOCUS = {
+  "Окружающий мир":
+    "ОСОБОЕ ВНИМАНИЕ: если задание требует НАБЛЮДЕНИЯ, личного ответа или зависит от места " +
+    "(твой край, твоя семья, погода за окном) — проверь, не подменяет ли решение наблюдение " +
+    "ГОТОВЫМ ВЫДУМАННЫМ ответом (конкретный список птиц у кормушки, конкретная сегодняшняя погода). " +
+    "Честное решение объясняет, КАК выполнить наблюдение, и говорит, что ответ у каждого свой. " +
+    "Подмену наблюдения выдумкой фиксируй отдельно в missingForAge.",
   "Геометрия":
     "ОСОБОЕ ВНИМАНИЕ: ученик НЕ видит чертежа. Оцени, понятно ли решение БЕЗ него: " +
     "можно ли из одного текста однозначно понять, о каком угле, какой стороне, какой точке идёт речь. " +
@@ -160,8 +177,8 @@ async function main() {
     }
   }
   if (!byModel) {
-    const [opusResults, haikuResults] = await Promise.all(MODELS.map((m) => runWorker(m, tasksFile)));
-    byModel = { [MODELS[0]]: opusResults, [MODELS[1]]: haikuResults };
+    const workerResults = await Promise.all(MODELS.map((m) => runWorker(m, tasksFile)));
+    byModel = Object.fromEntries(MODELS.map((m, i) => [m, workerResults[i]]));
     fs.writeFileSync(checkpointFile, JSON.stringify(byModel));
     console.error(`Чекпойнт solver-фазы записан: ${checkpointFile}`);
   }

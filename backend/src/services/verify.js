@@ -74,6 +74,9 @@ const FORBIDDEN_CHARS = /["'`;\\{}@#$?!:&|^~<>]/;
 const NON_ASCII = /[^\x20-\x7E\n\t]/;
 
 export function isExpressionSafe(expression) {
+  // Не строка — не выражение. Гарантию «values всегда строки» даёт zod-схема,
+  // но её за проект меняли трижды — предохранитель не должен на неё опираться.
+  if (typeof expression !== "string") return false;
   if (!expression || expression.length > 2000) return false;
   if (expression.includes("__")) return false;
   // Формализации латинские; кириллица ученических ответов вырезается раньше
