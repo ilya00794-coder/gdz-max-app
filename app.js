@@ -564,8 +564,8 @@ btnSolve.addEventListener("click", async () => {
  */
 async function runRecognition(mode, payload, allowPrompt = true) {
   const check = mode === "check";
-  setButtonBusy(btnSolve, true, check ? "Читаем твою работу…" : "Распознаём…");
-  if (check) startCheckStages(btnSolve);
+  setButtonBusy(btnSolve, true, check ? "Читаем твою работу…" : "Читаем условие с фото…");
+  startStages(btnSolve, check ? CHECK_STAGES : SOLVE_STAGES);
   try {
     const result = check
       // Проверка последовательно поднимает три модели, отсюда увеличенный таймаут.
@@ -879,7 +879,8 @@ btnConfirm.addEventListener("click", async () => {
 
   // Пользователь поправил условие — решаем заново уже по тексту, без фото.
   hideConfirmError();
-  setButtonBusy(btnConfirm, true, "Решаем…");
+  setButtonBusy(btnConfirm, true, "Решаем задачу по шагам…");
+  startStages(btnConfirm, SOLVE_TEXT_STAGES);
   try {
     state.recognizedText = currentText;
     state.solution = await postJson(
@@ -893,6 +894,7 @@ btnConfirm.addEventListener("click", async () => {
     // Никакой подстановки готового решения: ученик должен узнать, что решения нет.
     showConfirmError(err.message);
   } finally {
+    stopStages();
     setButtonBusy(btnConfirm, false);
   }
 });
@@ -915,17 +917,33 @@ const CHECK_STAGES = [
   [55000, "Сверяем решение и ищем, что поправить…"],
 ];
 
-let checkStageTimers = [];
-function startCheckStages(btn) {
-  stopCheckStages();
-  for (const [delay, label] of CHECK_STAGES) {
-    checkStageTimers.push(setTimeout(() => { btn.textContent = label; }, delay));
+// Solve-путь: фото → vision ~10–15 с, дальше solver. Пороги ниже реальности
+// (правило то же: отставать можно, обгонять нельзя). Для перерешивания по
+// правленому тексту — без этапа «Читаем фото».
+const SOLVE_STAGES = [
+  [0, "Читаем условие с фото…"],
+  [15000, "Решаем задачу по шагам…"],
+  [40000, "Проверяем ответ вычислением…"],
+];
+const SOLVE_TEXT_STAGES = [
+  [0, "Решаем задачу по шагам…"],
+  [30000, "Проверяем ответ вычислением…"],
+];
+
+let stageTimers = [];
+function startStages(btn, stages) {
+  stopStages();
+  for (const [delay, label] of stages) {
+    stageTimers.push(setTimeout(() => { btn.textContent = label; }, delay));
   }
 }
-function stopCheckStages() {
-  for (const t of checkStageTimers) clearTimeout(t);
-  checkStageTimers = [];
+function stopStages() {
+  for (const t of stageTimers) clearTimeout(t);
+  stageTimers = [];
 }
+// Прежние имена — те же функции: механизм один, вторых таймеров нет.
+const startCheckStages = (btn) => startStages(btn, CHECK_STAGES);
+const stopCheckStages = stopStages;
 
 /**
  * Превращает любой сбой в фразу, понятную школьнику.
