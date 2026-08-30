@@ -173,6 +173,7 @@ async function getJson(path, timeoutMs) {
         // ngrok без этого заголовка отдаёт браузеру HTML-заглушку вместо API.
         "ngrok-skip-browser-warning": "true",
         ...(max.initData ? { "X-Max-Init-Data": max.initData } : {}),
+        ...(window.APP_VERSION ? { "X-App-Version": window.APP_VERSION } : {}),
       },
       signal: controller.signal,
     });
@@ -578,6 +579,7 @@ async function readNdjson(path, payload, timeoutMs, onEvent) {
         "Content-Type": "application/json",
         "ngrok-skip-browser-warning": "true",
         ...(max.initData ? { "X-Max-Init-Data": max.initData } : {}),
+        ...(window.APP_VERSION ? { "X-App-Version": window.APP_VERSION } : {}),
       },
       body: JSON.stringify(payload),
       signal: controller.signal,
@@ -1164,6 +1166,7 @@ async function postJson(path, payload, timeoutMs) {
         "ngrok-skip-browser-warning": "true",
         // Подписанная строка запуска: бэкенд проверяет её и понимает, кто пришёл.
         ...(max.initData ? { "X-Max-Init-Data": max.initData } : {}),
+        ...(window.APP_VERSION ? { "X-App-Version": window.APP_VERSION } : {}),
       },
       body: JSON.stringify(payload),
       signal: controller.signal,
