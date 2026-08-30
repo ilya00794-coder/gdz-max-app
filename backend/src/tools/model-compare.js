@@ -176,15 +176,27 @@ function cleanValue(value) {
  * (та же логика, что в verify.js), значения сопоставляются биекцией через
  * simplify(a−b)==0 — порядок и форма записи не важны.
  */
-export async function answersMatch(modelAnswer, knownSympy, helpers) {
+export async function answersMatch(modelAnswer, knownSympy, helpers, answerValues) {
   const { parseCandidateAnswer, runPython } = helpers;
-  const gotRaw = parseCandidateAnswer(decimalCommasToDots(modelAnswer));
+  // Машинная форма answerValues (то, чем пользуется продовый verifyAnswer) —
+  // первична; парсинг человеческой строки finalAnswer — только fallback.
+  // Причина: строка несёт бонусы для человека («3000 Н (3 кН)», «16 г CuO»),
+  // и стенд шумел громче измеряемого — три ложных конфликта на 9 классе.
+  const machineValues = Array.isArray(answerValues?.values)
+    ? answerValues.values.map((v) => cleanValue(decimalCommasToDots(String(v.value)))).filter(Boolean)
+    : null;
+  const gotRaw = machineValues?.length
+    ? machineValues
+    : parseCandidateAnswer(decimalCommasToDots(modelAnswer));
   const got = gotRaw === null ? null : gotRaw.map(cleanValue).filter(Boolean);
   const known = String(knownSympy).trim() === ""
     ? []
     : decimalCommasToDots(knownSympy).split(";").map((s) => cleanValue(s)).filter(Boolean);
   if (got === null) return { match: false, reason: "ответ модели не разобрался" };
-  if (got.length !== known.length) return { match: false, reason: `значений ${got.length}, ожидалось ${known.length}` };
+  // kind=any — формы одного числа: сравниваем один эталон с любой из форм,
+  // счёт значений не сверяем. Для остальных kind — прежняя сверка множеств.
+  const anyOfForms = answerValues?.kind === "any" && known.length === 1;
+  if (!anyOfForms && got.length !== known.length) return { match: false, reason: `значений ${got.length}, ожидалось ${known.length}` };
 
   const { isExpressionSafe } = helpers;
   const used = new Set();
@@ -202,7 +214,9 @@ export async function answersMatch(modelAnswer, knownSympy, helpers) {
       try { report = JSON.parse(run.stdout); } catch { continue; }
       if (report.ok && report.verified) { used.add(i); found = true; break; }
     }
-    if (!found) return { match: false, reason: `значение ${k} не найдено среди [${got.join(", ")}]` };
+    if (!found && !anyOfForms) return { match: false, reason: `значение ${k} не найдено среди [${got.join(", ")}]` };
+    if (found && anyOfForms) return { match: true };
+    if (!found && anyOfForms) return { match: false, reason: `значение ${k} не найдено среди форм [${got.join(", ")}]` };
   }
   return { match: true };
 }
@@ -299,7 +313,7 @@ async function main() {
       const r = byModel[model].find((x) => x.id === task.id);
       const verdict = r.error
         ? { match: false, reason: `ошибка: ${r.error}` }
-        : await answersMatch(r.finalAnswer, task.sympy, helpers);
+        : await answersMatch(r.finalAnswer, task.sympy, helpers, r.solution?.answerValues);
       row[model] = { ...r, ...verdict, costUsd: costUsd(r.usage, model) };
     }
     rows.push(row);

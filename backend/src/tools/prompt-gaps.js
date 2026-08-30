@@ -243,7 +243,7 @@ async function main() {
       if (job.task.sympy !== null && !job.r.error) {
         if (typeof verifyHelpers.isComputableSubject === "function" && !verifyHelpers.isComputableSubject(job.task.subject))
           console.error(`  ВНИМАНИЕ: у ${job.task.id} (${job.task.subject}) sympy не null — для невычислимого предмета это ошибка набора, правильность посчитает SymPy и завалит её`);
-        const m = await answersMatch(job.r.finalAnswer, job.task.sympy, verifyHelpers);
+        const m = await answersMatch(job.r.finalAnswer, job.task.sympy, verifyHelpers, job.r.solution?.answerValues);
         sympyCorrect = m.match;
       }
       done++;
