@@ -81,8 +81,24 @@ router.post("/", async (req, res) => {
       subject,
     });
 
+    // ВРЕМЕННАЯ ЗАГЛУШКА многозадачности. Правильный слой — vision:
+    // studentWork-схема должна размечать tasks[], как это уже делает task-режим
+    // (см. backlog «многозадачность в check-пути»). Регэксп ловит ТОЛЬКО
+    // ПОМЕЧЕННЫЕ списки («а) … б) …», «№8: …», «2) …»); непомеченный список
+    // ответов разных задач («4 2/5; 3 1/6; …», ma-09) от множества корней
+    // одной задачи неотличим и ОСТАЁТСЯ риском ложного FALSE. На 29
+    // однозадачных формах ложных срабатываний нет (проверено на заходе 3.2).
+    const MULTI_TASK_ANSWER = /(?:^|;)\s*(?:№\s*\d+|[абвгдежз]\)|\d+\))/i;
+
     // Объективная проверка финального ответа ученика — тем же SymPy, что и в /api/solve.
-    const answerCheck = comparison.studentFinalAnswer
+    const answerCheck = comparison.studentFinalAnswer && MULTI_TASK_ANSWER.test(comparison.studentFinalAnswer)
+      ? {
+          verified: false, confidence: 0, method: "unsupported",
+          // Причина честная по смыслу: дело в нескольких задачах на листе,
+          // а не в записи ученика.
+          details: { reason: "на листе несколько задач — сверка финального ответа по одной задаче не выполнялась" },
+        }
+      : comparison.studentFinalAnswer
       ? await verifyAnswer({
           subject,
           expression: referenceSolution.formalExpression,

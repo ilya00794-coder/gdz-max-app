@@ -87,7 +87,13 @@ const NO_ROOTS =
  * @returns {string[]|null} null — если разобрать не удалось
  */
 export function parseCandidateAnswer(candidateAnswer) {
-  const text = normalizeMathText(candidateAnswer).trim();
+  // «Ответ: 26» — слово убираем ДО вырезания кириллицы, иначе остаётся «: 26».
+  // \frac{a}{b} от vision → « a/b»: смешанные дроби приходят и как «8 17/51»
+  // (почерк), и как «8\frac{17}{51}» (LaTeX-настроение vision) — читаем обе.
+  const text = normalizeMathText(candidateAnswer)
+    .trim()
+    .replace(/^ответ\s*[:.]?\s*/i, "")
+    .replace(/\\frac\{(\d+)\}\{(\d+)\}/g, " $1/$2");
   if (!text) return null;
   if (NO_ROOTS.test(text)) return [];
 
@@ -104,7 +110,22 @@ export function parseCandidateAnswer(candidateAnswer) {
       const percent = afterEquals.match(/^\s*([+-]?\d+(?:\.\d+)?)\s*(?:%|процент[а-яё]*)\s*\.?\s*$/i);
       if (percent) return `${percent[1]}/100`;
       // Убираем кириллицу (единицы измерения, слова) и индексы вида ₁.
-      return afterEquals.replace(/[Ѐ-ӿ₀-₉]+/g, "").trim();
+      const cleaned = afterEquals
+        .replace(/[Ѐ-ӿ₀-₉]+/g, "")
+        .trim()
+        // Хвост единиц и оформления: «26.» и «26 руб.» → 26; «115°», «81 см²»
+        // (после вырезания «см») → 115 и 81. Точку срезаем только В КОНЦЕ,
+        // десятичные «26.5» не задеваются.
+        .replace(/[°²³\s.]+$/, "")
+        .trim();
+      // Смешанная дробь «8 1/6» → правильная «49/6»: считаем в JS точно,
+      // чтобы кандидат остался числовым литералом для строгой грамматики.
+      const mixed = cleaned.match(/^([+-]?)(\d+)\s+(\d+)\s*\/\s*(\d+)$/);
+      if (mixed && Number(mixed[4]) !== 0) {
+        const sign = mixed[1] === "-" ? "-" : "";
+        return `${sign}${BigInt(mixed[2]) * BigInt(mixed[4]) + BigInt(mixed[3])}/${mixed[4]}`;
+      }
+      return cleaned;
     })
     .filter(Boolean);
 
