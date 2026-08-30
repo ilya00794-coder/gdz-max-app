@@ -11,6 +11,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { getClient, InputError, SOLVER_MODEL, SOLVER_EFFORT } from "./anthropicClient.js";
 import { getAllowedMethods, getStudiedTopics, isSubjectSupported } from "./curriculum.js";
 import { subjectRules } from "../data/subject-rules.js";
+import { StepStreamParser } from "./streamSteps.js";
 
 const SolutionSchema = z.object({
   steps: z
@@ -397,10 +398,58 @@ export async function solveTask({ recognizedText, grade, subject, quarter = 4 })
   }
 
   const program = buildProgramBlock({ grade, subject, quarter });
-  const rules = subjectRules(subject);
-  const client = getClient();
+  const request = buildSolverRequest({ recognizedText, program, subject });
 
-  const response = await client.messages.parse({
+  const response = await getClient().messages.parse(request);
+
+  const parsed = response.parsed_output;
+  if (!parsed) {
+    throw new Error("Модель не вернула структурированное решение");
+  }
+
+  return finalizeParsed(parsed, program, quarter);
+}
+
+/**
+ * Потоковое решение: тот же запрос, что solveTask, но шаги отдаются через
+ * onStep(step, index) ПО МЕРЕ генерации (инкрементальный разбор — streamSteps.js).
+ * Возвращает тот же полный результат, что solveTask: финальный JSON целиком
+ * валидируется той же zod-схемой — стрим не ослабляет контракт.
+ */
+export async function solveTaskStream({ recognizedText, grade, subject, quarter = 4 }, onStep) {
+  if (!recognizedText || !String(recognizedText).trim()) {
+    throw new InputError("Пустое условие задачи — решать нечего");
+  }
+  if (!Number.isInteger(grade) || grade < 1 || grade > 11) {
+    throw new InputError(`Класс должен быть числом от 1 до 11, получено: ${grade}`);
+  }
+  if (!Number.isInteger(quarter) || quarter < 1 || quarter > 4) {
+    throw new InputError(`Четверть должна быть числом от 1 до 4, получено: ${quarter}`);
+  }
+  const program = buildProgramBlock({ grade, subject, quarter });
+  const request = buildSolverRequest({ recognizedText, program, subject });
+
+  const parser = new StepStreamParser();
+  let emitted = 0;
+  const stream = getClient().messages.stream(request);
+  stream.on("streamEvent", (e) => {
+    if (e.type === "content_block_delta" && e.delta?.type === "text_delta") {
+      for (const step of parser.feed(e.delta.text)) {
+        try { onStep?.(step, emitted++); } catch { /* слушатель не должен ронять решение */ }
+      }
+    }
+  });
+  const message = await stream.finalMessage();
+  const jsonText = message.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+  // Та же схема, что в parse-пути: невалидный финал — ошибка, а не тихая деградация.
+  const parsed = SolutionSchema.parse(JSON.parse(jsonText));
+  return finalizeParsed(parsed, program, quarter);
+}
+
+/** Один и тот же запрос для parse- и stream-путей — расходиться им нельзя. */
+function buildSolverRequest({ recognizedText, program, subject }) {
+  const rules = subjectRules(subject);
+  return {
     model: SOLVER_MODEL,
     max_tokens: 16000,
     thinking: { type: "adaptive" },
@@ -423,13 +472,10 @@ export async function solveTask({ recognizedText, grade, subject, quarter = 4 })
         content: `Условие задачи:\n\n${recognizedText}\n\nРеши её, соблюдая ограничения программы класса.`,
       },
     ],
-  });
+  };
+}
 
-  const parsed = response.parsed_output;
-  if (!parsed) {
-    throw new Error("Модель не вернула структурированное решение");
-  }
-
+function finalizeParsed(parsed, program, quarter) {
   return {
     steps: parsed.steps,
     finalAnswer: parsed.finalAnswer.trim(),
