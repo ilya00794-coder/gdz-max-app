@@ -74,6 +74,20 @@ async function workerMain(model, tasksFile) {
   };
 
   const tasks = JSON.parse(fs.readFileSync(tasksFile, "utf8"));
+
+  // Инкрементальный чекпойнт: каждое решение дозаписывается в progress-файл
+  // СРАЗУ, а при рестарте уже решённые задачи не перерешиваются. Урок двух
+  // потерь оплаченной работы: RESULT_JSON в конце и полный чекпойнт родителя
+  // не спасают, если процесс убит между последним решением и финальной
+  // записью. Файл удаляется после успешного завершения воркера.
+  const progressFile = tasksFile + "." + model + ".progress.jsonl";
+  const alreadyDone = new Map();
+  if (fs.existsSync(progressFile)) {
+    for (const line of fs.readFileSync(progressFile, "utf8").split("\n").filter(Boolean)) {
+      try { const r = JSON.parse(line); if (!r.error) alreadyDone.set(r.id, r); } catch {}
+    }
+    if (alreadyDone.size) console.error(`[${model}] резюм: ${alreadyDone.size} задач из progress-файла, решаем ${tasks.length - alreadyDone.size}`);
+  }
   // Пул из WORKER_CONCURRENCY задач: последовательный прогон 110 задач занял бы
   // ~30 минут на модель. Побочный эффект: первые задачи одной пары (класс,
   // предмет) могут параллельно писать один и тот же промпт-кэш — чуть дороже.
@@ -82,6 +96,8 @@ async function workerMain(model, tasksFile) {
   let next = 0;
   async function runOne(i) {
     const task = tasks[i];
+    const cached = alreadyDone.get(task.id);
+    if (cached) { results[i] = cached; return; }
     const t0 = Date.now();
     let entry = { id: task.id };
     let usageCapture = null;
@@ -101,6 +117,7 @@ async function workerMain(model, tasksFile) {
     entry.ms = Date.now() - t0;
     entry.usage = usageCapture;
     results[i] = entry;
+    fs.appendFileSync(progressFile, JSON.stringify(entry) + "\n"); // дозапись сразу
     console.error(`[${model}] ${task.id}: ${entry.error ? "ОШИБКА " + entry.error : entry.finalAnswer} (${(entry.ms / 1000).toFixed(1)} с)`);
   }
   async function pump() {
@@ -108,6 +125,7 @@ async function workerMain(model, tasksFile) {
   }
   await Promise.all(Array.from({ length: WORKER_CONCURRENCY }, pump));
   process.stdout.write("RESULT_JSON:" + JSON.stringify(results) + "\n");
+  fs.rmSync(progressFile, { force: true }); // успешное завершение — прогресс больше не нужен
 }
 
 // ---------- сверка ответов через SymPy ----------
@@ -239,6 +257,20 @@ async function main() {
     process.exit(1);
   }
   const tasks = JSON.parse(fs.readFileSync(tasksFile, "utf8"));
+
+  // Инкрементальный чекпойнт: каждое решение дозаписывается в progress-файл
+  // СРАЗУ, а при рестарте уже решённые задачи не перерешиваются. Урок двух
+  // потерь оплаченной работы: RESULT_JSON в конце и полный чекпойнт родителя
+  // не спасают, если процесс убит между последним решением и финальной
+  // записью. Файл удаляется после успешного завершения воркера.
+  const progressFile = tasksFile + "." + model + ".progress.jsonl";
+  const alreadyDone = new Map();
+  if (fs.existsSync(progressFile)) {
+    for (const line of fs.readFileSync(progressFile, "utf8").split("\n").filter(Boolean)) {
+      try { const r = JSON.parse(line); if (!r.error) alreadyDone.set(r.id, r); } catch {}
+    }
+    if (alreadyDone.size) console.error(`[${model}] резюм: ${alreadyDone.size} задач из progress-файла, решаем ${tasks.length - alreadyDone.size}`);
+  }
   validateTasks(tasks, tasksFile);
   console.error(`Задач: ${tasks.length}; модели: ${MODELS.join(", ")} — воркеры стартуют параллельно.\n`);
 
