@@ -1084,7 +1084,13 @@ function tableMarkup(lines) {
   return `<div class="step-table-wrap"><table class="step-table"><thead>${tr(head, "th")}</thead><tbody>${body.map((r) => tr(r, "td")).join("")}</tbody></table></div>`;
 }
 
-/** Текст шага → HTML: обычные строки экранируются, |-таблицы становятся <table>. */
+/** **жирный** → <strong> на УЖЕ экранированной строке (модель пишет так в ~2% решений). */
+function inlineMarkup(escapedLine) {
+  return escapedLine.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+}
+
+/** Текст шага → HTML: строки экранируются, |-таблицы → <table>, ```-блоки → <pre>
+ *  (запись столбиком/уголком — моноширинно, выравнивание разрядов сохраняется). */
 function stepContentMarkup(content) {
   const lines = String(content ?? "").split("\n");
   const out = [];
@@ -1092,12 +1098,19 @@ function stepContentMarkup(content) {
   while (i < lines.length) {
     const isTableLine = (n) => /^\s*\|.*\|\s*$/.test(lines[n] ?? "");
     const isSeparator = (n) => /^\s*\|[\s:|-]+\|\s*$/.test(lines[n] ?? "");
-    if (isTableLine(i) && isSeparator(i + 1) && isTableLine(i + 1)) {
+    const isFence = (n) => /^\s*```/.test(lines[n] ?? "");
+    if (isFence(i)) {
+      const block = [];
+      i++; // открывающее ```
+      while (i < lines.length && !isFence(i)) block.push(lines[i++]);
+      i++; // закрывающее ``` (или конец текста)
+      out.push(`<span class="step-pre">${escapeHtml(block.join("\n"))}</span>`);
+    } else if (isTableLine(i) && isSeparator(i + 1) && isTableLine(i + 1)) {
       const block = [];
       while (i < lines.length && isTableLine(i)) block.push(lines[i++]);
       out.push(tableMarkup(block));
     } else {
-      out.push(escapeHtml(lines[i++]));
+      out.push(inlineMarkup(escapeHtml(lines[i++])));
     }
   }
   return out.join("\n");
