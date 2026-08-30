@@ -23,7 +23,7 @@ router.post("/", async (req, res) => {
   const source = isLocalRequest(req) ? "local" : "remote";
   let stage = "start"; // для error_kind телеметрии: на каком этапе упали
   try {
-    const { imagesBase64, text, subject, quarter } = req.body;
+    const { imagesBase64, text, subject, quarter , textEdited } = req.body;
     const grade = Number(req.body.grade);
 
     if (!grade || !subject || (!imagesBase64?.length && !text)) {
@@ -132,6 +132,7 @@ router.post("/", async (req, res) => {
       answerKind: solution.answerValues?.kind ?? null,
       invariantViolation: verification.details?.invariantViolation ?? null,
       durationMs: Date.now() - startedAt,
+      textEdited: imagesBase64?.length ? null : (textEdited === true ? true : null),
     }); // fire-and-forget: ответ ученика не ждёт телеметрию
 
     // Кладём в кэш только реально верифицированные решения — не мок-заглушки.

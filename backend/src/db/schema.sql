@@ -149,8 +149,15 @@ CREATE TABLE IF NOT EXISTS verify_events (
   invariant_violation text,       -- нарушение инварианта any (п.8 телеметрии)
   parse_failure_kind  text,       -- not_literal | unparsed | multi_task | no_answer
   duration_ms         integer,
-  error_kind          text        -- vision | solver | compare | verify | config; null при успехе
+  error_kind          text,       -- vision | solver | compare | verify | config; null при успехе
+  -- Ученик правил распознанный текст перед решением (второй solve по тексту).
+  -- Сам текст НЕ хранится. По частоте правок решается судьба жадной схемы
+  -- «решаем до подтверждения» (см. docs/backlog.md).
+  text_edited         boolean
 );
+
+-- Дозаливка колонки в уже существующие базы: CREATE IF NOT EXISTS выше её не добавит.
+ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS text_edited boolean;
 
 CREATE INDEX IF NOT EXISTS verify_events_route_source_idx
   ON verify_events (route, source, created_at DESC);
