@@ -47,7 +47,13 @@ function runWorker(model, tasksFile) {
     child.on("close", (code) => {
       const line = out.split("\n").find((l) => l.startsWith("RESULT_JSON:"));
       if (code !== 0 || !line) return reject(new Error(`воркер ${model} завершился с кодом ${code}`));
-      resolve(JSON.parse(line.slice("RESULT_JSON:".length)));
+      // JSON.parse в try: обрезанный RESULT_JSON уже ронял родителя uncaught-исключением.
+      // reject даёт чистую ошибку, а оплаченная работа остаётся в progress-файле воркера.
+      try {
+        resolve(JSON.parse(line.slice("RESULT_JSON:".length)));
+      } catch (e) {
+        reject(new Error(`воркер ${model}: RESULT_JSON не разобран (${e.message})`));
+      }
     });
   });
 }
@@ -189,6 +195,7 @@ async function main() {
     byModel = Object.fromEntries(MODELS.map((m, i) => [m, workerResults[i]]));
     fs.writeFileSync(checkpointFile, JSON.stringify(byModel));
     console.error(`Чекпойнт solver-фазы записан: ${checkpointFile}`);
+    for (const m of MODELS) fs.rmSync(`${tasksFile}.${m}.progress.jsonl`, { force: true });
   }
 
   // Судейство: пары (задача, модель) — вперемешку, судья слеп к автору.

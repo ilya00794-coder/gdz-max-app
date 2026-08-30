@@ -124,8 +124,15 @@ async function workerMain(model, tasksFile) {
     while (next < tasks.length) await runOne(next++);
   }
   await Promise.all(Array.from({ length: WORKER_CONCURRENCY }, pump));
-  process.stdout.write("RESULT_JSON:" + JSON.stringify(results) + "\n");
-  fs.rmSync(progressFile, { force: true }); // успешное завершение — прогресс больше не нужен
+  // Прогресс НЕ удаляем здесь: если родитель умрёт, не дочитав RESULT_JSON,
+  // progress-файл — единственная копия оплаченной работы (так уже потерялись
+  // 35 решений). Удаляет РОДИТЕЛЬ после записи своего чекпойнта.
+  // process.exit — гарантированный выход: висящие keep-alive хендлы SDK
+  // дважды не давали процессу закрыться, и родитель ждал close вечно.
+  // НО выходить можно только из колбэка write: запись в pipe асинхронна,
+  // и exit сразу после write обрезал RESULT_JSON на полуслове (44 КБ из ~60) —
+  // родитель падал на JSON.parse. Колбэк гарантирует, что буфер ушёл в pipe.
+  process.stdout.write("RESULT_JSON:" + JSON.stringify(results) + "\n", () => process.exit(0));
 }
 
 // ---------- сверка ответов через SymPy ----------
@@ -213,7 +220,13 @@ function runWorker(model, tasksFile) {
     child.on("close", (code) => {
       const line = out.split("\n").find((l) => l.startsWith("RESULT_JSON:"));
       if (code !== 0 || !line) return reject(new Error(`воркер ${model} завершился с кодом ${code}`));
-      resolve(JSON.parse(line.slice("RESULT_JSON:".length)));
+      // JSON.parse в try: обрезанный RESULT_JSON уже ронял родителя uncaught-исключением.
+      // reject даёт чистую ошибку, а оплаченная работа остаётся в progress-файле воркера.
+      try {
+        resolve(JSON.parse(line.slice("RESULT_JSON:".length)));
+      } catch (e) {
+        reject(new Error(`воркер ${model}: RESULT_JSON не разобран (${e.message})`));
+      }
     });
   });
 }
