@@ -128,6 +128,9 @@ html, body {
 .step-table th, .step-table td { border: 1px solid var(--l-border, #DDDCD4); padding: 5px 9px; text-align: left; vertical-align: top; }
 .step-table th { background: var(--l-bg-soft, #F4F3EC); font-weight: 600; }
 
+/* Плашка-резерв на месте будущего блока ответа при стриминге шагов. */
+.answer-pending { margin: 22px 0 4px; padding: 14px; border-radius: 12px; background: var(--l-bg-soft, #F4F3EC); color: var(--l-muted, #888780); font-size: 14px; }
+
 /* --- блок ответа --- */
 .answer-block {
   margin: 22px 0 4px;

@@ -360,6 +360,7 @@ document.getElementById("btn-remove-photo").addEventListener("click", resetPhoto
  * навигации назад внутри одной задачи ничего не сбрасывается.
  */
 function startNewTask() {
+  solveStream = null;
   resetPhoto();
   state.recognizedText = "";
   state.solution = null;
@@ -554,6 +555,151 @@ btnSolve.addEventListener("click", async () => {
   await runRecognition(state.mode, payload);
 });
 
+// ---------- потоковый solve: шаги приходят по мере генерации ----------
+// Поток НЕ обязателен: при любой ошибке (сеть, прокси, кривая строка) слой
+// сам откатывается на обычный postJson — ученик видит то же самое, только
+// без досрочных шагов. Этапные надписи остаются фолбэком и работают до
+// первого события. Контракт финального события = ответ /api/solve.
+
+let solveStream = null; // активный поток; сверяем ссылку, чтобы старый не рисовал
+
+async function readNdjson(path, payload, timeoutMs, onEvent) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${BACKEND_URL}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true",
+        ...(max.initData ? { "X-Max-Init-Data": max.initData } : {}),
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!res.ok || !res.body) throw new Error("поток недоступен: " + res.status);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) !== -1) {
+        const line = buf.slice(0, nl);
+        buf = buf.slice(nl + 1);
+        if (line.trim()) onEvent(JSON.parse(line));
+      }
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Запускает потоковое решение. Возвращает объект потока:
+ *   steps — уже пришедшие шаги; final — {code, body} финала (или null);
+ *   error — ошибка, когда И поток, И фолбэк-POST не удались;
+ *   earlyShown — экран подтверждения уже показан этим слоем;
+ *   onStep/onDone — подписки живого рендера; promise — завершение всего.
+ */
+function startSolveStream(payload, { allowEarlyConfirm, allowPrompt }) {
+  const st = { steps: [], final: null, error: null, earlyShown: false, onStep: null, onDone: null };
+  solveStream = st;
+  const finish = (fin) => {
+    if (st.final) return;
+    st.final = fin;
+    if (solveStream === st) st.onDone?.(fin);
+  };
+  st.promise = readNdjson("/api/solve/stream", payload, SOLVE_TIMEOUT_MS, (e) => {
+    if (solveStream !== st) return; // ученик уже начал другую задачу
+    if (e.type === "recognized" && allowEarlyConfirm && e.recognizedText) {
+      const suggested = allowPrompt ? suggestedMode("solve", e.recognition?.contentType) : null;
+      if (!suggested) {
+        // Подтверждение — сразу после vision: решение дописывается фоном,
+        // и «Верно, решай» покажет шаги, не дожидаясь конца генерации.
+        state.solution = null;
+        state.recognizedText = e.recognizedText;
+        recognizedTextEl.value = e.recognizedText;
+        setRecognizedEditing(false);
+        stopStages();
+        setButtonBusy(btnSolve, false);
+        showScreen("screen-confirm");
+        st.earlyShown = true;
+      }
+    } else if (e.type === "step") {
+      st.steps.push(e.step);
+      st.onStep?.(e.step, e.index);
+    } else if (e.type === "final" || e.type === "error") {
+      finish({ code: e.code, body: e.body });
+    }
+  })
+    .then(() => {
+      if (!st.final) throw new Error("поток оборвался без финала");
+    })
+    .catch(async () => {
+      if (st.final) return;
+      // ФОЛБЭК: любой сбой потока → обычный POST тем же payload.
+      try {
+        const body = await postJson("/api/solve", payload, SOLVE_TIMEOUT_MS);
+        finish({ code: 200, body });
+      } catch (postErr) {
+        st.error = postErr;
+        if (solveStream === st) st.onDone?.(null);
+        throw postErr;
+      }
+    });
+  return st;
+}
+
+/** Живой рендер экрана решения: буфер шагов + дорисовка + финал одним блоком. */
+function renderSolutionStreaming(st) {
+  solutionTask.textContent = state.recognizedText || "";
+  stepsList.innerHTML = stepsMarkup(st.steps);
+  renderMath(stepsList);
+  renderGraphCard(null);
+  renderVisualCard(null);
+  renderSchemaCard(null);
+  // Резерв под ответ и бейдж: плашка стоит на месте будущего блока ответа,
+  // финал заменяет её целиком — прочитанные шаги выше не сдвигаются.
+  answerBlock.innerHTML = `<p class="answer-pending">Дорешиваем и проверяем ответ вычислением…</p>`;
+  resetFeedback(solutionScreen);
+  solutionScreen.querySelector(".sheet-scroll").scrollTop = 0;
+  st.onStep = (step) => {
+    stepsList.insertAdjacentHTML("beforeend", stepMarkup(step, stepsList.children.length));
+    renderMath(stepsList.lastElementChild);
+  };
+  st.onDone = (fin) => {
+    st.onStep = null;
+    st.onDone = null;
+    if (fin && fin.code === 200 && !fin.body.multipleTasks) {
+      state.solution = fin.body;
+      completeStreamedSolution(fin.body);
+    } else {
+      const msg = fin
+        ? humanizeError(fin.code, { serverMessage: fin.body?.error })
+        : (st.error?.message ?? "Что-то пошло не так на нашей стороне. Попробуй позже.");
+      answerBlock.innerHTML = `<p class="answer-pending">${escapeHtml(msg)}</p>`;
+    }
+  };
+  if (st.final || st.error) st.onDone(st.final); // финал успел раньше подписки
+}
+
+/** Финал стрима: шаги не перерисовываем (прочитанное не дёргается), доезжает остальное. */
+function completeStreamedSolution(result) {
+  if (stepsList.children.length !== (result.steps?.length ?? 0)) {
+    // Разошлись (например, финал пришёл фолбэк-POST'ом без стрим-шагов) — дорисовываем целиком.
+    stepsList.innerHTML = stepsMarkup(result.steps);
+    renderMath(stepsList);
+  }
+  renderGraphCard(result.graph);
+  renderVisualCard(result.visual);
+  renderSchemaCard(result.schemaId);
+  answerBlock.innerHTML = answerMarkup(result);
+  renderMath(answerBlock);
+}
+
 /**
  * Отправляет снимок в выбранном режиме и решает, что показать.
  *
@@ -567,10 +713,22 @@ async function runRecognition(mode, payload, allowPrompt = true) {
   setButtonBusy(btnSolve, true, check ? "Читаем твою работу…" : "Читаем условие с фото…");
   startStages(btnSolve, check ? CHECK_STAGES : SOLVE_STAGES);
   try {
-    const result = check
+    let result;
+    if (check) {
       // Проверка последовательно поднимает три модели, отсюда увеличенный таймаут.
-      ? await postJson("/api/check-homework", payload, CHECK_TIMEOUT_MS)
-      : await postJson("/api/solve", payload, SOLVE_TIMEOUT_MS);
+      // Стриминг check не ускоряет: до третьего вызова стримить нечего.
+      result = await postJson("/api/check-homework", payload, CHECK_TIMEOUT_MS);
+    } else {
+      const st = startSolveStream(payload, { allowEarlyConfirm: Boolean(payload.imagesBase64?.length), allowPrompt });
+      await st.promise; // фолбэк на POST уже внутри; сюда долетают только двойные сбои
+      if (st.earlyShown) return; // экран подтверждения показан, поток дописывается фоном
+      if (st.final.code !== 200) {
+        const err = new Error(humanizeError(st.final.code, { serverMessage: st.final.body?.error }));
+        err.status = st.final.code;
+        throw err;
+      }
+      result = st.final.body;
+    }
 
     const suggested = allowPrompt ? suggestedMode(mode, result.recognition?.contentType) : null;
     if (suggested) {
@@ -865,40 +1023,48 @@ updateConfirmCta();
 
 btnConfirm.addEventListener("click", async () => {
   const currentText = recognizedTextEl.value;
-  const recognized = state.solution?.recognizedText ?? null;
-  const textUnchanged = recognized !== null && currentText.trim() === recognized.trim();
+  const st = solveStream;
+  const recognized = state.solution?.recognizedText ?? (st && !st.error ? state.recognizedText : null);
+  const textUnchanged = recognized !== null && currentText.trim() === String(recognized).trim();
 
-  // Текст не правили — решение уже пришло вместе с распознаванием, второй запрос не нужен.
+  // Текст не правили — решение либо уже пришло целиком, либо дописывается потоком.
   if (textUnchanged) {
     hideConfirmError();
     state.recognizedText = currentText;
-    renderSolution(state.solution);
-    showScreen("screen-solution");
+    if (state.solution) {
+      renderSolution(state.solution);
+      showScreen("screen-solution");
+      return;
+    }
+    if (st) {
+      if (st.final && st.final.code === 200 && !st.final.body.multipleTasks) {
+        state.solution = st.final.body;
+        renderSolution(state.solution);
+        showScreen("screen-solution");
+        return;
+      }
+      // Поток ещё идёт (или кончился ошибкой — её покажет живой рендер).
+      renderSolutionStreaming(st);
+      showScreen("screen-solution");
+      return;
+    }
     return;
   }
 
-  // Пользователь поправил условие — решаем заново уже по тексту, без фото.
+  // Пользователь поправил условие — решаем заново по тексту, потоком прямо
+  // на экране решения: шаги дописываются на глазах, фолбэк-POST внутри слоя.
   hideConfirmError();
-  setButtonBusy(btnConfirm, true, "Решаем задачу по шагам…");
-  startStages(btnConfirm, SOLVE_TEXT_STAGES);
-  try {
-    state.recognizedText = currentText;
-    state.solution = await postJson(
-      "/api/solve",
-      // textEdited — телеметрии: ученик правил распознанный текст (сам текст
-      // и так уходит; флаг отмечает «второй платёж» для решения о жадной схеме).
-      { text: currentText, grade: state.grade, subject: state.subject, textEdited: true },
-      SOLVE_TIMEOUT_MS
-    );
-    renderSolution(state.solution);
-    showScreen("screen-solution");
-  } catch (err) {
-    // Никакой подстановки готового решения: ученик должен узнать, что решения нет.
-    showConfirmError(err.message);
-  } finally {
-    stopStages();
-    setButtonBusy(btnConfirm, false);
-  }
+  state.recognizedText = currentText;
+  state.solution = null;
+  const st2 = startSolveStream(
+    // textEdited — телеметрии: ученик правил распознанный текст (сам текст
+    // и так уходит; флаг отмечает «второй платёж» для решения о жадной схеме).
+    { text: currentText, grade: state.grade, subject: state.subject, textEdited: true },
+    { allowEarlyConfirm: false, allowPrompt: false }
+  );
+  renderSolutionStreaming(st2);
+  showScreen("screen-solution");
+  st2.promise.catch(() => {}); // двойной сбой уже показан плашкой живого рендера
 });
 
 // ---------- вызов backend ----------
@@ -1139,20 +1305,21 @@ function stepContentMarkup(content) {
   return out.join("\n");
 }
 
-/** Разметка списка шагов — одна на экран решения и на эталон внутри проверки. */
-function stepsMarkup(steps) {
-  return steps
-    .map(
-      (step, i) => `
+/** Разметка одного шага — из неё собирается список и дорисовка при стриминге. */
+function stepMarkup(step, i) {
+  return `
       <li class="step">
         <span class="step-num">${i + 1}</span>
         <div class="step-body">
           <h2 class="step-title">${escapeHtml(step.title)}</h2>
           <p class="step-text">${stepContentMarkup(step.content)}</p>
         </div>
-      </li>`
-    )
-    .join("");
+      </li>`;
+}
+
+/** Разметка списка шагов — одна на экран решения и на эталон внутри проверки. */
+function stepsMarkup(steps) {
+  return steps.map(stepMarkup).join("");
 }
 
 // ---------- график функции: свой SVG, без библиотек ----------
