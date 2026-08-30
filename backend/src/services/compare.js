@@ -189,6 +189,29 @@ ${referenceText}
  * @param {{verified: boolean, method: string}} answerCheck
  * @returns {null|{reason: string, stepByStepIsCorrect: boolean, symbolicVerified: boolean}}
  */
+/**
+ * Что показывать ученику при расхождении вердиктов (решение от 31.08.2026):
+ * - sympy false + LLM «верно» — при ~34% verified на точных науках это почти
+ *   всегда дефект нашего парсера ответов, НЕ противоречие: гасим В ЛОГ,
+ *   на экран не выносим, LLM-вердикт показывается один.
+ * - sympy true + LLM «есть ошибка» — не конфликт, а нормальный случай «ответ
+ *   сошёлся, но в ходе решения ошибка» — ровно то, что приложение должно
+ *   ловить. Ученику — поддерживающая заметка, не пугающая плашка.
+ * Шаблон «проверки разошлись / доверять нельзя» остаётся только в логе.
+ *
+ * @returns {string|null} текст заметки для ученика, либо null
+ */
+export function answerNoteFor(comparison, answerCheck) {
+  if (answerCheck?.method !== "sympy") return null;
+  if (answerCheck.verified === true && comparison.isCorrect === false) {
+    return (
+      "Итог верный — сверка вычислением это подтверждает. " +
+      "Но в самом решении есть ошибка: ответ получился правильный не благодаря ей, а вопреки."
+    );
+  }
+  return null;
+}
+
 export function crossCheckVerdicts(comparison, answerCheck) {
   if (answerCheck?.method !== "sympy") return null;
   if (answerCheck.verified === comparison.isCorrect) return null;

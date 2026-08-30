@@ -1310,18 +1310,13 @@ function renderCheck(result) {
       ${sub.length ? `<p class="verdict-sub">${sub.join(" · ")}</p>` : ""}
     </div>`;
 
-  // Расхождение вердиктов не замалчиваем: показываем оба, не выбирая победителя.
-  if (result.verdictConflict) {
+  // «Ответ верный, но в решении ошибка» — поддерживающая заметка от бэкенда.
+  // Прежняя плашка «проверки разошлись / доверять нельзя» с экрана убрана:
+  // расхождения вердиктов бэкенд полностью пишет в свой лог.
+  if (result.answerNote) {
     checkConflict.innerHTML = `
-      <div class="check-note" data-kind="conflict">
-        <div>
-          <strong>Наши проверки разошлись</strong>
-          <ul>
-            <li>Разбор по шагам: ${result.verdictConflict.stepByStepIsCorrect ? "верно" : "есть ошибка"}</li>
-            <li>Сверка ответа вычислением: ${result.verdictConflict.symbolicVerified ? "верно" : "не совпадает"}</li>
-          </ul>
-          Пока расхождение не разобрано, доверять вердикту нельзя — лучше проверить работу с учителем.
-        </div>
+      <div class="check-note" data-kind="answer-note">
+        <div>${escapeHtml(result.answerNote)}</div>
       </div>`;
   } else {
     checkConflict.innerHTML = "";

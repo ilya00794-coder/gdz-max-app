@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { recognizeFromPhotos } from "../services/vision.js";
 import { solveTask } from "../services/solver.js";
-import { compareWithReference, crossCheckVerdicts } from "../services/compare.js";
+import { compareWithReference, crossCheckVerdicts, answerNoteFor } from "../services/compare.js";
 import { verifyAnswer } from "../services/verify.js";
 import { isSubjectAllowedForGrade, getSubjectsForGrade } from "../services/subjects.js";
 import { ConfigError, InputError, describeApiError } from "../services/anthropicClient.js";
@@ -90,6 +90,9 @@ router.post("/", async (req, res) => {
         })
       : { verified: false, confidence: 0, method: "unsupported", details: { reason: "ученик не записал финальный ответ" } };
 
+    // Любое расхождение по-прежнему полностью логируется, но на экран не идёт:
+    // направление «sympy false + LLM верно» — почти всегда наш парсер (гасим),
+    // «sympy true + LLM ошибка» — нормальный случай, ученику уходит answerNote.
     const verdictConflict = crossCheckVerdicts(comparison, answerCheck);
     if (verdictConflict) {
       console.error("[check-homework] РАСХОЖДЕНИЕ ВЕРДИКТОВ", {
@@ -125,8 +128,8 @@ router.post("/", async (req, res) => {
       // «Вот как правильно» — отдельным полем, чтобы UI не смешал это с разбором ошибок.
       referenceSolution,
 
-      // null — вердикты согласованы; иначе объект с обоими вердиктами.
-      verdictConflict,
+      // Заметка «ответ верный, но в решении ошибка» — либо null.
+      answerNote: answerNoteFor(comparison, answerCheck),
     });
   } catch (err) {
     console.error(err);
