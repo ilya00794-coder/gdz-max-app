@@ -816,3 +816,24 @@ body.crop-dragging {
   font-size: 13px;
   color: var(--l-muted, #888780);
 }
+
+/* Карточка графика функции: между шагами и блоком ответа */
+.graph-card {
+  background: #fff;
+  border: 0.5px solid var(--l-border, #DFDED8);
+  border-radius: 12px;
+  padding: 14px 12px 10px;
+  margin: 4px 0 16px;
+}
+.graph-card svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.graph-comment {
+  margin: 8px 4px 2px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--l-muted, #888780);
+  overflow-wrap: break-word;
+}

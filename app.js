@@ -961,6 +961,7 @@ function renderMath(root) {
 // ---------- экран 4: решение (светлый стиль A, docs/design-spec.md) ----------
 // Свайпа нет: всё решение одним вертикальным списком, шаги пронумерованы кружками.
 const stepsList = document.getElementById("steps-list");
+const graphCard = document.getElementById("graph-card");
 const answerBlock = document.getElementById("answer-block");
 const solutionTask = document.getElementById("solution-task");
 const btnNewTask = document.getElementById("btn-new-task");
@@ -1001,6 +1002,179 @@ function stepsMarkup(steps) {
     .join("");
 }
 
+// ---------- график функции: свой SVG, без библиотек ----------
+//
+// Данные приходят готовыми с бэкенда (verify_sympy mode=plot): points с
+// возможными y:null (разрывы), zeros, extrema, asymptotes. Модель координат
+// не выдаёт — рисуем только посчитанное SymPy.
+
+const GRAPH_W = 340;
+const GRAPH_H = 210;
+const GRAPH_PAD = { top: 12, right: 14, bottom: 24, left: 34 };
+const GRAPH_ACCENT = "#185FA5";
+const GRAPH_GREY = "#C8C7C0";
+
+/** Число для подписи: до двух знаков, без хвостовых нулей, запятая как в тетради. */
+function graphNumber(value) {
+  const rounded = Math.round(value * 100) / 100;
+  return String(rounded).replace(".", ",").replace("-", "−");
+}
+
+/**
+ * Окно по y: у функций с асимптотами значения улетают в тысячи, и без обрезки
+ * весь график схлопнулся бы в горизонтальную линию. Берём срединные 88%
+ * значений, но обязательно включаем ось x, экстремумы и горизонтальные
+ * асимптоты — то, что должно быть видно всегда.
+ */
+function graphYWindow(graph) {
+  const ys = [];
+  for (const plot of graph.plots) {
+    for (const [, y] of plot.points) if (y !== null) ys.push(y);
+  }
+  if (!ys.length) return null;
+  ys.sort((a, b) => a - b);
+  let lo = ys[Math.floor(ys.length * 0.06)];
+  let hi = ys[Math.ceil(ys.length * 0.94) - 1];
+  const mustSee = [0];
+  for (const plot of graph.plots) {
+    for (const e of plot.extrema) mustSee.push(e.y);
+    for (const h of plot.asymptotes.horizontal) mustSee.push(h);
+  }
+  lo = Math.min(lo, ...mustSee);
+  hi = Math.max(hi, ...mustSee);
+  if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+  // Границы округляем до «красивых» значений (шаг 1, 2, 5, 10 и кратные),
+  // как на осях в учебнике: подпись «−9,72» на краю оси только путает.
+  const step = graphNiceStep(hi - lo);
+  return { lo: Math.floor(lo / step) * step, hi: Math.ceil(hi / step) * step };
+}
+
+/** Красивый шаг оси: 1, 2, 5 или 10, умноженные на степень десятки. */
+function graphNiceStep(range) {
+  const power = Math.pow(10, Math.floor(Math.log10(range / 5)));
+  for (const mult of [1, 2, 5, 10]) {
+    if (range / (mult * power) <= 6) return mult * power;
+  }
+  return 10 * power;
+}
+
+/** Точка пересечения двух полилиний (для системы — это и есть ответ). */
+function graphIntersections(plots) {
+  if (plots.length !== 2) return [];
+  const [a, b] = plots;
+  const found = [];
+  for (let i = 1; i < a.points.length && found.length < 3; i++) {
+    const [x0, ya0] = a.points[i - 1], [x1, ya1] = a.points[i];
+    const yb0 = b.points[i - 1][1], yb1 = b.points[i][1];
+    if (ya0 === null || ya1 === null || yb0 === null || yb1 === null) continue;
+    const d0 = ya0 - yb0, d1 = ya1 - yb1;
+    if (d0 === 0) { found.push([x0, ya0]); continue; }
+    if (d0 * d1 < 0) {
+      const t = d0 / (d0 - d1);
+      found.push([x0 + t * (x1 - x0), ya0 + t * (ya1 - ya0)]);
+    }
+  }
+  return found;
+}
+
+/** Собирает SVG-разметку графика. Внутрь попадают только числа — экранировать нечего. */
+function graphSvg(graph) {
+  const win = graphYWindow(graph);
+  if (!win) return "";
+  const [xa, xb] = graph.plots[0].xRange;
+  const plotW = GRAPH_W - GRAPH_PAD.left - GRAPH_PAD.right;
+  const plotH = GRAPH_H - GRAPH_PAD.top - GRAPH_PAD.bottom;
+  const sx = (x) => GRAPH_PAD.left + ((x - xa) / (xb - xa)) * plotW;
+  const sy = (y) => GRAPH_PAD.top + ((win.hi - y) / (win.hi - win.lo)) * plotH;
+  const inWin = (y) => y !== null && y >= win.lo && y <= win.hi;
+
+  const parts = [];
+
+  // Оси: x — на y=0 (окно всегда включает 0), y — на x=0 либо у левого края.
+  const axisY = sy(0);
+  const axisX = xa <= 0 && 0 <= xb ? sx(0) : GRAPH_PAD.left;
+  parts.push(`<line x1="${GRAPH_PAD.left}" y1="${axisY}" x2="${GRAPH_W - GRAPH_PAD.right}" y2="${axisY}" stroke="#B4B3AC" stroke-width="1"/>`);
+  parts.push(`<line x1="${axisX}" y1="${GRAPH_PAD.top}" x2="${axisX}" y2="${GRAPH_H - GRAPH_PAD.bottom}" stroke="#B4B3AC" stroke-width="1"/>`);
+  // Подписи осей и краёв — засечек мало, сетки нет.
+  parts.push(`<text x="${GRAPH_W - GRAPH_PAD.right}" y="${axisY - 5}" font-size="11" fill="#888780" text-anchor="end">x</text>`);
+  parts.push(`<text x="${axisX + 5}" y="${GRAPH_PAD.top + 9}" font-size="11" fill="#888780">y</text>`);
+  parts.push(`<text x="${sx(xa)}" y="${GRAPH_H - 8}" font-size="11" fill="#888780" text-anchor="start">${graphNumber(xa)}</text>`);
+  parts.push(`<text x="${sx(xb)}" y="${GRAPH_H - 8}" font-size="11" fill="#888780" text-anchor="end">${graphNumber(xb)}</text>`);
+  parts.push(`<text x="${GRAPH_PAD.left - 4}" y="${sy(win.hi) + 10}" font-size="11" fill="#888780" text-anchor="end">${graphNumber(win.hi)}</text>`);
+  parts.push(`<text x="${GRAPH_PAD.left - 4}" y="${sy(win.lo)}" font-size="11" fill="#888780" text-anchor="end">${graphNumber(win.lo)}</text>`);
+
+  // Асимптоты — тонкий серый пунктир.
+  for (const plot of graph.plots) {
+    for (const v of plot.asymptotes.vertical) {
+      if (v < xa || v > xb) continue;
+      parts.push(`<line x1="${sx(v)}" y1="${GRAPH_PAD.top}" x2="${sx(v)}" y2="${GRAPH_H - GRAPH_PAD.bottom}" stroke="${GRAPH_GREY}" stroke-width="1" stroke-dasharray="4 4"/>`);
+    }
+    for (const h of plot.asymptotes.horizontal) {
+      if (h < win.lo || h > win.hi) continue;
+      parts.push(`<line x1="${GRAPH_PAD.left}" y1="${sy(h)}" x2="${GRAPH_W - GRAPH_PAD.right}" y2="${sy(h)}" stroke="${GRAPH_GREY}" stroke-width="1" stroke-dasharray="4 4"/>`);
+    }
+  }
+
+  // Кривые. Разрыв (y:null) и вылет за окно рвут полилинию: гипербола — две
+  // ветви, а не линия через ноль. Вторая функция — тот же цвет, тоньше и пунктиром.
+  graph.plots.forEach((plot, idx) => {
+    const segments = [];
+    let current = [];
+    for (const [x, y] of plot.points) {
+      if (!inWin(y)) {
+        if (current.length > 1) segments.push(current);
+        current = [];
+        continue;
+      }
+      current.push(`${sx(x).toFixed(1)},${sy(y).toFixed(1)}`);
+    }
+    if (current.length > 1) segments.push(current);
+    const d = segments.map((seg) => "M" + seg.join(" L")).join(" ");
+    const style = idx === 0
+      ? `stroke="${GRAPH_ACCENT}" stroke-width="2.2"`
+      : `stroke="${GRAPH_ACCENT}" stroke-width="1.4" stroke-dasharray="7 5"`;
+    if (d) parts.push(`<path d="${d}" fill="none" ${style} stroke-linejoin="round" class="graph-line"/>`);
+  });
+
+  // Особые точки: нули — залитые кружки на оси, экстремумы — с белой серединой.
+  for (const plot of graph.plots) {
+    for (const z of plot.zeros) {
+      if (z < xa || z > xb) continue;
+      parts.push(`<circle cx="${sx(z)}" cy="${sy(0)}" r="3.5" fill="${GRAPH_ACCENT}" class="graph-zero"/>`);
+      parts.push(`<text x="${sx(z)}" y="${sy(0) + 15}" font-size="11" fill="#444441" text-anchor="middle">${graphNumber(z)}</text>`);
+    }
+    for (const e of plot.extrema) {
+      if (e.x < xa || e.x > xb || !inWin(e.y)) continue;
+      parts.push(`<circle cx="${sx(e.x)}" cy="${sy(e.y)}" r="3.5" fill="#fff" stroke="${GRAPH_ACCENT}" stroke-width="2" class="graph-extremum"/>`);
+      parts.push(`<text x="${sx(e.x)}" y="${sy(e.y) + (e.kind === "max" ? -8 : 16)}" font-size="11" fill="#444441" text-anchor="middle">(${graphNumber(e.x)}; ${graphNumber(e.y)})</text>`);
+    }
+  }
+
+  // Пересечение двух функций — для системы это и есть ответ, выделяем сильнее.
+  for (const [ix, iy] of graphIntersections(graph.plots)) {
+    if (!inWin(iy)) continue;
+    parts.push(`<circle cx="${sx(ix)}" cy="${sy(iy)}" r="4.5" fill="${GRAPH_ACCENT}" class="graph-intersection"/>`);
+    parts.push(`<text x="${sx(ix)}" y="${sy(iy) - 9}" font-size="12" font-weight="500" fill="#04234F" text-anchor="middle">(${graphNumber(ix)}; ${graphNumber(iy)})</text>`);
+  }
+
+  return `<svg viewBox="0 0 ${GRAPH_W} ${GRAPH_H}" role="img" aria-label="График функции">${parts.join("")}</svg>`;
+}
+
+/** Заполняет карточку графика или прячет её, если графика нет (старый кэш, отказ бэкенда). */
+function renderGraphCard(graph) {
+  if (!graph?.plots?.length) {
+    graphCard.hidden = true;
+    graphCard.innerHTML = "";
+    return;
+  }
+  const comment = graph.comment
+    ? `<p class="graph-comment">${escapeHtml(graph.comment)}</p>`
+    : "";
+  graphCard.innerHTML = graphSvg(graph) + comment;
+  graphCard.hidden = false;
+  renderMath(graphCard); // comment может содержать $...$
+}
+
 /** Разметка блока ответа вместе со строкой верификации. */
 function answerMarkup(solution) {
   return `
@@ -1015,6 +1189,7 @@ function renderSolution(solution) {
   solutionTask.textContent = state.recognizedText || "";
 
   stepsList.innerHTML = stepsMarkup(solution.steps);
+  renderGraphCard(solution.graph);
   answerBlock.innerHTML = answerMarkup(solution);
 
   // Формулы отрисовываем после того, как всё уже в DOM.
