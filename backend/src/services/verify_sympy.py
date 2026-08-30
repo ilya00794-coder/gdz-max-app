@@ -47,6 +47,10 @@ ALLOWED_CALLS = {
     "diff": sympy.diff,
     "integrate": sympy.integrate,
     "limit": sympy.limit,
+    # Max/Min — для размаха и границ в «Вероятности и статистике»: модель
+    # формализует «Max(12, 7, 15, 9) - Min(...)», без них уходило в unsupported.
+    "Max": sympy.Max,
+    "Min": sympy.Min,
 }
 
 # Константы, разрешённые как имена. Только pi: у него нет школьного конкурента.
