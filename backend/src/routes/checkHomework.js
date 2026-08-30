@@ -4,6 +4,8 @@ import { solveTask } from "../services/solver.js";
 import { compareWithReference, crossCheckVerdicts, answerNoteFor } from "../services/compare.js";
 import { verifyAnswer } from "../services/verify.js";
 import { isSubjectAllowedForGrade, getSubjectsForGrade } from "../services/subjects.js";
+import { recordVerifyEvent } from "../services/telemetry.js";
+import { isLocalRequest } from "../middleware/maxInitData.js";
 import { ConfigError, InputError, describeApiError } from "../services/anthropicClient.js";
 import { detectMisread } from "../services/misread.js";
 
@@ -56,6 +58,9 @@ export function isMultiTaskAnswer(answer) {
  * лежат в РАЗНЫХ полях: UI должен показать их раздельно, а не смешивать в одном экране.
  */
 router.post("/", async (req, res) => {
+  const startedAt = Date.now();
+  const source = isLocalRequest(req) ? "local" : "remote";
+  let stage = "start";
   try {
     const { imagesBase64, subject, quarter } = req.body;
     const grade = Number(req.body.grade);
@@ -80,6 +85,7 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "quarter должен быть целым числом от 1 до 4" });
     }
 
+    stage = "vision";
     const recognized = await recognizeFromPhotos({
       imagesBase64,
       mode: "studentWork",
@@ -98,6 +104,7 @@ router.post("/", async (req, res) => {
     // только лог при MISREAD_DETECTION=on, на ответ и вердикт не влияет.
     detectMisread(recognized.recognizedText, { grade, subject });
 
+    stage = "solver";
     const referenceSolution = await solveTask({
       recognizedText: recognized.recognizedText,
       grade,
@@ -105,6 +112,7 @@ router.post("/", async (req, res) => {
       quarter: parsedQuarter,
     });
 
+    stage = "compare";
     const comparison = await compareWithReference({
       studentWork: recognized.recognizedText,
       referenceSolution,
@@ -131,6 +139,21 @@ router.post("/", async (req, res) => {
     // Любое расхождение по-прежнему полностью логируется, но на экран не идёт:
     // направление «sympy false + LLM верно» — почти всегда наш парсер (гасим),
     // «sympy true + LLM ошибка» — нормальный случай, ученику уходит answerNote.
+    stage = "verify";
+    const isMulti = Boolean(comparison.studentFinalAnswer && isMultiTaskAnswer(comparison.studentFinalAnswer));
+    recordVerifyEvent({
+      route: "check", source, grade, subject,
+      verified: answerCheck.verified, method: answerCheck.method,
+      reason: answerCheck.details?.reason ?? null,
+      multiTask: isMulti,
+      parseFailureKind: isMulti
+        ? "multi_task"
+        : !comparison.studentFinalAnswer
+        ? "no_answer"
+        : answerCheck.details?.code ?? null,
+      durationMs: Date.now() - startedAt,
+    }); // fire-and-forget
+
     const verdictConflict = crossCheckVerdicts(comparison, answerCheck);
     if (verdictConflict) {
       console.error("[check-homework] РАСХОЖДЕНИЕ ВЕРДИКТОВ", {
@@ -175,8 +198,10 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: describeApiError(err) });
     }
     if (err instanceof ConfigError) {
+      recordVerifyEvent({ route: "check", source, durationMs: Date.now() - startedAt, errorKind: "config", reason: String(err.message).slice(0, 200) });
       return res.status(503).json({ error: describeApiError(err) });
     }
+    recordVerifyEvent({ route: "check", source, durationMs: Date.now() - startedAt, errorKind: stage, reason: String(err.message).slice(0, 200) });
     res.status(500).json({
       error: "Внутренняя ошибка при проверке домашней работы",
       detail: describeApiError(err),

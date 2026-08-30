@@ -4,6 +4,8 @@ import { recognizeFromPhotos } from "../services/vision.js";
 import { solveTask } from "../services/solver.js";
 import { verifyAnswer, computeGraphPlots } from "../services/verify.js";
 import { isSubjectAllowedForGrade, getSubjectsForGrade } from "../services/subjects.js";
+import { recordVerifyEvent } from "../services/telemetry.js";
+import { isLocalRequest } from "../middleware/maxInitData.js";
 import { ConfigError, InputError, describeApiError } from "../services/anthropicClient.js";
 
 const router = Router();
@@ -17,6 +19,9 @@ const router = Router();
  * или это заглушка, помеченная как неверифицированная).
  */
 router.post("/", async (req, res) => {
+  const startedAt = Date.now();
+  const source = isLocalRequest(req) ? "local" : "remote";
+  let stage = "start"; // для error_kind телеметрии: на каком этапе упали
   try {
     const { imagesBase64, text, subject, quarter } = req.body;
     const grade = Number(req.body.grade);
@@ -51,6 +56,7 @@ router.post("/", async (req, res) => {
     let recognition = null;
 
     if (imagesBase64?.length) {
+      stage = "vision";
       recognition = await recognizeFromPhotos({ imagesBase64, mode: "task", grade, subject });
       recognizedText = recognition.recognizedText;
       textbook = recognition.textbook;
@@ -97,7 +103,9 @@ router.post("/", async (req, res) => {
       return res.json({ ...cached, source: "cache", recognizedText, recognition });
     }
 
+    stage = "solver";
     const solution = await solveTask({ recognizedText, grade, subject, quarter: parsedQuarter });
+    stage = "verify";
     // Верификация ответа и расчёт точек графика независимы — параллелим,
     // график не добавляет латентности к пути.
     const [verification, graphPlots] = await Promise.all([
@@ -117,6 +125,15 @@ router.post("/", async (req, res) => {
       verification,
     };
 
+    recordVerifyEvent({
+      route: "solve", source, grade, subject,
+      verified: verification.verified, method: verification.method,
+      reason: verification.details?.reason ?? null,
+      answerKind: solution.answerValues?.kind ?? null,
+      invariantViolation: verification.details?.invariantViolation ?? null,
+      durationMs: Date.now() - startedAt,
+    }); // fire-and-forget: ответ ученика не ждёт телеметрию
+
     // Кладём в кэш только реально верифицированные решения — не мок-заглушки.
     if (verification.verified) {
       await setCached(cacheKey, result);
@@ -128,6 +145,11 @@ router.post("/", async (req, res) => {
     if (err instanceof InputError) {
       return res.status(400).json({ error: describeApiError(err) });
     }
+    recordVerifyEvent({
+      route: "solve", source, durationMs: Date.now() - startedAt,
+      errorKind: err instanceof ConfigError ? "config" : stage,
+      reason: String(err.message).slice(0, 200),
+    });
     if (err instanceof ConfigError) {
       return res.status(503).json({ error: describeApiError(err) });
     }

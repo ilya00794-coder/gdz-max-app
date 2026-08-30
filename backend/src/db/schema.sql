@@ -121,3 +121,36 @@ CREATE INDEX IF NOT EXISTS reference_solutions_cache_key_idx
 
 CREATE INDEX IF NOT EXISTS reference_solutions_condition_hash_idx
   ON reference_solutions (condition_hash) WHERE condition_hash IS NOT NULL;
+
+
+-- Телеметрия вердиктов: журнал solve/check-прогонов для эксплуатации
+-- («почему медленно», «что падает») и триггера пересмотра парсера
+-- (100 живых check: WHERE route='check' AND source='remote').
+--
+-- НАМЕРЕННО НЕ ХРАНИТСЯ: фото, тексты работ, ответы ребёнка (даже усечённые),
+-- max_user_id. Класс сбоя разбора говорит всё нужное для отладки, а хранение
+-- детской работы и привязка «кто что решал» превратили бы отладочную таблицу
+-- в профиль ученика (152-ФЗ). Понадобится различать пользователей — отдельное
+-- решение с необратимым хэшем.
+
+CREATE TABLE IF NOT EXISTS verify_events (
+  id                  bigserial   PRIMARY KEY,
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  route               text        NOT NULL CHECK (route IN ('solve', 'check')),
+  -- local — канарейки и отладка с этой машины; remote — живой трафик через туннель.
+  source              text        NOT NULL CHECK (source IN ('local', 'remote')),
+  grade               integer,
+  subject             text,
+  verified            boolean,
+  method              text,
+  reason              text,
+  answer_kind         text,       -- all | any | expression (solve-путь)
+  multi_task          boolean,    -- сработала заглушка многозадачности (check)
+  invariant_violation text,       -- нарушение инварианта any (п.8 телеметрии)
+  parse_failure_kind  text,       -- not_literal | unparsed | multi_task | no_answer
+  duration_ms         integer,
+  error_kind          text        -- vision | solver | compare | verify | config; null при успехе
+);
+
+CREATE INDEX IF NOT EXISTS verify_events_route_source_idx
+  ON verify_events (route, source, created_at DESC);

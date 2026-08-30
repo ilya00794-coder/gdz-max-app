@@ -218,6 +218,7 @@ async function checkAnyInvariant(values) {
 
 export async function verifyAnswer({ subject, expression, candidateAnswer, answerValues }) {
   const normalizedSubject = String(subject || "").trim().toLowerCase();
+  let invariantViolation = null; // уходит в details для телеметрии (п.8)
 
   if (!COMPUTABLE_SUBJECTS.includes(normalizedSubject)) {
     return { verified: false, confidence: 0, method: "unsupported", details: { reason: "предмет не проверяется символьно" } };
@@ -249,10 +250,10 @@ export async function verifyAnswer({ subject, expression, candidateAnswer, answe
   if (answerValues && Array.isArray(answerValues.values)) {
     // Путь по машинной форме: значения уже в SymPy-записи, единицы — метаданные.
     if (answerValues.kind === "any" && answerValues.values.length > 1) {
-      const violation = await checkAnyInvariant(answerValues.values);
-      if (violation) {
+      invariantViolation = await checkAnyInvariant(answerValues.values);
+      if (invariantViolation) {
         console.error("[answerValues] НАРУШЕНИЕ ИНВАРИАНТА any — дефект solver'а:", {
-          violation,
+          violation: invariantViolation,
           values: answerValues.values,
           candidateAnswer,
         });
@@ -280,12 +281,12 @@ export async function verifyAnswer({ subject, expression, candidateAnswer, answe
     if (candidates !== null && !candidates.every((c) => STUDENT_LITERAL.test(c))) {
       return {
         verified: false, confidence: 0, method: "unsupported",
-        details: { reason: "ответ не разобран как число — сверка не применима", candidates },
+        details: { reason: "ответ не разобран как число — сверка не применима", code: "not_literal", candidates },
       };
     }
   }
   if (candidates === null) {
-    return { verified: false, confidence: 0, method: "unsupported", details: { reason: "не удалось разобрать ответ" } };
+    return { verified: false, confidence: 0, method: "unsupported", details: { reason: "не удалось разобрать ответ", code: "unparsed" } };
   }
   if (!candidates.every((c) => isExpressionSafe(c))) {
     return { verified: false, confidence: 0, method: "unsupported", details: { reason: "ответ содержит недопустимые символы" } };
@@ -334,6 +335,7 @@ export async function verifyAnswer({ subject, expression, candidateAnswer, answe
     confidence: report.verified === true ? 1 : 0,
     method: "sympy",
     details: {
+      invariantViolation,
       solutions: report.solutions,
       realSolutions: report.realSolutions,
       candidates: report.candidates,
