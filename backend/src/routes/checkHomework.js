@@ -10,6 +10,37 @@ import { detectMisread } from "../services/misread.js";
 const router = Router();
 
 /**
+ * ВРЕМЕННАЯ ЗАГЛУШКА многозадачности — два правила. Правильный слой — vision:
+ * studentWork-схема должна размечать tasks[], как это уже делает task-режим
+ * (см. backlog «многозадачность в check-пути»).
+ *
+ * Правило 1: ПОМЕЧЕННЫЕ списки — «а) … б) …», «№8: …», «2) …».
+ * Правило 2: столбики примеров — две и более частей списка, где слева от «=»
+ *   стоит вычислимое выражение из цифр и операторов («8+2−5=5; 4−2+7=9»),
+ *   а не имя переменной. Корни «x = 5; x = 2» и системы «x = 5; y = 3»
+ *   не задеваются: слева имена.
+ *
+ * НЕ покрывается ничем, кроме vision-слоя: одиночный ответ без меток от
+ * ДРУГОЙ задачи листа (ma-10: «a = 8 1/6» при reference по соседней задаче) —
+ * риск ложного FALSE остаётся. На 29 однозадачных формах ложных срабатываний
+ * нет (проверено на заходе 3.2).
+ */
+const MULTI_TASK_MARKS = /(?:^|;)\s*(?:№\s*\d+|[абвгдежз]\)|\d+\))/i;
+
+export function isMultiTaskAnswer(answer) {
+  const text = String(answer ?? "");
+  if (MULTI_TASK_MARKS.test(text)) return true;
+  let exampleParts = 0;
+  for (const part of text.split(/;|\n/)) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+    const left = part.slice(0, eq).trim();
+    if (/\d/.test(left) && /^[\d\s+\-*/:.,()·×−]+$/.test(left)) exampleParts++;
+  }
+  return exampleParts >= 2;
+}
+
+/**
  * POST /api/check-homework
  * body: { imagesBase64: string[], grade: number, subject: string, quarter?: number }
  *
@@ -81,17 +112,8 @@ router.post("/", async (req, res) => {
       subject,
     });
 
-    // ВРЕМЕННАЯ ЗАГЛУШКА многозадачности. Правильный слой — vision:
-    // studentWork-схема должна размечать tasks[], как это уже делает task-режим
-    // (см. backlog «многозадачность в check-пути»). Регэксп ловит ТОЛЬКО
-    // ПОМЕЧЕННЫЕ списки («а) … б) …», «№8: …», «2) …»); непомеченный список
-    // ответов разных задач («4 2/5; 3 1/6; …», ma-09) от множества корней
-    // одной задачи неотличим и ОСТАЁТСЯ риском ложного FALSE. На 29
-    // однозадачных формах ложных срабатываний нет (проверено на заходе 3.2).
-    const MULTI_TASK_ANSWER = /(?:^|;)\s*(?:№\s*\d+|[абвгдежз]\)|\d+\))/i;
-
     // Объективная проверка финального ответа ученика — тем же SymPy, что и в /api/solve.
-    const answerCheck = comparison.studentFinalAnswer && MULTI_TASK_ANSWER.test(comparison.studentFinalAnswer)
+    const answerCheck = comparison.studentFinalAnswer && isMultiTaskAnswer(comparison.studentFinalAnswer)
       ? {
           verified: false, confidence: 0, method: "unsupported",
           // Причина честная по смыслу: дело в нескольких задачах на листе,
