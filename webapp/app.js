@@ -564,7 +564,8 @@ btnSolve.addEventListener("click", async () => {
  */
 async function runRecognition(mode, payload, allowPrompt = true) {
   const check = mode === "check";
-  setButtonBusy(btnSolve, true, check ? "Проверяем…" : "Распознаём…");
+  setButtonBusy(btnSolve, true, check ? "Читаем твою работу…" : "Распознаём…");
+  if (check) startCheckStages(btnSolve);
   try {
     const result = check
       // Проверка последовательно поднимает три модели, отсюда увеличенный таймаут.
@@ -582,6 +583,7 @@ async function runRecognition(mode, payload, allowPrompt = true) {
     // 422 — «не разобрали фото» или «печатного условия не найдено»: остаёмся на съёмке.
     showCaptureError(err.message);
   } finally {
+    stopCheckStages();
     setButtonBusy(btnSolve, false);
   }
 }
@@ -840,7 +842,30 @@ btnConfirm.addEventListener("click", async () => {
 // Распознавание + решение реально занимают 30–40 секунд, поэтому запас большой.
 const SOLVE_TIMEOUT_MS = 60000;
 // Проверка домашки поднимает три модели подряд: распознавание, эталон, сравнение.
-const CHECK_TIMEOUT_MS = 90000;
+// Замер на реальном многозадачном листе — 79,6 с; 90 с были впритык.
+const CHECK_TIMEOUT_MS = 150000;
+
+// Этапные надписи проверки. Пороги — по МЕДЛЕННОМУ листу (vision до ~16 с,
+// solver до ~35 с), чтобы надпись не обгоняла реальность: на быстрых листах
+// она может отставать — это допустимо, обгон — нет. Смена надписи доказывает
+// ребёнку, что процесс жив (одно застывшее «Проверяем…» на 80 секунд — нет).
+const CHECK_STAGES = [
+  [0, "Читаем твою работу…"],
+  [20000, "Решаем задачу сами, чтобы было с чем сверить…"],
+  [55000, "Сверяем решение и ищем, что поправить…"],
+];
+
+let checkStageTimers = [];
+function startCheckStages(btn) {
+  stopCheckStages();
+  for (const [delay, label] of CHECK_STAGES) {
+    checkStageTimers.push(setTimeout(() => { btn.textContent = label; }, delay));
+  }
+}
+function stopCheckStages() {
+  for (const t of checkStageTimers) clearTimeout(t);
+  checkStageTimers = [];
+}
 
 /**
  * Превращает любой сбой в фразу, понятную школьнику.
