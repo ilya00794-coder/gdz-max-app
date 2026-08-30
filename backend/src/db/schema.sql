@@ -161,6 +161,9 @@ CREATE TABLE IF NOT EXISTS verify_events (
 );
 
 ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS transport text;
+-- Версия фронта (X-App-Version): какой app.js реально исполнялся у клиента.
+-- Надёжнее любой надписи на экране и отвечает задним числом.
+ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS app_version text;
 -- Дозаливка canary в CHECK существующих баз (правка ограничения — только пересозданием).
 ALTER TABLE verify_events DROP CONSTRAINT IF EXISTS verify_events_source_check;
 ALTER TABLE verify_events ADD CONSTRAINT verify_events_source_check CHECK (source IN ('local', 'remote', 'canary'));

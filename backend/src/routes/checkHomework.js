@@ -60,6 +60,7 @@ export function isMultiTaskAnswer(answer) {
 router.post("/", async (req, res) => {
   const startedAt = Date.now();
   const source = requestSource(req);
+  const appVersion = req.get("X-App-Version") ?? null;
   let stage = "start";
   try {
     const { imagesBase64, subject, quarter, workText, condition } = req.body;
@@ -113,7 +114,7 @@ router.post("/", async (req, res) => {
     // Дальше придёт фрагментный запрос с workText выбранной задачи.
     if (Array.isArray(recognized.tasks) && recognized.tasks.length > 1) {
       recordVerifyEvent({
-        route: "check", source, grade, subject,
+        route: "check", source, appVersion, grade, subject,
         multiTask: true, reason: "на листе несколько задач — предложен выбор",
         durationMs: Date.now() - startedAt,
       });
@@ -169,7 +170,7 @@ router.post("/", async (req, res) => {
     stage = "verify";
     const isMulti = Boolean(comparison.studentFinalAnswer && isMultiTaskAnswer(comparison.studentFinalAnswer));
     recordVerifyEvent({
-      route: "check", source, grade, subject,
+      route: "check", source, appVersion, grade, subject,
       verified: answerCheck.verified, method: answerCheck.method,
       reason: answerCheck.details?.reason ?? null,
       multiTask: isMulti,

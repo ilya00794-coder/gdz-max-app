@@ -5,6 +5,14 @@
 set -e
 cd "$(dirname "$0")/.."
 
+# Пушится КОММИТНУТОЕ дерево: незакоммиченный webapp уехал бы частично
+# (так на Pages однажды попал новый HTML со старым app.js — версии «не было»).
+if [ -n "$(git status --porcelain webapp)" ]; then
+  echo "ОШИБКА: в webapp/ незакоммиченные изменения — сначала git commit, потом деплой." >&2
+  git status --short webapp >&2
+  exit 1
+fi
+
 V="$(git rev-parse --short HEAD)-$(date +%d.%m.%H%M)"
 
 # 1) версия в version.js (видна в интерфейсе и консоли)
