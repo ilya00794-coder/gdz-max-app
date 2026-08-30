@@ -207,11 +207,147 @@ def same_value(a, b):
         return False
 
 
+PLOT_POINTS = 201
+PLOT_Y_LIMIT = 1e9  # |y| больше этого для рисунка бессмысленен — точка разрыва
+
+
+def _plot_float(value):
+    """Число для JSON-точки: конечный float или None (разрыв/не определено)."""
+    import math
+    try:
+        c = complex(sympy.N(value))
+    except Exception:
+        return None
+    if abs(c.imag) > 1e-9 or not math.isfinite(c.real) or abs(c.real) > PLOT_Y_LIMIT:
+        return None
+    return round(c.real, 6)
+
+
+def run_plot(payload):
+    """Режим mode=plot: точки и особые точки функции одним вызовом.
+
+    Точки считаются через .subs(), а НЕ через lambdify — сознательно:
+    lambdify — это кодогенерация с eval внутри SymPy. Выражение к этому
+    моменту уже прошло AST-белый список, но расширять поверхность атаки
+    кодогенерацией ради скорости незачем: 201 подстановка в школьную
+    функцию укладывается в доли секунды. Если когда-нибудь станет медленно —
+    менять на lambdify только вместе с пересмотром модели угроз.
+
+    Существующий путь верификации не задет: сюда попадаем только при
+    payload["mode"] == "plot".
+    """
+    expression = payload.get("expression") or ""
+    x_range = payload.get("xRange") or [-10, 10]
+
+    if (
+        not isinstance(x_range, (list, tuple))
+        or len(x_range) != 2
+        or not all(isinstance(v, (int, float)) for v in x_range)
+        or not x_range[0] < x_range[1]
+    ):
+        return {"ok": False, "reason": "xRange должен быть парой чисел [a, b], a < b"}
+
+    expr = sympy.S(evaluate(expression))  # тот же AST-фильтр, что у верификации
+    symbols = sorted(expr.free_symbols, key=lambda s: s.name)
+    if len(symbols) > 1:
+        return {"ok": False, "reason": "график строится по функции одной переменной"}
+    x = symbols[0] if symbols else sympy.Symbol("x")
+
+    warnings = []
+    a, b = float(x_range[0]), float(x_range[1])
+
+    points = []
+    for i in range(PLOT_POINTS):
+        xi = a + (b - a) * i / (PLOT_POINTS - 1)
+        try:
+            yi = _plot_float(expr.subs(x, sympy.Float(xi)))
+        except Exception:
+            yi = None
+        points.append([round(xi, 6), yi])
+
+    zeros = []
+    try:
+        for z in sympy.solve(sympy.Eq(expr, 0), x):
+            zf = _plot_float(z)
+            if zf is not None and sympy.simplify(z).is_real:
+                zeros.append(zf)
+    except Exception as err:
+        warnings.append(f"нули не найдены: {type(err).__name__}")
+
+    extrema = []
+    try:
+        derivative = sympy.diff(expr, x)
+        for c in sympy.solve(sympy.Eq(derivative, 0), x):
+            if sympy.simplify(c).is_real is not True:
+                continue
+            cx, cy = _plot_float(c), _plot_float(expr.subs(x, c))
+            if cx is None or cy is None:
+                continue
+            kind = "unknown"
+            try:
+                second = sympy.diff(derivative, x).subs(x, c)
+                if second.is_positive:
+                    kind = "min"
+                elif second.is_negative:
+                    kind = "max"
+            except Exception:
+                pass
+            extrema.append({"x": cx, "y": cy, "kind": kind})
+    except Exception as err:
+        warnings.append(f"экстремумы не найдены: {type(err).__name__}")
+
+    vertical = []
+    try:
+        denominator = sympy.denom(sympy.together(expr))
+        if denominator.free_symbols:
+            for c in sympy.solve(sympy.Eq(denominator, 0), x):
+                if sympy.simplify(c).is_real is not True:
+                    continue
+                # Кандидат — только если функция там действительно уходит в бесконечность.
+                side = sympy.limit(expr, x, c, "+")
+                if side in (sympy.oo, -sympy.oo, sympy.zoo):
+                    cf = _plot_float(c)
+                    if cf is not None:
+                        vertical.append(cf)
+    except Exception as err:
+        warnings.append(f"вертикальные асимптоты не найдены: {type(err).__name__}")
+
+    horizontal = []
+    try:
+        for direction in (sympy.oo, -sympy.oo):
+            lim = sympy.limit(expr, x, direction)
+            lf = _plot_float(lim)
+            if lf is not None and lf not in horizontal:
+                horizontal.append(lf)
+    except Exception as err:
+        warnings.append(f"горизонтальные асимптоты не найдены: {type(err).__name__}")
+
+    return {
+        "ok": True,
+        "expression": str(expr),
+        "xRange": [a, b],
+        "points": points,
+        "zeros": zeros,
+        "extrema": extrema,
+        "asymptotes": {"vertical": vertical, "horizontal": horizontal},
+        "warnings": warnings,
+    }
+
+
 def main():
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError) as err:
         print(json.dumps({"ok": False, "reason": f"некорректный вход: {err}"}))
+        return
+
+    if payload.get("mode") == "plot":
+        try:
+            print(json.dumps(run_plot(payload), ensure_ascii=False))
+        except Rejected as err:
+            print(json.dumps({"ok": False, "reason": str(err)}, ensure_ascii=False))
+        except Exception as err:  # график — усиление, а не условие: любой сбой = ok:false
+            print(json.dumps({"ok": False, "reason": f"{type(err).__name__}: {err}"}, ensure_ascii=False))
         return
 
     expression = payload.get("expression") or ""
