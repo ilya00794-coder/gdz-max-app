@@ -837,3 +837,16 @@ body.crop-dragging {
   color: var(--l-muted, #888780);
   overflow-wrap: break-word;
 }
+
+/* Карточки выбора задачи для проверки */
+.task-card--muted { opacity: 0.55; }
+.task-badge {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--l-muted, #888780);
+  border: 0.5px solid var(--l-border, #DFDED8);
+  border-radius: 8px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  align-self: center;
+}

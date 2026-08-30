@@ -62,11 +62,14 @@ router.post("/", async (req, res) => {
   const source = isLocalRequest(req) ? "local" : "remote";
   let stage = "start";
   try {
-    const { imagesBase64, subject, quarter } = req.body;
+    const { imagesBase64, subject, quarter, workText, condition } = req.body;
     const grade = Number(req.body.grade);
 
-    if (!imagesBase64?.length || !grade || !subject) {
-      return res.status(400).json({ error: "Нужно указать imagesBase64, grade и subject" });
+    // Два входа: фото тетради (обычный путь) либо workText — фрагмент работы
+    // ОДНОЙ задачи, выбранной на экране «Нашли несколько задач» (vision уже
+    // отработал в первом запросе и не повторяется).
+    if ((!imagesBase64?.length && !String(workText ?? "").trim()) || !grade || !subject) {
+      return res.status(400).json({ error: "Нужно указать grade, subject и imagesBase64 либо workText" });
     }
     if (!Number.isInteger(grade) || grade < 1 || grade > 11) {
       return res.status(400).json({ error: "grade должен быть целым числом от 1 до 11" });
@@ -85,8 +88,13 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "quarter должен быть целым числом от 1 до 4" });
     }
 
+    let recognized;
+    if (!imagesBase64?.length) {
+      // Фрагментный запрос: распознавание уже сделано, работаем с текстом.
+      recognized = { recognizedText: String(workText).trim(), confidence: 1, issues: [], tasks: null };
+    } else {
     stage = "vision";
-    const recognized = await recognizeFromPhotos({
+    recognized = await recognizeFromPhotos({
       imagesBase64,
       mode: "studentWork",
       grade,
@@ -100,13 +108,32 @@ router.post("/", async (req, res) => {
       });
     }
 
+    // На листе несколько задач: не гоняем solver+compare по всему листу
+    // (60–80 с и сверка каши), а предлагаем выбрать задачу — как в solve-пути.
+    // Дальше придёт фрагментный запрос с workText выбранной задачи.
+    if (Array.isArray(recognized.tasks) && recognized.tasks.length > 1) {
+      recordVerifyEvent({
+        route: "check", source, grade, subject,
+        multiTask: true, reason: "на листе несколько задач — предложен выбор",
+        durationMs: Date.now() - startedAt,
+      });
+      return res.json({
+        multipleTasks: true,
+        recognizedStudentWork: recognized.recognizedText,
+        recognition: recognized,
+      });
+    }
+    }
+
     // Проверка внутренней согласованности выкладок — в фоне, без await:
     // только лог при MISREAD_DETECTION=on, на ответ и вердикт не влияет.
     detectMisread(recognized.recognizedText, { grade, subject });
 
     stage = "solver";
     const referenceSolution = await solveTask({
-      recognizedText: recognized.recognizedText,
+      // Фрагментный запрос с переписанным условием — решаем УСЛОВИЕ, а не
+      // выкладки ученика: эталон чище.
+      recognizedText: String(condition ?? "").trim() || recognized.recognizedText,
       grade,
       subject,
       quarter: parsedQuarter,
