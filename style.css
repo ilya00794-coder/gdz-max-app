@@ -113,7 +113,9 @@ html, body {
 
 .step-body { flex: 1; min-width: 0; }
 .step-title { margin: 3px 0 4px; font-size: 15px; font-weight: 500; color: var(--l-text); }
-.step-text { margin: 0; font-size: 14px; line-height: 1.6; color: var(--l-text-2); }
+/* pre-line: solver отдаёт списки и «Дано» переносами строк — без этого браузер
+   схлопывал ВСЮ структуру шага в одну строку (жило с правки «пункты списком»). */
+.step-text { margin: 0; font-size: 14px; line-height: 1.6; color: var(--l-text-2); white-space: pre-line; }
 .step-text .katex { color: var(--l-accent); }
 
 /* --- блок ответа --- */
