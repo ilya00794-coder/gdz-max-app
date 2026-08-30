@@ -1071,6 +1071,38 @@ function verificationRow(verification) {
     </svg><span>Ответ проверен вычислением</span></p>`;
 }
 
+// ---------- markdown-таблицы в шагах ----------
+// Solver может оформить сравнение или образец записи |-таблицей (разрешено
+// промптом). Парсим ТОЛЬКО этот узкий диалект: подряд идущие строки на «|»,
+// вторая — разделитель |---|. Всё остальное остаётся обычным текстом.
+// Ячейки прогоняются через escapeHtml; KaTeX по ним пройдёт после вставки.
+function tableMarkup(lines) {
+  const rows = lines.map((l) => l.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map((c) => c.trim()));
+  const head = rows[0];
+  const body = rows.slice(2); // [1] — разделитель |---|
+  const tr = (cells, tag) => `<tr>${cells.map((c) => `<${tag}>${escapeHtml(c)}</${tag}>`).join("")}</tr>`;
+  return `<div class="step-table-wrap"><table class="step-table"><thead>${tr(head, "th")}</thead><tbody>${body.map((r) => tr(r, "td")).join("")}</tbody></table></div>`;
+}
+
+/** Текст шага → HTML: обычные строки экранируются, |-таблицы становятся <table>. */
+function stepContentMarkup(content) {
+  const lines = String(content ?? "").split("\n");
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const isTableLine = (n) => /^\s*\|.*\|\s*$/.test(lines[n] ?? "");
+    const isSeparator = (n) => /^\s*\|[\s:|-]+\|\s*$/.test(lines[n] ?? "");
+    if (isTableLine(i) && isSeparator(i + 1) && isTableLine(i + 1)) {
+      const block = [];
+      while (i < lines.length && isTableLine(i)) block.push(lines[i++]);
+      out.push(tableMarkup(block));
+    } else {
+      out.push(escapeHtml(lines[i++]));
+    }
+  }
+  return out.join("\n");
+}
+
 /** Разметка списка шагов — одна на экран решения и на эталон внутри проверки. */
 function stepsMarkup(steps) {
   return steps
@@ -1080,7 +1112,7 @@ function stepsMarkup(steps) {
         <span class="step-num">${i + 1}</span>
         <div class="step-body">
           <h2 class="step-title">${escapeHtml(step.title)}</h2>
-          <p class="step-text">${escapeHtml(step.content)}</p>
+          <p class="step-text">${stepContentMarkup(step.content)}</p>
         </div>
       </li>`
     )

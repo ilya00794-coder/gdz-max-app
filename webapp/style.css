@@ -118,6 +118,12 @@ html, body {
 .step-text { margin: 0; font-size: 14px; line-height: 1.6; color: var(--l-text-2); white-space: pre-line; }
 .step-text .katex { color: var(--l-accent); }
 
+/* --- таблицы в шагах (сравнение, образец записи) --- */
+.step-table-wrap { overflow-x: auto; margin: 6px 0; white-space: normal; }
+.step-table { border-collapse: collapse; font-size: 13px; min-width: 60%; }
+.step-table th, .step-table td { border: 1px solid var(--l-border, #DDDCD4); padding: 5px 9px; text-align: left; vertical-align: top; }
+.step-table th { background: var(--l-bg-soft, #F4F3EC); font-weight: 600; }
+
 /* --- блок ответа --- */
 .answer-block {
   margin: 22px 0 4px;
