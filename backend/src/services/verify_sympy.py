@@ -159,15 +159,21 @@ def evaluate(expression):
 
 
 def to_solution_list(result):
-    """Приводит результат к списку решений, доразрешая уравнение, если это ещё не решения."""
+    """Приводит результат к списку решений, доразрешая уравнение, если это ещё не решения.
+
+    Возвращает (решения, from_solver): from_solver=True — результат имеет
+    семантику НАБОРА РЕШЕНИЙ (solve/solveset или уравнение, которое мы сами
+    решили); False — это скалярное ЗНАЧЕНИЕ выражения. Различие критично для
+    пустого ответа: «решений нет» осмысленно только против набора решений.
+    """
     # Чистая арифметика ("128 + 236") вычисляется питоном в обычный int/float,
     # а не в sympy-объект — без этой ветки она падала в "непонятный результат",
     # и вся арифметика началки оставалась без верификации.
     if isinstance(result, (int, float)):
-        return [sympy.S(result)]
+        return [sympy.S(result)], False
 
     if isinstance(result, dict):
-        return list(result.values())
+        return list(result.values()), True
 
     if isinstance(result, (list, tuple, set, frozenset)):
         flat = []
@@ -179,11 +185,11 @@ def to_solution_list(result):
                 flat.extend(item)
             else:
                 flat.append(item)
-        return flat
+        return flat, True
 
     if isinstance(result, sympy.sets.sets.Set):
         if result.is_FiniteSet:
-            return list(result)
+            return list(result), True
         raise Rejected("бесконечное множество решений — символьная сверка не применима")
 
     # Пришло само уравнение или выражение — решаем его сами.
@@ -191,10 +197,10 @@ def to_solution_list(result):
         symbols = sorted(result.free_symbols, key=lambda s: s.name)
         if not symbols:
             # Числовой результат: это и есть ответ.
-            return [result]
+            return [result], False
         if len(symbols) > 1:
             raise Rejected("несколько переменных — символьная сверка не применима")
-        return sympy.solve(result, symbols[0])
+        return sympy.solve(result, symbols[0]), True
 
     raise Rejected("непонятный результат вычисления")
 
@@ -361,7 +367,19 @@ def main():
 
     try:
         result = evaluate(expression)
-        solutions = to_solution_list(result)
+
+        if isinstance(result, (bool, sympy.logic.boolalg.BooleanAtom)):
+            # Схлопнутая Eq без переменных: формализация — утверждение, а не задача.
+            # Ложное утверждение — модель формализовала неверное равенство: это
+            # дефект решателя, различаем его в причине отдельно от безобидного True.
+            if bool(result):
+                reason = "формализация — истинное числовое утверждение, а не задача"
+            else:
+                reason = "формализация — ЛОЖНОЕ числовое утверждение (дефект решателя)"
+            print(json.dumps({"ok": False, "reason": reason}, ensure_ascii=False))
+            return
+
+        solutions, from_solver = to_solution_list(result)
     except Rejected as err:
         print(json.dumps({"ok": False, "reason": str(err)}))
         return
@@ -391,6 +409,12 @@ def main():
             missing.append(ref)
 
     extra = [c for c in candidates if not any(same_value(c, ref) for ref in reference)]
+
+    if not candidates and not from_solver:
+        # «Решений нет» осмысленно только против решения уравнения; сверять
+        # пустоту со скалярным значением — ложное verified даром.
+        print(json.dumps({"ok": False, "reason": "пустой ответ можно сверять только с решением уравнения, а формализация даёт значение"}, ensure_ascii=False))
+        return
 
     verified = not missing and not extra and len(reference) == len(matched)
 

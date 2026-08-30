@@ -227,6 +227,12 @@ export async function verifyAnswer({ subject, expression, candidateAnswer, answe
         });
       }
     }
+    if (answerValues.kind === "all" && answerValues.values.length === 0 && !NO_ROOTS.test(normalizeMathText(candidateAnswer ?? ""))) {
+      // Пустой список значений — это утверждение «решений нет»; если текст ответа
+      // на него не похож, скорее всего модель потеряла значения. Сверка ниже
+      // пропустит такое verified только против настоящего solve без корней.
+      console.warn("[answerValues] пустой values при непохожем на «корней нет» ответе:", { candidateAnswer });
+    }
     candidates =
       answerValues.kind === "any" && answerValues.values.length
         ? [answerValues.values[0].value] // any: формы равны, сверяем первую
@@ -267,6 +273,10 @@ export async function verifyAnswer({ subject, expression, candidateAnswer, answe
   }
 
   if (!report.ok) {
+    if (/ЛОЖНОЕ числовое утверждение/.test(report.reason ?? "")) {
+      // Модель формализовала неверное равенство — дефект solver'а, видим отдельно.
+      console.error("[verify] ЛОЖНАЯ ФОРМАЛИЗАЦИЯ — дефект solver'а:", { expression, candidateAnswer });
+    }
     return { verified: false, confidence: 0, method: "unsupported", details: { reason: report.reason } };
   }
 
