@@ -1047,6 +1047,7 @@ function renderMath(root) {
 // Свайпа нет: всё решение одним вертикальным списком, шаги пронумерованы кружками.
 const stepsList = document.getElementById("steps-list");
 const graphCard = document.getElementById("graph-card");
+const visualCard = document.getElementById("visual-card");
 const answerBlock = document.getElementById("answer-block");
 const solutionTask = document.getElementById("solution-task");
 const btnNewTask = document.getElementById("btn-new-task");
@@ -1291,6 +1292,68 @@ function graphSvg(graph) {
 }
 
 /** Заполняет карточку графика или прячет её, если графика нет (старый кэш, отказ бэкенда). */
+// ---------- параметрические рисунки (№12, группа Б): кружки и числовой луч ----------
+// Принцип графика: модель называет только ПАРАМЕТРЫ (числа из условия),
+// рисует система детерминированным шаблоном. Верность рисунка = верность
+// чисел, а числа сверяемы с условием — свободного рисования здесь нет.
+
+function circlesSvg(v) {
+  const total = Math.min(Math.max(1, Math.round(v.circlesTotal ?? 0)), 40);
+  const crossed = Math.min(Math.max(0, Math.round(v.circlesCrossed ?? 0)), total);
+  const group = v.circlesGroupSize ? Math.max(2, Math.round(v.circlesGroupSize)) : null;
+  const perRow = 10, r = 9, gap = 26, gapGroup = 12;
+  const cols = Math.min(total, perRow);
+  const rows = Math.ceil(total / perRow);
+  const extra = group ? Math.floor((cols - 1) / group) * gapGroup : 0;
+  const w = cols * gap + extra + 8, h = rows * gap + 8;
+  let out = "";
+  for (let i = 0; i < total; i++) {
+    const col = i % perRow, row = Math.floor(i / perRow);
+    const gx = group ? Math.floor(col / group) * gapGroup : 0;
+    const cx = 4 + r + col * gap + gx, cy = 4 + r + row * gap;
+    const isCrossed = i >= total - crossed;
+    out += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${isCrossed ? "none" : "#185FA5"}" fill-opacity="${isCrossed ? 0 : 0.25}" stroke="#185FA5" stroke-width="1.5"/>`;
+    if (isCrossed) out += `<path d="M${cx - r * 0.7} ${cy - r * 0.7} L${cx + r * 0.7} ${cy + r * 0.7} M${cx + r * 0.7} ${cy - r * 0.7} L${cx - r * 0.7} ${cy + r * 0.7}" stroke="#B54141" stroke-width="1.8"/>`;
+  }
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px" role="img">${out}</svg>`;
+}
+
+function numberlineSvg(v) {
+  const pts = (v.points ?? []).filter((p) => Number.isFinite(p.value)).slice(0, 8);
+  if (!pts.length || !v.range) return "";
+  let [a, b] = v.range;
+  if (!(b > a)) { a = Math.min(...pts.map((p) => p.value)) - 1; b = Math.max(...pts.map((p) => p.value)) + 1; }
+  const W = 320, H = 66, pad = 18, y = 40;
+  const X = (val) => pad + ((val - a) / (b - a)) * (W - 2 * pad);
+  let out = `<line x1="4" y1="${y}" x2="${W - 4}" y2="${y}" stroke="#5B5A54" stroke-width="1.5"/>` +
+    `<path d="M${W - 10} ${y - 4} L${W - 4} ${y} L${W - 10} ${y + 4}" fill="none" stroke="#5B5A54" stroke-width="1.5"/>`;
+  const step = graphNiceStep((b - a) / 6);
+  for (let t = Math.ceil(a / step) * step; t <= b + 1e-9; t += step) {
+    const x = X(t);
+    out += `<line x1="${x}" y1="${y - 4}" x2="${x}" y2="${y + 4}" stroke="#8B8A84" stroke-width="1"/>` +
+      `<text x="${x}" y="${y + 18}" font-size="10" text-anchor="middle" fill="#8B8A84">${Number(t.toFixed(6))}</text>`;
+  }
+  for (const p of pts) {
+    const x = X(p.value);
+    out += `<circle cx="${x}" cy="${y}" r="4" fill="#185FA5"/>` +
+      `<text x="${x}" y="${y - 10}" font-size="11" text-anchor="middle" fill="#185FA5">${escapeHtml(p.label || String(p.value))}</text>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img">${out}</svg>`;
+}
+
+function renderVisualCard(visual) {
+  if (!visual || !visualCard) {
+    if (visualCard) { visualCard.hidden = true; visualCard.innerHTML = ""; }
+    return;
+  }
+  const svg = visual.kind === "circles" ? circlesSvg(visual) : numberlineSvg(visual);
+  if (!svg) { visualCard.hidden = true; visualCard.innerHTML = ""; return; }
+  const comment = visual.comment ? `<p class="graph-comment">${escapeHtml(visual.comment)}</p>` : "";
+  visualCard.innerHTML = svg + comment;
+  visualCard.hidden = false;
+  renderMath(visualCard);
+}
+
 function renderGraphCard(graph) {
   if (!graph?.plots?.length) {
     graphCard.hidden = true;
@@ -1320,6 +1383,7 @@ function renderSolution(solution) {
 
   stepsList.innerHTML = stepsMarkup(solution.steps);
   renderGraphCard(solution.graph);
+  renderVisualCard(solution.visual);
   answerBlock.innerHTML = answerMarkup(solution);
 
   // Формулы отрисовываем после того, как всё уже в DOM.

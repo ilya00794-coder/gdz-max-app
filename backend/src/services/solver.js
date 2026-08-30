@@ -92,6 +92,23 @@ const SolutionSchema = z.object({
       "График функции, ЕСЛИ он помогает понять решение (критерий в инструкции). " +
         "Точки и координаты НЕ вычисляй — только функция, диапазон и комментарий. Обычно null."
     ),
+  visual: z
+    .object({
+      kind: z.enum(["circles", "numberline"]).describe("circles — кружки для счёта (началка); numberline — числовой луч/координатная прямая с отмеченными точками."),
+      circlesTotal: z.number().nullable().describe("circles: сколько всего кружков (из условия, не больше 40); для numberline — null."),
+      circlesCrossed: z.number().nullable().describe("circles: сколько зачеркнуть (вычитаемое); 0 или null, если нечего."),
+      circlesGroupSize: z.number().nullable().describe("circles: размер группы при группировке (счёт по 3 — группы по 3); null, если без групп."),
+      points: z
+        .array(z.object({
+          value: z.number().describe("Координата точки числом: 3/7 → 0.4286, −3.5 → -3.5."),
+          label: z.string().describe("Подпись точки, как в решении: «3/7», «−3,5»."),
+        }))
+        .describe("numberline: отмечаемые точки (1–4 штуки); для circles — пустой список."),
+      range: z.tuple([z.number(), z.number()]).nullable().describe("numberline: [от, до] оси; для circles — null."),
+      comment: z.string().describe("Одна короткая фраза: что видно на рисунке."),
+    })
+    .nullable()
+    .describe("Счётный рисунок, ЕСЛИ он помогает (критерий в инструкции). Только параметры из условия — рисует система. Обычно null."),
 });
 
 const SYSTEM_BASE = `Ты — школьный репетитор в приложении-помощнике по домашним заданиям.
@@ -294,7 +311,18 @@ const SYSTEM_BASE = `Ты — школьный репетитор в прило�
   Все точки посчитает система автоматически.
 - Для системы двух линейных уравнений выражай y из каждого уравнения и клади ДВЕ
   функции в expressions — их пересечение и есть решение системы.
-- Сомневаешься — ставь null.`;
+- Сомневаешься — ставь null.
+
+Счётный рисунок (поле visual) — параметры называешь ты, рисует система:
+- КРУЖКИ (kind circles): только 1–4 класс, сложение/вычитание/группировка
+  малых чисел (до 40): «14 − 5» → circlesTotal 14, circlesCrossed 5;
+  «счёт по 3» → circlesGroupSize 3. Кружки объясняют СМЫСЛ действия —
+  в столбиках, уравнениях и у старших классов их НЕ бывает.
+- ЧИСЛОВОЙ ЛУЧ (kind numberline): сравнение чисел и дробей, шаг по
+  координатной прямой («−3,5 + 1,2»): отметь исходные числа и результат.
+  Не для уравнений и не там, где числа не сравниваются наглядно.
+- Числа берёшь ТОЛЬКО из условия и решения, ничего не придумывая.
+- Обычно null. График и рисунок вместе не нужны — выбери одно или ничего.`;
 
 /** Собирает блок системного промпта с белым списком методов. Вынесен отдельно ради кэширования. */
 function buildProgramBlock({ grade, subject, quarter }) {
@@ -393,6 +421,7 @@ export async function solveTask({ recognizedText, grade, subject, quarter = 4 })
     steps: parsed.steps,
     finalAnswer: parsed.finalAnswer.trim(),
     formalExpression: parsed.formalExpression.trim() || null,
+    visual: parsed.visual ?? null,
     usedMethods: parsed.usedMethods ?? [],
     programWarning: parsed.programWarning?.trim() || null,
     answerValues: parsed.answerValues ?? null,
