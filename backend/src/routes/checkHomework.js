@@ -5,7 +5,7 @@ import { compareWithReference, crossCheckVerdicts, answerNoteFor } from "../serv
 import { verifyAnswer } from "../services/verify.js";
 import { isSubjectAllowedForGrade, getSubjectsForGrade } from "../services/subjects.js";
 import { recordVerifyEvent } from "../services/telemetry.js";
-import { isLocalRequest } from "../middleware/maxInitData.js";
+import { requestSource } from "../middleware/maxInitData.js";
 import { ConfigError, InputError, describeApiError } from "../services/anthropicClient.js";
 import { detectMisread } from "../services/misread.js";
 
@@ -59,7 +59,7 @@ export function isMultiTaskAnswer(answer) {
  */
 router.post("/", async (req, res) => {
   const startedAt = Date.now();
-  const source = isLocalRequest(req) ? "local" : "remote";
+  const source = requestSource(req);
   let stage = "start";
   try {
     const { imagesBase64, subject, quarter, workText, condition } = req.body;

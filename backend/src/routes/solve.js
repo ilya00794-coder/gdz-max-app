@@ -5,7 +5,7 @@ import { solveTask, solveTaskStream } from "../services/solver.js";
 import { verifyAnswer, computeGraphPlots } from "../services/verify.js";
 import { isSubjectAllowedForGrade, getSubjectsForGrade } from "../services/subjects.js";
 import { recordVerifyEvent } from "../services/telemetry.js";
-import { isLocalRequest } from "../middleware/maxInitData.js";
+import { requestSource } from "../middleware/maxInitData.js";
 import { ConfigError, InputError, describeApiError } from "../services/anthropicClient.js";
 
 const router = Router();
@@ -176,7 +176,7 @@ function errorResponse(err, { source, startedAt, transport }) {
  */
 router.post("/", async (req, res) => {
   const startedAt = Date.now();
-  const source = isLocalRequest(req) ? "local" : "remote";
+  const source = requestSource(req);
   // streamFallback выставляет фронт, когда откатывается с потока на POST.
   const transport = req.body?.streamFallback === true ? "fallback" : "post";
   try {
@@ -199,7 +199,7 @@ router.post("/", async (req, res) => {
  */
 router.post("/stream", async (req, res) => {
   const startedAt = Date.now();
-  const source = isLocalRequest(req) ? "local" : "remote";
+  const source = requestSource(req);
   res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache");
   res.flushHeaders?.();

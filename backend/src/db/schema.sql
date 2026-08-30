@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS verify_events (
   created_at          timestamptz NOT NULL DEFAULT now(),
   route               text        NOT NULL CHECK (route IN ('solve', 'check')),
   -- local — канарейки и отладка с этой машины; remote — живой трафик через туннель.
-  source              text        NOT NULL CHECK (source IN ('local', 'remote')),
+  source              text        NOT NULL CHECK (source IN ('local', 'remote', 'canary')),
   grade               integer,
   subject             text,
   verified            boolean,
@@ -161,6 +161,9 @@ CREATE TABLE IF NOT EXISTS verify_events (
 );
 
 ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS transport text;
+-- Дозаливка canary в CHECK существующих баз (правка ограничения — только пересозданием).
+ALTER TABLE verify_events DROP CONSTRAINT IF EXISTS verify_events_source_check;
+ALTER TABLE verify_events ADD CONSTRAINT verify_events_source_check CHECK (source IN ('local', 'remote', 'canary'));
 
 -- Дозаливка колонки в уже существующие базы: CREATE IF NOT EXISTS выше её не добавит.
 ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS text_edited boolean;

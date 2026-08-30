@@ -39,6 +39,18 @@ export const STRICT_INIT_DATA_ENABLED = STRICT;
  * целиком. Отличаем по X-Forwarded-For: у проксированных запросов он есть,
  * у настоящих локальных его нет.
  */
+/**
+ * Источник запроса для телеметрии: canary | local | remote.
+ * X-Canary ставят НАШИ прогоны (канарейки, замеры) независимо от адреса:
+ * канарейка через туннель приходит с X-Forwarded-For и без заголовка
+ * выглядела бы живым пользователем — а source=remote существует ровно
+ * для отделения живых от нас.
+ */
+export function requestSource(req) {
+  if (req.get("X-Canary")) return "canary";
+  return isLocalRequest(req) ? "local" : "remote";
+}
+
 export function isLocalRequest(req) {
   if (req.get("x-forwarded-for")) return false;
   const ip = req.socket?.remoteAddress ?? "";

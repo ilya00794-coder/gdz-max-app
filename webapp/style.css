@@ -865,3 +865,6 @@ body.crop-dragging {
   white-space: nowrap;
   align-self: center;
 }
+
+/* Версия фронта на экране настройки: видно с телефона, что фронт свежий. */
+.app-version { margin: 14px 0 0; text-align: center; font-size: 11px; color: var(--l-muted, #B0AFA8); }
