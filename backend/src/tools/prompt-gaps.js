@@ -160,7 +160,14 @@ ${task.task}
 РЕШЕНИЕ, ПОКАЗАННОЕ УЧЕНИКУ:
 ${stepsText}
 
-ФИНАЛЬНЫЙ ОТВЕТ РЕШЕНИЯ: ${solution.finalAnswer}${SUBJECT_FOCUS[task.subject] ? "\n\n" + SUBJECT_FOCUS[task.subject] : ""}`,
+ФИНАЛЬНЫЙ ОТВЕТ РЕШЕНИЯ: ${solution.finalAnswer}${
+  // Судья видит только текст шагов и писал «нет чертежа» там, где продукт
+  // рисует график по полю graph, — раздувая категорию наглядности. Передаём
+  // ФАКТ наличия графика (функция и отрезок), не сам SVG.
+  solution.graph
+    ? `\nК РЕШЕНИЮ ПРИЛОЖЕН ГРАФИК: ${(solution.graph.expressions ?? []).join(" и ")} на отрезке [${(solution.graph.xRange ?? []).join("; ")}] — приложение рисует его ученику рядом с шагами.`
+    : ""
+}${SUBJECT_FOCUS[task.subject] ? "\n\n" + SUBJECT_FOCUS[task.subject] : ""}`,
       },
     ],
   });
