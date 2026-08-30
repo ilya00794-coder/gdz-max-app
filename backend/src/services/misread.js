@@ -21,7 +21,7 @@
 // Исходный случай «1,38 пять раз прочитано как 1,58» сам по себе не ловится —
 // поймали его лишь потому, что vision сделал ВТОРУЮ ошибку (37,5 → 57,5).
 
-import { normalizeMathText, isExpressionSafe, runPython } from "./verify.js";
+import { normalizeMathText, isExpressionSafe, runPython, numbersToRationals } from "./verify.js";
 
 const ENABLED = ["1", "true", "yes", "on"].includes(
   String(process.env.MISREAD_DETECTION || "").toLowerCase()
@@ -55,23 +55,6 @@ function latexToArithmetic(text) {
 
 const NUMERIC_PART = /^[0-9+\-*/(). ]+$/;
 
-/**
- * Все числа — в sympy.Rational. Скобочная дробь (372/10) не спасает: её
- * вычисляет python-eval ещё ДО SymPy, во float, и 37.2·60−2232 даёт 10⁻¹³
- * вместо нуля, а сравнение Float/Integer капризничает. Rational() из белого
- * списка даёт точную арифметику целиком на стороне SymPy.
- */
-function numbersToRationals(expr) {
-  return expr.replace(/\d+\.\d+|\d+/g, (m) => {
-    const dot = m.indexOf(".");
-    // Ведущие нули срезаем: «0.3» иначе дал бы Rational(03,10), а целочисленный
-    // литерал с ведущим нулём — SyntaxError в Python 3.
-    if (dot === -1) return `Rational(${m.replace(/^0+(?=\d)/, "")})`;
-    const frac = m.length - dot - 1;
-    const digits = m.replace(".", "").replace(/^0+(?=\d)/, "");
-    return `Rational(${digits},1${"0".repeat(frac)})`;
-  });
-}
 
 /** Разбивает текст на цепочки равенств и отбирает проверяемые числовые пары. */
 export function extractNumericPairs(recognizedText) {

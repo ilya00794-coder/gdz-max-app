@@ -42,7 +42,12 @@ export function normalizeMathText(text) {
     .replace(/[−–—‐‑]/g, "-") // −, –, —, ‐, ‑ → -
     .replace(/[   ]/g, " ") // неразрывные пробелы
     .replace(/[·×]/g, "*")
-    .replace(/(\d),(\d)/g, "$1.$2"); // десятичная запятая: 4,5 → 4.5
+    // Запятая внутри Rational(a,b) — разделитель аргументов, НЕ десятичная:
+    // без защиты Rational(60,100) превращался в Rational(60.100) и ломал
+    // верификацию монструозной дробью (пойман живой канарейкой answerValues).
+    .replace(/Rational\((\s*\d+\s*),(\s*\d+\s*)\)/g, "Rational($1@COMMA@$2)")
+    .replace(/(\d),(\d)/g, "$1.$2") // десятичная запятая: 4,5 → 4.5
+    .replace(/@COMMA@/g, ",");
 }
 
 /**
@@ -139,12 +144,62 @@ export function runPython(payload) {
  * @param {string|number} params.candidateAnswer - финальный ответ, предложенный решателем
  * @returns {Promise<{verified: boolean, confidence: number, method: string, details?: object}>}
  */
-export async function verifyAnswer({ subject, expression, candidateAnswer }) {
+/**
+ * Все числа выражения — в sympy.Rational: python-eval считает 0.6 и 3/5
+ * флоатами до SymPy, и сравнение Float/Integer капризничает (0.0 против 0
+ * даёт разный результат в зависимости от направления). Единый экземпляр
+ * для verify и misread — копии этой функции уже дважды ловили баги.
+ */
+export function numbersToRationals(expr) {
+  return expr.replace(/\d+\.\d+|\d+/g, (m) => {
+    const dot = m.indexOf(".");
+    if (dot === -1) return `Rational(${m.replace(/^0+(?=\d)/, "")})`;
+    const frac = m.length - dot - 1;
+    const digits = m.replace(".", "").replace(/^0+(?=\d)/, "");
+    return `Rational(${digits},1${"0".repeat(frac)})`;
+  });
+}
+
+/**
+ * Инвариант kind:"any": все формы равны между собой и единицы однородны
+ * (все отсутствуют либо все одинаковы). Нарушение — дефект solver'а,
+ * логируется громко; сверка деградирует к первой форме.
+ * @returns {Promise<string|null>} описание нарушения либо null
+ */
+async function checkAnyInvariant(values) {
+  const units = new Set(values.map((v) => v.unit ?? null));
+  if (units.size > 1) {
+    return `разные единицы в any: ${[...units].join(", ")} — запрещено (пересчёт между единицами мог быть неверным)`;
+  }
+  for (let i = 1; i < values.length; i++) {
+    const expr = `simplify((${numbersToRationals(values[0].value)}) - (${numbersToRationals(values[i].value)}))`;
+    if (!isExpressionSafe(expr)) return `форма не прошла белый список: ${values[i].value}`;
+    try {
+      const run = await runPython({ expression: expr, candidates: ["0"] });
+      const report = JSON.parse(run.stdout);
+      if (!report.ok || !report.verified) return `формы не равны: ${values[0].value} ≠ ${values[i].value}`;
+    } catch {
+      return `не удалось проверить равенство форм: ${values[i].value}`;
+    }
+  }
+  return null;
+}
+
+export async function verifyAnswer({ subject, expression, candidateAnswer, answerValues }) {
   const normalizedSubject = String(subject || "").trim().toLowerCase();
 
   if (!COMPUTABLE_SUBJECTS.includes(normalizedSubject)) {
     return { verified: false, confidence: 0, method: "unsupported", details: { reason: "предмет не проверяется символьно" } };
   }
+
+  // Машинная форма ответа от solver'а (если есть) — приоритетнее парсинга строки.
+  if (answerValues?.kind === "expression") {
+    return {
+      verified: false, confidence: 0, method: "unsupported",
+      details: { reason: "ответ-выражение (серия, интервал, именованные части) — символьная сверка не применима" },
+    };
+  }
+
   if (!expression) {
     return { verified: false, confidence: 0, method: "unsupported", details: { reason: "нет формализованной записи задачи" } };
   }
@@ -159,7 +214,26 @@ export async function verifyAnswer({ subject, expression, candidateAnswer }) {
     };
   }
 
-  const candidates = parseCandidateAnswer(candidateAnswer);
+  let candidates;
+  if (answerValues && Array.isArray(answerValues.values)) {
+    // Путь по машинной форме: значения уже в SymPy-записи, единицы — метаданные.
+    if (answerValues.kind === "any" && answerValues.values.length > 1) {
+      const violation = await checkAnyInvariant(answerValues.values);
+      if (violation) {
+        console.error("[answerValues] НАРУШЕНИЕ ИНВАРИАНТА any — дефект solver'а:", {
+          violation,
+          values: answerValues.values,
+          candidateAnswer,
+        });
+      }
+    }
+    candidates =
+      answerValues.kind === "any" && answerValues.values.length
+        ? [answerValues.values[0].value] // any: формы равны, сверяем первую
+        : answerValues.values.map((v) => v.value); // all: полный набор (пустой = «корней нет»)
+  } else {
+    candidates = parseCandidateAnswer(candidateAnswer);
+  }
   if (candidates === null) {
     return { verified: false, confidence: 0, method: "unsupported", details: { reason: "не удалось разобрать ответ" } };
   }

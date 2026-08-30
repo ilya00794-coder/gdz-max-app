@@ -105,6 +105,7 @@ router.post("/", async (req, res) => {
         subject,
         expression: solution.formalExpression,
         candidateAnswer: solution.finalAnswer,
+        answerValues: solution.answerValues,
       }),
       computeGraphPlots(solution.graph),
     ]);
