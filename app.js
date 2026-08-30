@@ -885,7 +885,9 @@ btnConfirm.addEventListener("click", async () => {
     state.recognizedText = currentText;
     state.solution = await postJson(
       "/api/solve",
-      { text: currentText, grade: state.grade, subject: state.subject },
+      // textEdited — телеметрии: ученик правил распознанный текст (сам текст
+      // и так уходит; флаг отмечает «второй платёж» для решения о жадной схеме).
+      { text: currentText, grade: state.grade, subject: state.subject, textEdited: true },
       SOLVE_TIMEOUT_MS
     );
     renderSolution(state.solution);
@@ -901,8 +903,10 @@ btnConfirm.addEventListener("click", async () => {
 
 // ---------- вызов backend ----------
 
-// Распознавание + решение реально занимают 30–40 секунд, поэтому запас большой.
-const SOLVE_TIMEOUT_MS = 60000;
+// Распознавание + решение: живая телеметрия показала 56–99 с на полном пути
+// с фото — при прежних 60 с два запроса из семи умерли на фронте при готовом
+// решении бэкенда. 150 с — как в check.
+const SOLVE_TIMEOUT_MS = 150000;
 // Проверка домашки поднимает три модели подряд: распознавание, эталон, сравнение.
 // Замер на реальном многозадачном листе — 79,6 с; 90 с были впритык.
 const CHECK_TIMEOUT_MS = 150000;
