@@ -167,6 +167,14 @@ ${stepsText}
   solution.graph
     ? `\nК РЕШЕНИЮ ПРИЛОЖЕН ГРАФИК: ${(solution.graph.expressions ?? []).join(" и ")} на отрезке [${(solution.graph.xRange ?? []).join("; ")}] — приложение рисует его ученику рядом с шагами.`
     : ""
+}${
+  solution.schemaId
+    ? `\nК РЕШЕНИЮ ПРИЛОЖЕНА ГОТОВАЯ ПРОВЕРЕННАЯ СХЕМА «${solution.schemaId}» — приложение показывает её ученику рядом с шагами.`
+    : ""
+}${
+  solution.visual
+    ? `\nК РЕШЕНИЮ ПРИЛОЖЕН СЧЁТНЫЙ РИСУНОК (${solution.visual.kind === "circles" ? "кружки" : "числовой луч"}) — приложение рисует его ученику рядом с шагами.`
+    : ""
 }${SUBJECT_FOCUS[task.subject] ? "\n\n" + SUBJECT_FOCUS[task.subject] : ""}`,
       },
     ],

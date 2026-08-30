@@ -1354,6 +1354,24 @@ function renderVisualCard(visual) {
   renderMath(visualCard);
 }
 
+// Библиотека готовых схем (пилот №12, группа В): статические SVG, нарисованы
+// и проверены заранее — модель только ВЫБИРАЕТ id, ничего не генерируя.
+const SCHEMA_LIBRARY = {
+  "термометр": { file: "termometr.svg", alt: "Устройство термометра: шкала, трубка с жидкостью, резервуар" },
+  "части-растения": { file: "chasti-rasteniya.svg", alt: "Части растения: корень, стебель, лист, цветок" },
+  "стороны-горизонта": { file: "storony-gorizonta.svg", alt: "Стороны горизонта: основные и промежуточные" },
+  "большая-медведица": { file: "bolshaya-medveditsa.svg", alt: "Ковш Большой Медведицы и Полярная звезда" },
+};
+
+function renderSchemaCard(schemaId) {
+  const card = document.getElementById("schema-card");
+  const entry = SCHEMA_LIBRARY[schemaId];
+  if (!card) return;
+  if (!entry) { card.hidden = true; card.innerHTML = ""; return; }
+  card.innerHTML = `<img src="assets/schemas/${entry.file}" alt="${escapeHtml(entry.alt)}" style="width:100%;height:auto" loading="lazy">`;
+  card.hidden = false;
+}
+
 function renderGraphCard(graph) {
   if (!graph?.plots?.length) {
     graphCard.hidden = true;
@@ -1384,6 +1402,7 @@ function renderSolution(solution) {
   stepsList.innerHTML = stepsMarkup(solution.steps);
   renderGraphCard(solution.graph);
   renderVisualCard(solution.visual);
+  renderSchemaCard(solution.schemaId);
   answerBlock.innerHTML = answerMarkup(solution);
 
   // Формулы отрисовываем после того, как всё уже в DOM.

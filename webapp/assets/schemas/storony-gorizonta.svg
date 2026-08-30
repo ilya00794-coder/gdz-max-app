@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 260" font-family="system-ui, sans-serif">
+  <circle cx="130" cy="130" r="92" fill="none" stroke="#8B8A84" stroke-width="1.2"/>
+  <g stroke="#C8C7C0" stroke-width="1">
+    <line x1="130" y1="42" x2="130" y2="218"/><line x1="42" y1="130" x2="218" y2="130"/>
+    <line x1="68" y1="68" x2="192" y2="192"/><line x1="192" y1="68" x2="68" y2="192"/>
+  </g>
+  <!-- стрелка на север -->
+  <path d="M130 60 L124 86 L130 80 L136 86 Z" fill="#B54141"/>
+  <g text-anchor="middle" font-size="16" font-weight="bold" fill="#185FA5">
+    <text x="130" y="32">С</text><text x="130" y="242">Ю</text>
+    <text x="236" y="136">В</text><text x="22" y="136">З</text>
+  </g>
+  <g text-anchor="middle" font-size="12" fill="#5B5A54">
+    <text x="196" y="62">СВ</text><text x="64" y="62">СЗ</text>
+    <text x="196" y="206">ЮВ</text><text x="64" y="206">ЮЗ</text>
+  </g>
+  <text x="130" y="146" text-anchor="middle" font-size="10" fill="#8B8A84">основные —</text>
+  <text x="130" y="158" text-anchor="middle" font-size="10" fill="#8B8A84">крупно</text>
+</svg>
