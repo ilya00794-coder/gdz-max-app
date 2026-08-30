@@ -660,11 +660,56 @@ function startSolveStream(payload, { allowEarlyConfirm, allowPrompt }) {
   return st;
 }
 
+// ---------- очередь пословной печати ----------
+// Темп: ~24 мс/слово — шаг из 2–3 предложений (~40 слов) допечатывается
+// за ~1 секунду. Если в очереди ждёт следующий шаг — текущий проявляется
+// мгновенно (ускорение, не обрыв): анимация никогда не задерживает контент
+// дольше одной печати. Фолбэк и кэш-хит идут мимо очереди (renderSolution).
+const TYPE_WORD_MS = 24;
+const typeQueue = [];
+let typeDraining = false;
+let typeQueueEmptyResolvers = [];
+
+function computeTypeDelay(queueLen) {
+  return queueLen > 0 ? 0 : TYPE_WORD_MS;
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function enqueueTyping(li) {
+  typeQueue.push(li);
+  if (!typeDraining) drainTypeQueue();
+}
+
+async function drainTypeQueue() {
+  typeDraining = true;
+  while (typeQueue.length) {
+    const li = typeQueue.shift();
+    for (const w of li.querySelectorAll(".tw")) {
+      w.style.visibility = "";
+      const delay = computeTypeDelay(typeQueue.length);
+      if (delay) await sleep(delay);
+    }
+  }
+  typeDraining = false;
+  for (const r of typeQueueEmptyResolvers) r();
+  typeQueueEmptyResolvers = [];
+}
+
+function waitTypeQueue() {
+  if (!typeDraining && !typeQueue.length) return Promise.resolve();
+  return new Promise((r) => typeQueueEmptyResolvers.push(r));
+}
+
 /** Живой рендер экрана решения: буфер шагов + дорисовка + финал одним блоком. */
 function renderSolutionStreaming(st) {
   solutionTask.textContent = state.recognizedText || "";
-  stepsList.innerHTML = stepsMarkup(st.steps);
+  // Буфер уже пришедших шагов печатается той же очередью (с ускорением),
+  // вся вёрстка и KaTeX готовы заранее — проявляются только слова.
+  typeQueue.length = 0;
+  stepsList.innerHTML = st.steps.map((step, i) => stepMarkup(step, i, true)).join("");
   renderMath(stepsList);
+  for (const li of stepsList.children) enqueueTyping(li);
   renderGraphCard(null);
   renderVisualCard(null);
   renderSchemaCard(null);
@@ -674,12 +719,14 @@ function renderSolutionStreaming(st) {
   resetFeedback(solutionScreen);
   solutionScreen.querySelector(".sheet-scroll").scrollTop = 0;
   st.onStep = (step) => {
-    stepsList.insertAdjacentHTML("beforeend", stepMarkup(step, stepsList.children.length));
+    stepsList.insertAdjacentHTML("beforeend", stepMarkup(step, stepsList.children.length, true));
     renderMath(stepsList.lastElementChild);
+    enqueueTyping(stepsList.lastElementChild);
   };
-  st.onDone = (fin) => {
+  st.onDone = async (fin) => {
     st.onStep = null;
     st.onDone = null;
+    await waitTypeQueue(); // допечатать начатое; ускорение делает это <1 с
     if (fin && fin.code === 200 && !fin.body.multipleTasks) {
       state.solution = fin.body;
       completeStreamedSolution(fin.body);
@@ -1287,8 +1334,33 @@ function inlineMarkup(escapedLine) {
 }
 
 /** Текст шага → HTML: строки экранируются, |-таблицы → <table>, ```-блоки → <pre>
- *  (запись столбиком/уголком — моноширинно, выравнивание разрядов сохраняется). */
-function stepContentMarkup(content) {
+ *  (запись столбиком/уголком — моноширинно, выравнивание разрядов сохраняется).
+ *
+ *  typing=true — режим пословной печати: та же сегментация, тот же проход
+ *  (второго парсера нет), но печатные единицы оборачиваются в невидимые
+ *  <span class="tw">, которые потом проявляет очередь печати. Единица —
+ *  слово; формула $...$, таблица и ```-блок АТОМАРНЫ (появляются целиком:
+ *  полформулы и полтаблицы — мусор). Вся вёрстка построена заранее, слова
+ *  лишь становятся видимыми — переносы строк не дёргаются. Пословный **жирный**
+ *  внутри одного слова работает; жирный через пробел в typing-режиме
+ *  деградирует до звёздочек (5 решений из 323 — принято осознанно). */
+const TW = (inner) => `<span class="tw" style="visibility:hidden">${inner}</span>`;
+
+function typedTextLine(rawLine) {
+  // Сначала формулы: $...$ — один атом; остальное — пословно.
+  return rawLine
+    .split(/(\$[^$\n]*\$)/)
+    .map((tok) => {
+      if (/^\$[^$\n]*\$$/.test(tok)) return TW(escapeHtml(tok));
+      return tok
+        .split(/(\s+)/)
+        .map((w) => (/^\s*$/.test(w) ? w : TW(inlineMarkup(escapeHtml(w)))))
+        .join("");
+    })
+    .join("");
+}
+
+function stepContentMarkup(content, typing = false) {
   const lines = String(content ?? "").split("\n");
   const out = [];
   let i = 0;
@@ -1301,11 +1373,15 @@ function stepContentMarkup(content) {
       i++; // открывающее ```
       while (i < lines.length && !isFence(i)) block.push(lines[i++]);
       i++; // закрывающее ``` (или конец текста)
-      out.push(`<span class="step-pre">${escapeHtml(block.join("\n"))}</span>`);
+      const pre = `${escapeHtml(block.join("\n"))}`;
+      out.push(typing ? `<span class="step-pre tw" style="visibility:hidden">${pre}</span>` : `<span class="step-pre">${pre}</span>`);
     } else if (isTableLine(i) && isSeparator(i + 1) && isTableLine(i + 1)) {
       const block = [];
       while (i < lines.length && isTableLine(i)) block.push(lines[i++]);
-      out.push(tableMarkup(block));
+      const table = tableMarkup(block);
+      out.push(typing ? TW(table) : table);
+    } else if (typing) {
+      out.push(typedTextLine(lines[i++]));
     } else {
       out.push(inlineMarkup(escapeHtml(lines[i++])));
     }
@@ -1314,13 +1390,13 @@ function stepContentMarkup(content) {
 }
 
 /** Разметка одного шага — из неё собирается список и дорисовка при стриминге. */
-function stepMarkup(step, i) {
+function stepMarkup(step, i, typing = false) {
   return `
       <li class="step">
         <span class="step-num">${i + 1}</span>
         <div class="step-body">
           <h2 class="step-title">${escapeHtml(step.title)}</h2>
-          <p class="step-text">${stepContentMarkup(step.content)}</p>
+          <p class="step-text">${stepContentMarkup(step.content, typing)}</p>
         </div>
       </li>`;
 }
