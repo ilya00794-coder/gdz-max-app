@@ -2,7 +2,7 @@ import { Router } from "express";
 import { buildCacheKey, getCached, setCached } from "../services/cache.js";
 import { recognizeFromPhotos } from "../services/vision.js";
 import { solveTask } from "../services/solver.js";
-import { verifyAnswer } from "../services/verify.js";
+import { verifyAnswer, computeGraphPlots } from "../services/verify.js";
 import { isSubjectAllowedForGrade, getSubjectsForGrade } from "../services/subjects.js";
 import { ConfigError, InputError, describeApiError } from "../services/anthropicClient.js";
 
@@ -98,13 +98,23 @@ router.post("/", async (req, res) => {
     }
 
     const solution = await solveTask({ recognizedText, grade, subject, quarter: parsedQuarter });
-    const verification = await verifyAnswer({
-      subject,
-      expression: solution.formalExpression,
-      candidateAnswer: solution.finalAnswer,
-    });
+    // Верификация ответа и расчёт точек графика независимы — параллелим,
+    // график не добавляет латентности к пути.
+    const [verification, graphPlots] = await Promise.all([
+      verifyAnswer({
+        subject,
+        expression: solution.formalExpression,
+        candidateAnswer: solution.finalAnswer,
+      }),
+      computeGraphPlots(solution.graph),
+    ]);
 
-    const result = { ...solution, verification };
+    const result = {
+      ...solution,
+      // График — усиление, не условие: сбой расчёта = решение без графика.
+      graph: solution.graph && graphPlots ? { ...solution.graph, plots: graphPlots } : null,
+      verification,
+    };
 
     // Кладём в кэш только реально верифицированные решения — не мок-заглушки.
     if (verification.verified) {

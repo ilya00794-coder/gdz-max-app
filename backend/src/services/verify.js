@@ -210,3 +210,42 @@ export async function verifyAnswer({ subject, expression, candidateAnswer }) {
     },
   };
 }
+
+/**
+ * Считает данные графика для solve-пути: по одному вызову verify_sympy
+ * (mode=plot) на каждую функцию из graph.expressions.
+ *
+ * График — усиление, а не условие: ЛЮБОЙ сбой (небезопасное выражение,
+ * таймаут, code != 0, ok:false) означает «решение уходит без графика» —
+ * возвращаем null, пишем одну строку в лог, наружу ничего не бросаем.
+ *
+ * @param {{expressions: string[], xRange: [number, number]}|null} graph
+ * @returns {Promise<object[]|null>} plots или null
+ */
+export async function computeGraphPlots(graph) {
+  if (!graph?.expressions?.length) return null;
+  const plots = [];
+  for (const expression of graph.expressions) {
+    try {
+      if (!isExpressionSafe(expression)) {
+        console.warn(`[graph] выражение не прошло проверку безопасности: ${expression.slice(0, 80)}`);
+        return null;
+      }
+      const run = await runPython({ mode: "plot", expression, xRange: graph.xRange });
+      if (run.timedOut || run.code !== 0) {
+        console.warn(`[graph] расчёт не удался (${run.timedOut ? "таймаут" : "код " + run.code}): ${expression.slice(0, 80)}`);
+        return null;
+      }
+      const report = JSON.parse(run.stdout);
+      if (!report.ok) {
+        console.warn(`[graph] расчёт отвергнут: ${report.reason} — ${expression.slice(0, 80)}`);
+        return null;
+      }
+      plots.push(report);
+    } catch (err) {
+      console.warn(`[graph] расчёт упал: ${err.message} — ${expression.slice(0, 80)}`);
+      return null;
+    }
+  }
+  return plots;
+}
