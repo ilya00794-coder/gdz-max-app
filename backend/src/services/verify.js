@@ -71,6 +71,9 @@ export function isExpressionSafe(expression) {
   return true;
 }
 
+/** Грамматика числового литерала ученического ответа: целое | десятичное | дробь a/b. */
+const STUDENT_LITERAL = /^[+-]?\d+(?:\.\d+)?(?:\s*\/\s*\d+)?$/;
+
 /** Ответы, означающие пустое множество решений. */
 // Допускаем 1–2 вставных слова («действительных», «у уравнения») между отрицанием
 // и «корней/решений»: модели пишут «не имеет действительных корней» и т. п.
@@ -95,6 +98,11 @@ export function parseCandidateAnswer(candidateAnswer) {
     .map((part) => {
       // Отбрасываем всё до последнего «=»: "x_1 = 5" → "5".
       const afterEquals = part.includes("=") ? part.slice(part.lastIndexOf("=") + 1) : part;
+      // Процентный суффикс распознаём ДО вырезания кириллицы: иначе слово
+      // «процентов» уничтожается раньше, чем прочитан его смысл /100, и
+      // «60 процентов» тихо превращалось в 60 (ложное verified с эталоном 60).
+      const percent = afterEquals.match(/^\s*([+-]?\d+(?:\.\d+)?)\s*(?:%|процент[а-яё]*)\s*\.?\s*$/i);
+      if (percent) return `${percent[1]}/100`;
       // Убираем кириллицу (единицы измерения, слова) и индексы вида ₁.
       return afterEquals.replace(/[Ѐ-ӿ₀-₉]+/g, "").trim();
     })
@@ -241,6 +249,19 @@ export async function verifyAnswer({ subject, expression, candidateAnswer, answe
         : answerValues.values.map((v) => v.value); // all: полный набор (пустой = «корней нет»)
   } else {
     candidates = parseCandidateAnswer(candidateAnswer);
+    // Ответ ученика — ЧИСЛО, а не выражение. Всё, что не проходит строгую
+    // грамматику числового литерала (целое | десятичное | дробь a/b),
+    // в вычислитель НЕ идёт вовсе: питон трактовал бы символы как операторы
+    // (% — modulo, скобка-приписка — группировка, · — умножение), и
+    // «60 % (0,6)» тихо вычислялся в 0. Неоднозначность → unsupported,
+    // ложное verified недопустимо. Машинные answerValues идут другой веткой
+    // и грамматикой не ограничены (им законны sqrt(2), 2*pi).
+    if (candidates !== null && !candidates.every((c) => STUDENT_LITERAL.test(c))) {
+      return {
+        verified: false, confidence: 0, method: "unsupported",
+        details: { reason: "ответ не разобран как число — сверка не применима", candidates },
+      };
+    }
   }
   if (candidates === null) {
     return { verified: false, confidence: 0, method: "unsupported", details: { reason: "не удалось разобрать ответ" } };
