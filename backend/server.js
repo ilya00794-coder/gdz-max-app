@@ -14,7 +14,11 @@ const app = express();
 app.use(
   cors({
     // Мини-приложение открывается с домена, отданного MAX, и шлёт строку запуска заголовком.
-    allowedHeaders: ["Content-Type", INIT_DATA_HEADER, "ngrok-skip-browser-warning"],
+    // X-App-Version шлёт КАЖДЫЙ запрос нового фронта: без него preflight
+    // браузера отваливается и приложение мертво с первого экрана («нет связи»)
+    // при живом сервере — curl без preflight этого не видит. X-Canary — чтобы
+    // канарейка из браузера не легла так же.
+    allowedHeaders: ["Content-Type", INIT_DATA_HEADER, "ngrok-skip-browser-warning", "X-App-Version", "X-Canary"],
   })
 );
 app.use(express.json({ limit: "15mb" })); // фото в base64 могут быть тяжёлыми
