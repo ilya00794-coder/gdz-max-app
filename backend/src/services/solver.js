@@ -10,6 +10,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { getClient, InputError, SOLVER_MODEL, SOLVER_EFFORT } from "./anthropicClient.js";
 import { getAllowedMethods, getStudiedTopics, isSubjectSupported } from "./curriculum.js";
+import { subjectRules } from "../data/subject-rules.js";
 
 const SolutionSchema = z.object({
   steps: z
@@ -223,6 +224,7 @@ export async function solveTask({ recognizedText, grade, subject, quarter = 4 })
   }
 
   const program = buildProgramBlock({ grade, subject, quarter });
+  const rules = subjectRules(subject);
   const client = getClient();
 
   const response = await client.messages.parse({
@@ -231,6 +233,9 @@ export async function solveTask({ recognizedText, grade, subject, quarter = 4 })
     thinking: { type: "adaptive" },
     system: [
       { type: "text", text: SYSTEM_BASE },
+      // Предметные правила (data/subject-rules.js) — только для предметов,
+      // у которых они есть; блок стабилен, кэш-префикс не дробит.
+      ...(rules ? [{ type: "text", text: rules }] : []),
       // Блок программы стабилен для пары (класс, предмет, четверть) — кэшируем префикс,
       // чтобы не платить за него на каждой задаче.
       { type: "text", text: program.text, cache_control: { type: "ephemeral" } },
