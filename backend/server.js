@@ -7,6 +7,8 @@ import subjectsRouter from "./src/routes/subjects.js";
 import { assertDatabaseReady, DATABASE_URL } from "./src/services/cache.js";
 import { maxInitData, INIT_DATA_HEADER } from "./src/middleware/maxInitData.js";
 import { subscriptionGate, assertGatingReady } from "./src/subscription.js";
+import { allPlanSubjects, isComputableSubject } from "./src/services/subjects.js";
+import { hasBlockEntry } from "./src/data/subject-rules.js";
 
 const app = express();
 app.use(
@@ -35,6 +37,23 @@ const PORT = process.env.PORT || 3000;
 // Проверяем базу ДО старта. Тихого отката на in-memory нет намеренно: он бы замаскировал
 // поломку кэша ровно тогда, когда мы уверены, что кэш уже работает через Postgres.
 // Падаем громко и с инструкцией — в проде такой лог виден, в отличие от молчаливой деградации.
+// Полнота предметных карт — до старта. Каждый предмет учебного плана обязан
+// иметь ОСОЗНАННУЮ запись о вычислимости (subjects.json/computable) и о
+// предметных блоках (SUBJECT_TO_BLOCKS, пусть пустую []). Молчаливый пропуск
+// уже оставлял ОБЗР без блока правил, а алгебру 10–11 — без верификации.
+{
+  const missing = [];
+  for (const subject of allPlanSubjects()) {
+    try { isComputableSubject(subject); } catch { missing.push(`computable: «${subject}» (src/data/curriculum/subjects.json)`); }
+    if (!hasBlockEntry(subject)) missing.push(`блоки: «${subject}» (SUBJECT_TO_BLOCKS в src/data/subject-rules.js — добавь запись, хотя бы [])`);
+  }
+  if (missing.length) {
+    console.error("\nПРЕДМЕТНЫЕ КАРТЫ НЕПОЛНЫ — сервер не запущен:");
+    for (const m of missing) console.error("  - " + m);
+    process.exit(1);
+  }
+}
+
 try {
   const db = await assertDatabaseReady();
   console.log(`Postgres на связи: ${db.version}`);
