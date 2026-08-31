@@ -12,10 +12,12 @@
 - **Туннель**: ngrok, https://whacking-ramble-womb.ngrok-free.dev
   (совпадает с webapp/config.js на Pages). Адрес одноразовый: при смене —
   config.js + коммит + scripts/deploy-pages.sh (+ до 10 мин CDN).
-- **Фронт на Pages**: версия `2ca0c2c-31.08.1346` — чертежи целиком, экран
-  подписки (скрыт до включения гейтинга). ЕДИНСТВЕННАЯ незадеплоенная
-  фронт-мелочь: suggestedMode для handwritten_task (коммит 386b887) —
-  по решению Ильи уедет со СЛЕДУЮЩИМ деплоем, отдельный не нужен.
+- **Фронт на Pages**: версия `a14debb-31.08.1742` — чертежи целиком, экран
+  подписки v2 (текст в центре, крупные кнопки внизу; согласован Ильёй),
+  suggestedMode для handwritten_task. Незадеплоенных фронт-правок нет.
+  ВРЕМЕННЫЙ ТЕСТ-РЫЧАГ: SUBSCRIPTION_TEST_BLOCK_IDS=46536812 в backend/.env
+  форсит Илье экран подписки (просмотр глазами) — снять по его слову
+  и перезапустить бэкенд.
 - **БД**: Postgres localhost/gdz_max; verify_events расширена экономикой
   (input/output_tokens, cost_usd, cache_hit, user_hash, start_param);
   новая таблица incident_users (пострадавшие от сбоев — узкое ИСКЛЮЧЕНИЕ
