@@ -16,6 +16,8 @@
 //
 // Ссылка на бота ПОДТВЕРЖДЕНА живым GET /me 31.08.2026: id772408566819_bot.
 
+import { bindAlertTransport, notifyFixed, reportError } from "./alerts.js";
+
 const HOST = process.env.MAX_API_HOST || "platform-api.max.ru";
 const TOKEN = process.env.MAX_BOT_TOKEN || "";
 const CHANNEL_ID = process.env.MAX_CHANNEL_CHAT_ID || "";
@@ -265,6 +267,20 @@ export async function handleUpdate(update, io = { sendToUser, postToChannel, ans
     }
 
     const images = (msg?.body?.attachments ?? []).filter((a) => a?.type === "image");
+    // Команды админа начинаются с «/» и НЕ становятся черновиками постов.
+    if (text?.startsWith("/")) {
+      const [cmd, ...rest] = text.split(/\s+/);
+      if (cmd === "/починили") {
+        const { total, ok, failed } = await notifyFixed(rest.join(" "), io.sendToUser);
+        await io.sendToUser(userId, total === 0
+          ? "Пострадавших в списке нет — уведомлять некого."
+          : `Уведомлено ${ok} из ${total}${failed ? `, не доставлено ${failed} (остались в списке)` : ""}.`);
+      } else {
+        await io.sendToUser(userId, "Знаю команду /починили [текст] — уведомить пострадавших от сбоя. Остальное считаю постом.");
+      }
+      return;
+    }
+
     if (!text && !images.length) {
       await io.sendToUser(userId, "Пришли текст поста (можно с фото) — я покажу превью с кнопкой публикации.");
       return;
@@ -343,6 +359,7 @@ export async function startBotPoller() {
   if (!TOKEN) { console.warn("[bot] MAX_BOT_TOKEN не задан — поллер не запущен"); return; }
   try {
     await resolveBotUsername();
+    bindAlertTransport(sendToUser, ADMIN_IDS);
     console.log(`[bot] поллер запускается: @${botUsername}, вайтлист: ${ADMIN_IDS.size || "ПУСТ (только лог id)"}`);
   } catch (err) {
     console.error("[bot] GET /me не удался, поллер не запущен:", err.message);
@@ -365,6 +382,7 @@ export async function startBotPoller() {
       }
     } catch (err) {
       console.error("[bot] сбой long polling, пауза:", err.message);
+      reportError({ kind: "bot_poller", reason: err.message, source: "local" });
       await new Promise((r) => setTimeout(r, RETRY_PAUSE_MS));
     }
   }

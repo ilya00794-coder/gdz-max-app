@@ -4,6 +4,7 @@ import { recognizeFromPhotos } from "../services/vision.js";
 import { solveTask, solveTaskStream } from "../services/solver.js";
 import { verifyAnswer, computeGraphPlots } from "../services/verify.js";
 import { validateFigure, legacyFigure } from "../services/figure.js";
+import { reportError } from "../services/alerts.js";
 import { isSubjectAllowedForGrade, getSubjectsForGrade } from "../services/subjects.js";
 import { recordVerifyEvent, hashUser, addUsage, usageCost } from "../services/telemetry.js";
 import { requestSource } from "../middleware/maxInitData.js";
@@ -210,17 +211,20 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
 }
 
 /** Общая обработка ошибок ядра: телеметрия + человеческий текст. */
-function errorResponse(err, { source, startedAt, transport, appVersion, userHash = null, startParam = null }) {
+function errorResponse(err, { source, startedAt, transport, appVersion, userHash = null, startParam = null, rawUserId = null }) {
   console.error(err);
   if (err instanceof InputError) {
     return { code: 400, body: { error: describeApiError(err) } };
   }
+  const kind = err instanceof ConfigError ? "config" : (err.stage ?? "start");
   recordVerifyEvent({
     route: "solve", source, durationMs: Date.now() - startedAt,
-    errorKind: err instanceof ConfigError ? "config" : (err.stage ?? "start"),
+    errorKind: kind,
     reason: String(err.message).slice(0, 200),
     transport, appVersion, userHash, startParam,
   });
+  // Немедленный алерт админам; живой пользователь запоминается для /починили.
+  reportError({ kind, reason: err.message, route: "solve", source, userId: rawUserId });
   if (err instanceof ConfigError) {
     return { code: 503, body: { error: describeApiError(err) } };
   }
@@ -243,7 +247,7 @@ router.post("/", async (req, res) => {
     const { code, body } = await runSolvePipeline({ body: req.body, source, startedAt, transport, appVersion, userHash, startParam });
     res.status(code).json(body);
   } catch (err) {
-    const { code, body } = errorResponse(err, { source, startedAt, transport, appVersion, userHash, startParam });
+    const { code, body } = errorResponse(err, { source, startedAt, transport, appVersion, userHash, startParam, rawUserId: req.max?.userId ?? null });
     res.status(code).json(body);
   }
 });
@@ -281,7 +285,7 @@ router.post("/stream", async (req, res) => {
     });
     send({ type: "final", code, body });
   } catch (err) {
-    const { code, body } = errorResponse(err, { source, startedAt, transport: "stream", appVersion: req.get("X-App-Version") ?? null, userHash, startParam });
+    const { code, body } = errorResponse(err, { source, startedAt, transport: "stream", appVersion: req.get("X-App-Version") ?? null, userHash, startParam, rawUserId: req.max?.userId ?? null });
     send({ type: "error", code, body });
   } finally {
     if (!closed) res.end();

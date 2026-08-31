@@ -5,6 +5,7 @@ import { compareWithReference, crossCheckVerdicts, answerNoteFor } from "../serv
 import { verifyAnswer } from "../services/verify.js";
 import { isSubjectAllowedForGrade, getSubjectsForGrade } from "../services/subjects.js";
 import { recordVerifyEvent, hashUser, addUsage, usageCost } from "../services/telemetry.js";
+import { reportError } from "../services/alerts.js";
 import { requestSource } from "../middleware/maxInitData.js";
 import { ConfigError, InputError, describeApiError } from "../services/anthropicClient.js";
 import { detectMisread } from "../services/misread.js";
@@ -256,9 +257,11 @@ router.post("/", async (req, res) => {
     }
     if (err instanceof ConfigError) {
       recordVerifyEvent({ route: "check", source, durationMs: Date.now() - startedAt, errorKind: "config", reason: String(err.message).slice(0, 200), userHash, startParam });
+      reportError({ kind: "config", reason: err.message, route: "check", source, userId: req.max?.userId ?? null });
       return res.status(503).json({ error: describeApiError(err) });
     }
     recordVerifyEvent({ route: "check", source, durationMs: Date.now() - startedAt, errorKind: stage, reason: String(err.message).slice(0, 200), userHash, startParam });
+    reportError({ kind: stage, reason: err.message, route: "check", source, userId: req.max?.userId ?? null });
     res.status(500).json({
       error: "Внутренняя ошибка при проверке домашней работы",
       detail: describeApiError(err),

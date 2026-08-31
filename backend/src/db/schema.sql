@@ -194,3 +194,17 @@ ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS text_edited boolean;
 
 CREATE INDEX IF NOT EXISTS verify_events_route_source_idx
   ON verify_events (route, source, created_at DESC);
+
+-- ИСКЛЮЧЕНИЕ из политики «max_user_id не хранится» (решение Ильи 31.08.2026,
+-- узкое и явное): пострадавшие от сбоя запоминаются ОТКРЫТЫМ user_id, потому
+-- что уведомить «мы починили — попробуй ещё раз» по необратимому хэшу
+-- НЕВОЗМОЖНО — боту нужен настоящий id для отправки. Таблица не связана
+-- с задачами и вердиктами (профиль ученика из неё не собирается), хранит
+-- только факт сбоя и очищается после уведомления (команда /починили).
+CREATE TABLE IF NOT EXISTS incident_users (
+  user_id     text        PRIMARY KEY,
+  error_kind  text        NOT NULL,
+  first_seen  timestamptz NOT NULL DEFAULT now(),
+  last_seen   timestamptz NOT NULL DEFAULT now(),
+  notified_at timestamptz
+);
