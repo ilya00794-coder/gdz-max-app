@@ -31,8 +31,19 @@ const RETRY_PAUSE_MS = 5000;
 /** Сообщения старее этого из накопленной очереди не обрабатываем — только лог. */
 const STALE_MS = 10 * 60 * 1000;
 
-/** userId → { text, ts }: черновик, ждущий подтверждения. Память процесса. */
+/** userId → { text, images, ts }: черновик, ждущий подтверждения. Память процесса. */
 const pending = new Map();
+
+/**
+ * Буфер сборки поста: MAX может присылать альбом отдельными событиями —
+ * копим текст и фото и ждём тишины (окно сбрасывается каждым новым
+ * сообщением), потом одно превью. Требование Ильи: альбом = один черновик.
+ */
+const collecting = new Map(); // userId → { text, images[], timer }
+const FLUSH_MS = Number(process.env.BOT_ALBUM_FLUSH_MS || 2500);
+// Превью не живёт вечно: нажатие «Опубликовать» на недельной давности
+// черновике отправило бы неактуальный пост (требование Ильи 31.08).
+const DRAFT_TTL_MS = 15 * 60 * 1000;
 
 /** Кому уже отправили приветствие (bot_started). Память процесса: после
  * рестарта возможен повтор приветствия — осознанно, хранилище не заводим. */
@@ -78,13 +89,14 @@ function appButton() {
   };
 }
 
-async function sendToUser(userId, text, buttons = null) {
+async function sendToUser(userId, text, buttons = null, images = []) {
+  const attachments = [
+    ...images.map((a) => ({ type: "image", payload: a.payload })),
+    ...(buttons ? [{ type: "inline_keyboard", payload: { buttons } }] : []),
+  ];
   return api("POST", "/messages", {
     query: { user_id: userId },
-    body: {
-      text,
-      ...(buttons ? { attachments: [{ type: "inline_keyboard", payload: { buttons } }] } : {}),
-    },
+    body: { text, ...(attachments.length ? { attachments } : {}) },
   });
 }
 
@@ -112,6 +124,94 @@ export async function resolveBotUsername() {
   return botUsername;
 }
 
+/** Превью собранного черновика: тем же составом (текст + те же вложения). */
+async function flushDraft(userId, buf, io) {
+  const images = buf.images.slice(0, 12); // лимит API — 12 вложений
+  pending.set(userId, { text: buf.text, images, ts: Date.now() });
+  const head = images.length
+    ? `Превью поста, фото: ${images.length} (кнопка «Открыть Домашку» добавится автоматически):`
+    : "Превью поста (кнопка «Открыть Домашку» добавится автоматически):";
+  try {
+    await io.sendToUser(userId, `${head}\n\n${buf.text}`, [[
+      { type: "callback", text: "✅ Опубликовать", payload: "publish" },
+      { type: "callback", text: "❌ Отмена", payload: "cancel" },
+    ]], images);
+  } catch (err) {
+    // Вложения в превью не встали (например, токен не принят) — показываем
+    // текстовое превью с предупреждением, публикация всё равно попробует ступени.
+    console.warn("[bot] превью с фото не отправилось, шлю без фото:", err.message);
+    await io.sendToUser(userId, `${head}\n(фото в превью показать не удалось: ${err.message.slice(0, 120)})\n\n${buf.text}`, [[
+      { type: "callback", text: "✅ Опубликовать", payload: "publish" },
+      { type: "callback", text: "❌ Отмена", payload: "cancel" },
+    ]]);
+  }
+}
+
+/**
+ * Публикация с фото — три ступени, отказ каждой фиксируется:
+ * 1) те же токены входящих вложений; 2) их url; 3) перезалив через /uploads.
+ * Возвращает { posted } либо кидает ошибку с перечнем ступеней — по требованию
+ * Ильи бот сообщает, ГДЕ именно сломалось, а не просто «не переехало».
+ */
+async function publishWithImages(text, images, io) {
+  if (!images.length) return { posted: await io.postToChannel(text), step: "текст" };
+  const postRaw = io.postRaw ?? postToChannelRaw;   // инжекция для канареек
+  const reupload = io.reupload ?? reuploadImage;
+  const failures = [];
+
+  const byToken = images.map((a) => a?.payload?.token).filter(Boolean);
+  if (byToken.length === images.length) {
+    try {
+      return { posted: await postRaw(text, byToken.map((token) => ({ type: "image", payload: { token } }))), step: "токены" };
+    } catch (err) { failures.push(`ступень 1 (токены): ${err.message.slice(0, 150)}`); }
+  } else failures.push(`ступень 1 (токены): токен есть не у всех вложений (${byToken.length}/${images.length})`);
+
+  const byUrl = images.map((a) => a?.payload?.url).filter(Boolean);
+  if (byUrl.length === images.length) {
+    try {
+      return { posted: await postRaw(text, byUrl.map((url) => ({ type: "image", payload: { url } }))), step: "url" };
+    } catch (err) { failures.push(`ступень 2 (url): ${err.message.slice(0, 150)}`); }
+  } else failures.push(`ступень 2 (url): url есть не у всех вложений (${byUrl.length}/${images.length})`);
+
+  try {
+    const tokens = [];
+    for (const a of images) {
+      const src = a?.payload?.url;
+      if (!src) throw new Error("нет url для перезалива");
+      tokens.push(await reupload(src));
+    }
+    return { posted: await postRaw(text, tokens.map((token) => ({ type: "image", payload: { token } }))), step: "перезалив" };
+  } catch (err) { failures.push(`ступень 3 (перезалив): ${err.message.slice(0, 150)}`); }
+
+  throw new Error(failures.join("\n"));
+}
+
+/** Пост в канал с произвольными вложениями + link-кнопка приложения. */
+async function postToChannelRaw(text, attachments) {
+  return api("POST", "/messages", {
+    query: { chat_id: CHANNEL_ID },
+    body: { text, attachments: [...attachments, { type: "inline_keyboard", payload: { buttons: [[appButton()]] } }] },
+  });
+}
+
+/** Ступень 3: скачать по url и залить через POST /uploads. */
+async function reuploadImage(srcUrl) {
+  const img = await fetch(srcUrl, { signal: AbortSignal.timeout(15000) });
+  if (!img.ok) throw new Error(`скачивание ${img.status}`);
+  const blob = await img.blob();
+  const up = await api("POST", "/uploads", { query: { type: "image" } });
+  if (!up.url) throw new Error("uploads не дал url");
+  const form = new FormData();
+  form.append("data", blob, "photo.jpg");
+  const res = await fetch(up.url, { method: "POST", body: form, signal: AbortSignal.timeout(20000) });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`загрузка ${res.status}`);
+  // Ответ аплоада: токен либо в photos.*.token, либо прямым полем.
+  const token = json.token ?? Object.values(json.photos ?? {})[0]?.token ?? up.token ?? null;
+  if (!token) throw new Error("после загрузки нет токена");
+  return token;
+}
+
 /**
  * Обработка одного update. Экспортирована для юнит-канареек: send/post
  * инжектируются, снаружи подставляются боевые.
@@ -122,6 +222,20 @@ export async function handleUpdate(update, io = { sendToUser, postToChannel, ans
   if (type === "message_created") {
     const msg = update.message;
     const userId = String(msg?.sender?.user_id ?? "");
+    // Структура вложений: формат payload (token/url) в доках описан неполно —
+    // фиксируем фактический по живым сообщениям. Помимо общего лога — append
+    // в отдельный файл, переживающий рестарты (дважды теряли данные
+    // перезаписью лога: shadow-гейтинг и первая проба фото).
+    if (msg?.body?.attachments?.length) {
+      const line = JSON.stringify({ ts: new Date().toISOString(), attachments: msg.body.attachments });
+      console.log("[bot] attachments:", line.slice(0, 900));
+      try {
+        const { appendFileSync } = await import("node:fs");
+        appendFileSync(new URL("../../attachment-structures.jsonl", import.meta.url), line + "\n");
+      } catch (err) {
+        console.warn("[bot] не записал структуру вложения в файл:", err.message);
+      }
+    }
     const text = msg?.body?.text?.trim();
     // Диалог с ботом, не канал/чат: посты канала сюда тоже прилетают — им не отвечаем.
     const isDialog = msg?.recipient?.chat_type === "dialog";
@@ -149,20 +263,23 @@ export async function handleUpdate(update, io = { sendToUser, postToChannel, ans
       console.log("[bot] старое сообщение из очереди, только лог", { userId, ageMin: Math.round(ageMs / 60000) });
       return;
     }
-    if (!text) {
-      await io.sendToUser(userId, "Пришли текст поста одним сообщением — я покажу превью с кнопкой публикации.");
+
+    const images = (msg?.body?.attachments ?? []).filter((a) => a?.type === "image");
+    if (!text && !images.length) {
+      await io.sendToUser(userId, "Пришли текст поста (можно с фото) — я покажу превью с кнопкой публикации.");
       return;
     }
 
-    pending.set(userId, { text, ts: Date.now() });
-    await io.sendToUser(
-      userId,
-      `Превью поста (кнопка «Открыть Домашку» добавится автоматически):\n\n${text}`,
-      [[
-        { type: "callback", text: "✅ Опубликовать", payload: "publish" },
-        { type: "callback", text: "❌ Отмена", payload: "cancel" },
-      ]]
-    );
+    // Копим до тишины: альбом и подпись могут приехать отдельными событиями.
+    const buf = collecting.get(userId) ?? { text: "", images: [] };
+    if (text) buf.text = buf.text ? `${buf.text}\n${text}` : text;
+    buf.images.push(...images);
+    if (buf.timer) clearTimeout(buf.timer);
+    buf.timer = setTimeout(() => {
+      collecting.delete(userId);
+      flushDraft(userId, buf, io).catch((err) => console.error("[bot] ошибка превью:", err.message));
+    }, FLUSH_MS);
+    collecting.set(userId, buf);
     return;
   }
 
@@ -193,10 +310,21 @@ export async function handleUpdate(update, io = { sendToUser, postToChannel, ans
         await io.answerCallback(cb.callback_id, "Черновик не найден (перезапуск?) — пришли текст заново.");
         return;
       }
+      if (Date.now() - draft.ts > DRAFT_TTL_MS) {
+        pending.delete(userId);
+        await io.answerCallback(cb.callback_id, "Черновик устарел (прошло больше 15 минут) — пришли текст заново.");
+        return;
+      }
       pending.delete(userId);
-      const posted = await io.postToChannel(draft.text);
-      console.log("[bot] пост опубликован", { userId, messageId: posted?.message?.body?.mid ?? null });
-      await io.answerCallback(cb.callback_id, "Опубликовано ✅");
+      try {
+        const { posted, step } = await publishWithImages(draft.text, draft.images ?? [], io);
+        console.log("[bot] пост опубликован", { userId, step, messageId: posted?.message?.body?.mid ?? null });
+        await io.answerCallback(cb.callback_id, "Опубликовано ✅");
+      } catch (err) {
+        console.error("[bot] публикация не удалась:", err.message);
+        await io.answerCallback(cb.callback_id, "Не опубликовано ❌");
+        await io.sendToUser(userId, `Пост НЕ опубликован. Что сломалось:\n${err.message}`);
+      }
       return;
     }
     if (cb?.payload === "cancel") {
