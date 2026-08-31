@@ -156,11 +156,29 @@ CREATE TABLE IF NOT EXISTS verify_events (
   text_edited         boolean,
   -- Каким путём прошёл запрос: stream (NDJSON-поток) | post (обычный POST) |
   -- fallback (фронт откатился с потока на POST). Без этого «поток сломался»
-  -- неотличим от «поток не включился». Кэш-хиты событий не пишут — слепое пятно.
+  -- неотличим от «поток не включился».
   transport           text
 );
 
 ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS transport text;
+
+-- Экономика запроса (31.08.2026): токены суммарно по всем AI-вызовам запроса
+-- (vision + solver + compare), стоимость в долларах по прайсу на момент записи
+-- (устойчиво к будущей смене модели). У кэш-хитов cost_usd = 0.
+ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS input_tokens  integer;
+ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS output_tokens integer;
+ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS cost_usd      numeric(10, 6);
+-- Кэш-хиты ТЕПЕРЬ пишутся (cache_hit = true): прежнее слепое пятно закрыто,
+-- «решено задач» и экономия кэша считаются честно.
+ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS cache_hit     boolean;
+-- Необратимый HMAC-хэш пользователя с локальной солью (решение Ильи
+-- 31.08.2026, см. оговорку выше про «отдельное решение с необратимым
+-- хэшем»): уникальные и «новые против вернувшихся» считаются, личность
+-- не восстановима, max_user_id по-прежнему НЕ хранится.
+ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS user_hash     text;
+-- Метка поста из кнопки канала (?startapp=post_YYYYMMDD) — атрибуция
+-- прихода; не персональные данные.
+ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS start_param   text;
 -- Версия фронта (X-App-Version): какой app.js реально исполнялся у клиента.
 -- Надёжнее любой надписи на экране и отвечает задним числом.
 ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS app_version text;

@@ -170,6 +170,8 @@ ${referenceText}
 
   return {
     ...parsed,
+    // usage ответа API — для телеметрии стоимости; роут вырезает его перед отдачей.
+    usage: response.usage,
     // 0 в схеме означает «ошибок нет» — наружу отдаём null, так честнее для UI.
     firstMistakeStep: parsed.firstMistakeStep > 0 ? parsed.firstMistakeStep : null,
     studentFinalAnswer: parsed.studentFinalAnswer.trim() || null,

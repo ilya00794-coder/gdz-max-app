@@ -5,7 +5,7 @@ import { solveTask, solveTaskStream } from "../services/solver.js";
 import { verifyAnswer, computeGraphPlots } from "../services/verify.js";
 import { validateFigure, legacyFigure } from "../services/figure.js";
 import { isSubjectAllowedForGrade, getSubjectsForGrade } from "../services/subjects.js";
-import { recordVerifyEvent } from "../services/telemetry.js";
+import { recordVerifyEvent, hashUser, addUsage, usageCost } from "../services/telemetry.js";
 import { requestSource } from "../middleware/maxInitData.js";
 import { ConfigError, InputError, describeApiError } from "../services/anthropicClient.js";
 
@@ -19,7 +19,7 @@ const router = Router();
  * onStep(step, index) — шаги по мере генерации (только не-кэш, не-мульти путь);
  * onRecognized(recognizedText, recognition) — итог vision до начала решения.
  */
-async function runSolvePipeline({ body, source, startedAt, transport, appVersion, onStep, onRecognized }) {
+async function runSolvePipeline({ body, source, startedAt, transport, appVersion, userHash, startParam, onStep, onRecognized }) {
   const { imagesBase64, text, subject, quarter, textEdited } = body;
   const grade = Number(body.grade);
 
@@ -50,6 +50,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
   let textbook = null;
   let taskNumber = null;
   let recognition = null;
+  let visionUsage = null;
   let stage = "start";
   const fail = (err) => { err.stage = stage; throw err; };
 
@@ -58,6 +59,9 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     try {
       recognition = await recognizeFromPhotos({ imagesBase64, mode: "task", grade, subject });
     } catch (err) { fail(err); }
+    // usage — внутренняя экономика, клиенту в recognition не уходит.
+    visionUsage = recognition.usage ?? null;
+    delete recognition.usage;
     recognizedText = recognition.recognizedText;
     textbook = recognition.textbook;
     taskNumber = recognition.taskNumber;
@@ -100,6 +104,16 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
   const cached = await getCached(cacheKey);
 
   if (cached) {
+    // Кэш-хит теперь пишется в телеметрию (закрытое слепое пятно): это
+    // «решено задач» и экономия кэша — ответ пришёл бесплатно.
+    recordVerifyEvent({
+      route: "solve", source, grade, subject,
+      cacheHit: true, costUsd: 0,
+      inputTokens: visionUsage?.input_tokens ?? null,
+      outputTokens: visionUsage?.output_tokens ?? null,
+      durationMs: Date.now() - startedAt,
+      transport, appVersion, userHash, startParam,
+    });
     // Записи до слияния visual+drawing (31.08.2026) хранят старые поля —
     // конвертируем на лету, чтобы старый кэш рендерился, а не прятал карточку.
     const figure = cached.figure ?? legacyFigure(cached);
@@ -130,6 +144,11 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     ]);
   } catch (err) { fail(err); }
 
+  // usage — внутренняя экономика: не в кэш и не клиенту.
+  const solverUsage = solution.usage ?? null;
+  delete solution.usage;
+  const totalUsage = addUsage(visionUsage, solverUsage);
+
   const result = {
     ...solution,
     // График — усиление, не условие: сбой расчёта = решение без графика.
@@ -147,7 +166,11 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     invariantViolation: verification.details?.invariantViolation ?? null,
     durationMs: Date.now() - startedAt,
     textEdited: imagesBase64?.length ? null : (textEdited === true ? true : null),
-    transport, appVersion,
+    transport, appVersion, userHash, startParam,
+    cacheHit: false,
+    inputTokens: totalUsage.input_tokens + totalUsage.cache_read_input_tokens + totalUsage.cache_creation_input_tokens,
+    outputTokens: totalUsage.output_tokens,
+    costUsd: usageCost(totalUsage),
   }); // fire-and-forget: ответ ученика не ждёт телеметрию
 
   // Кладём в кэш только реально верифицированные решения — не мок-заглушки.
@@ -159,7 +182,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
 }
 
 /** Общая обработка ошибок ядра: телеметрия + человеческий текст. */
-function errorResponse(err, { source, startedAt, transport, appVersion }) {
+function errorResponse(err, { source, startedAt, transport, appVersion, userHash = null, startParam = null }) {
   console.error(err);
   if (err instanceof InputError) {
     return { code: 400, body: { error: describeApiError(err) } };
@@ -168,7 +191,7 @@ function errorResponse(err, { source, startedAt, transport, appVersion }) {
     route: "solve", source, durationMs: Date.now() - startedAt,
     errorKind: err instanceof ConfigError ? "config" : (err.stage ?? "start"),
     reason: String(err.message).slice(0, 200),
-    transport, appVersion,
+    transport, appVersion, userHash, startParam,
   });
   if (err instanceof ConfigError) {
     return { code: 503, body: { error: describeApiError(err) } };
@@ -186,11 +209,13 @@ router.post("/", async (req, res) => {
   // streamFallback выставляет фронт, когда откатывается с потока на POST.
   const transport = req.body?.streamFallback === true ? "fallback" : "post";
   const appVersion = req.get("X-App-Version") ?? null;
+  const userHash = hashUser(req.max?.userId);
+  const startParam = req.max?.params?.start_param ?? null;
   try {
-    const { code, body } = await runSolvePipeline({ body: req.body, source, startedAt, transport, appVersion });
+    const { code, body } = await runSolvePipeline({ body: req.body, source, startedAt, transport, appVersion, userHash, startParam });
     res.status(code).json(body);
   } catch (err) {
-    const { code, body } = errorResponse(err, { source, startedAt, transport, appVersion });
+    const { code, body } = errorResponse(err, { source, startedAt, transport, appVersion, userHash, startParam });
     res.status(code).json(body);
   }
 });
@@ -217,15 +242,18 @@ router.post("/stream", async (req, res) => {
   res.on("close", () => { closed = true; });
   const send = (event) => { if (!closed) res.write(JSON.stringify(event) + "\n"); };
 
+  const userHash = hashUser(req.max?.userId);
+  const startParam = req.max?.params?.start_param ?? null;
   try {
     const { code, body } = await runSolvePipeline({
       body: req.body, source, startedAt, transport: "stream", appVersion: req.get("X-App-Version") ?? null,
+      userHash, startParam,
       onRecognized: (recognizedText, recognition) => send({ type: "recognized", recognizedText, recognition }),
       onStep: (step, index) => send({ type: "step", index, step }),
     });
     send({ type: "final", code, body });
   } catch (err) {
-    const { code, body } = errorResponse(err, { source, startedAt, transport: "stream", appVersion: req.get("X-App-Version") ?? null });
+    const { code, body } = errorResponse(err, { source, startedAt, transport: "stream", appVersion: req.get("X-App-Version") ?? null, userHash, startParam });
     send({ type: "error", code, body });
   } finally {
     if (!closed) res.end();

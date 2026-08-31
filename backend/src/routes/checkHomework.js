@@ -4,7 +4,7 @@ import { solveTask } from "../services/solver.js";
 import { compareWithReference, crossCheckVerdicts, answerNoteFor } from "../services/compare.js";
 import { verifyAnswer } from "../services/verify.js";
 import { isSubjectAllowedForGrade, getSubjectsForGrade } from "../services/subjects.js";
-import { recordVerifyEvent } from "../services/telemetry.js";
+import { recordVerifyEvent, hashUser, addUsage, usageCost } from "../services/telemetry.js";
 import { requestSource } from "../middleware/maxInitData.js";
 import { ConfigError, InputError, describeApiError } from "../services/anthropicClient.js";
 import { detectMisread } from "../services/misread.js";
@@ -61,6 +61,8 @@ router.post("/", async (req, res) => {
   const startedAt = Date.now();
   const source = requestSource(req);
   const appVersion = req.get("X-App-Version") ?? null;
+  const userHash = hashUser(req.max?.userId);
+  const startParam = req.max?.params?.start_param ?? null;
   let stage = "start";
   try {
     const { imagesBase64, subject, quarter, workText, condition } = req.body;
@@ -103,6 +105,7 @@ router.post("/", async (req, res) => {
     });
 
     if (!recognized.recognizedText || recognized.confidence < 0.4) {
+      delete recognized.usage;
       return res.status(422).json({
         error: "Не удалось разобрать написанное в тетради — пересними ближе и при лучшем свете",
         recognition: recognized,
@@ -117,7 +120,12 @@ router.post("/", async (req, res) => {
         route: "check", source, appVersion, grade, subject,
         multiTask: true, reason: "на листе несколько задач — предложен выбор",
         durationMs: Date.now() - startedAt,
+        userHash, startParam,
+        inputTokens: recognized.usage?.input_tokens ?? null,
+        outputTokens: recognized.usage?.output_tokens ?? null,
+        costUsd: usageCost(recognized.usage),
       });
+      delete recognized.usage;
       return res.json({
         multipleTasks: true,
         recognizedStudentWork: recognized.recognizedText,
@@ -140,6 +148,10 @@ router.post("/", async (req, res) => {
       quarter: parsedQuarter,
     });
 
+    // referenceSolution уходит клиенту — usage вырезаем в экономику.
+    const solverUsage = referenceSolution.usage ?? null;
+    delete referenceSolution.usage;
+
     stage = "compare";
     const comparison = await compareWithReference({
       studentWork: recognized.recognizedText,
@@ -147,6 +159,11 @@ router.post("/", async (req, res) => {
       grade,
       subject,
     });
+
+    const compareUsage = comparison.usage ?? null;
+    delete comparison.usage;
+    const totalUsage = addUsage(recognized.usage, solverUsage, compareUsage);
+    delete recognized.usage; // recognition уходит клиенту
 
     // Объективная проверка финального ответа ученика — тем же SymPy, что и в /api/solve.
     const answerCheck = comparison.studentFinalAnswer && isMultiTaskAnswer(comparison.studentFinalAnswer)
@@ -180,6 +197,10 @@ router.post("/", async (req, res) => {
         ? "no_answer"
         : answerCheck.details?.code ?? null,
       durationMs: Date.now() - startedAt,
+      userHash, startParam, cacheHit: false,
+      inputTokens: totalUsage.input_tokens + totalUsage.cache_read_input_tokens + totalUsage.cache_creation_input_tokens,
+      outputTokens: totalUsage.output_tokens,
+      costUsd: usageCost(totalUsage),
     }); // fire-and-forget
 
     const verdictConflict = crossCheckVerdicts(comparison, answerCheck);
@@ -226,10 +247,10 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: describeApiError(err) });
     }
     if (err instanceof ConfigError) {
-      recordVerifyEvent({ route: "check", source, durationMs: Date.now() - startedAt, errorKind: "config", reason: String(err.message).slice(0, 200) });
+      recordVerifyEvent({ route: "check", source, durationMs: Date.now() - startedAt, errorKind: "config", reason: String(err.message).slice(0, 200), userHash, startParam });
       return res.status(503).json({ error: describeApiError(err) });
     }
-    recordVerifyEvent({ route: "check", source, durationMs: Date.now() - startedAt, errorKind: stage, reason: String(err.message).slice(0, 200) });
+    recordVerifyEvent({ route: "check", source, durationMs: Date.now() - startedAt, errorKind: stage, reason: String(err.message).slice(0, 200), userHash, startParam });
     res.status(500).json({
       error: "Внутренняя ошибка при проверке домашней работы",
       detail: describeApiError(err),

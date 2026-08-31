@@ -330,6 +330,9 @@ export async function recognizeFromPhotos({ imagesBase64, mode = "task", grade, 
   }
 
   return {
+    // usage ответа API — для телеметрии стоимости; роуты вырезают его
+    // из recognition перед отдачей клиенту.
+    usage: response.usage,
     recognizedText: parsed.recognizedText.trim(),
     textbook: parsed.textbook.trim() || null,
     taskNumber: parsed.taskNumber.trim() || null,

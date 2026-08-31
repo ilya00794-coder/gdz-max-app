@@ -424,7 +424,7 @@ export async function solveTask({ recognizedText, grade, subject, quarter = 4 })
     throw new Error("Модель не вернула структурированное решение");
   }
 
-  return finalizeParsed(parsed, program, quarter);
+  return finalizeParsed(parsed, program, quarter, response.usage);
 }
 
 /**
@@ -460,7 +460,7 @@ export async function solveTaskStream({ recognizedText, grade, subject, quarter 
   const jsonText = message.content.filter((b) => b.type === "text").map((b) => b.text).join("");
   // Та же схема, что в parse-пути: невалидный финал — ошибка, а не тихая деградация.
   const parsed = SolutionSchema.parse(JSON.parse(jsonText));
-  return finalizeParsed(parsed, program, quarter);
+  return finalizeParsed(parsed, program, quarter, message.usage);
 }
 
 /** Один и тот же запрос для parse- и stream-путей — расходиться им нельзя. */
@@ -493,8 +493,11 @@ function buildSolverRequest({ recognizedText, program, subject, grade }) {
   };
 }
 
-function finalizeParsed(parsed, program, quarter) {
+function finalizeParsed(parsed, program, quarter, usage = null) {
   return {
+    // usage суммарного ответа API — для телеметрии; роут вырезает его
+    // из solution перед кэшем и отдачей клиенту.
+    usage,
     steps: parsed.steps,
     finalAnswer: parsed.finalAnswer.trim(),
     formalExpression: parsed.formalExpression.trim() || null,
