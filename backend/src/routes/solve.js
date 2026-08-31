@@ -133,7 +133,13 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
   onRecognized?.(recognizedText, recognition);
 
   const cacheKey = buildCacheKey({ grade, subject, rawText: recognizedText });
-  const cached = await getCached(cacheKey);
+  // Кэш — вспомогательный: его недоступность не должна ронять путь решения.
+  let cached = null;
+  try {
+    cached = await getCached(cacheKey);
+  } catch (err) {
+    console.warn(new Date().toISOString(), "[cache] чтение недоступно, решаем без кэша:", err.message);
+  }
 
   if (cached) {
     // Кэш-хит теперь пишется в телеметрию (закрытое слепое пятно): это
@@ -222,7 +228,12 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
 
   // Кладём в кэш только реально верифицированные решения — не мок-заглушки.
   if (verification.verified) {
-    await setCached(cacheKey, result);
+    try {
+      await setCached(cacheKey, result);
+    } catch (err) {
+      // Ответ готов — падение записи кэша не должно его ронять (решение Ильи 01.09).
+      console.warn(new Date().toISOString(), "[cache] запись не удалась, ответ отдаём без кэширования:", err.message);
+    }
   }
 
   return { code: 200, body: { ...result, source: "generated", recognizedText, recognition, cacheKey } };

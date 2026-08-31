@@ -9,6 +9,7 @@
 
 import { getPool } from "./cache.js";
 import { tellAdmins } from "./alerts.js";
+import { telemetryWriteFailuresSince } from "./telemetry.js";
 
 const REPORT_FROM_HOUR = 10;
 const REPORT_TO_HOUR = 22; // включительно: последний отчёт в 22:00 за 21–22
@@ -102,6 +103,10 @@ export async function buildHourlyReport(hourStart, { withYesterday = false } = {
     lines.push(h.posts.map((p) => `🔗 С поста ${p.start_param}: ${p.n}`).join(" · ") +
       (d.posts.length ? ` · за день: ${d.posts.reduce((a, p) => a + Number(p.n), 0)}` : ""));
   }
+
+  // Час с потерями телеметрии отличается от честного тихого часа.
+  const lost = telemetryWriteFailuresSince(hourStart.getTime());
+  if (lost > 0) lines.push(`⚠️ Сбоев записи телеметрии за час: ${lost} — данные часа неполны`);
 
   if (withYesterday) {
     const yStart = new Date(dayStart.getTime() - 86400_000);

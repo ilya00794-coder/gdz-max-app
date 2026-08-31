@@ -6,6 +6,17 @@
 
 import crypto from "node:crypto";
 import { getPool } from "./cache.js";
+import { reportError } from "./alerts.js";
+
+// Сбои записи телеметрии — НЕ тишина (решение Ильи 01.09): серия подряд →
+// живой алерт; времена сбоев копятся в памяти, часовой отчёт помечает час
+// с потерями — «тихий час» должен отличаться от часа, в котором мы ослепли.
+const WRITE_FAILS_BEFORE_ALERT = 4;
+let consecutiveWriteFails = 0;
+const writeFailTimes = []; // кольцевой буфер последних суток
+export function telemetryWriteFailuresSince(sinceTs) {
+  return writeFailTimes.filter((t) => t >= sinceTs).length;
+}
 
 // Необратимый хэш пользователя (решение Ильи 31.08.2026, предусмотрено
 // комментарием schema.sql): HMAC-SHA256 с локальной солью, усечён до 16 hex.
@@ -76,5 +87,15 @@ export function recordVerifyEvent(event) {
        startParam ? String(startParam).slice(0, 60) : null,
        contentType]
     )
-    .catch((err) => console.warn("[telemetry] запись не удалась:", err.message));
+    .then(() => { consecutiveWriteFails = 0; })
+    .catch((err) => {
+      console.warn(new Date().toISOString(), "[telemetry] запись не удалась:", err.message);
+      consecutiveWriteFails += 1;
+      writeFailTimes.push(Date.now());
+      while (writeFailTimes.length && writeFailTimes[0] < Date.now() - 24 * 3600_000) writeFailTimes.shift();
+      if (consecutiveWriteFails === WRITE_FAILS_BEFORE_ALERT) {
+        // Живой алерт (дедуп 1/5мин — в reportError): телеметрия слепнет.
+        reportError({ kind: "telemetry_write", reason: err.message, source: "remote" });
+      }
+    });
 }
