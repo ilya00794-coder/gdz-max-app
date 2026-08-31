@@ -3,6 +3,7 @@ import { buildCacheKey, getCached, setCached } from "../services/cache.js";
 import { recognizeFromPhotos } from "../services/vision.js";
 import { solveTask, solveTaskStream } from "../services/solver.js";
 import { verifyAnswer, computeGraphPlots } from "../services/verify.js";
+import { validateDrawing } from "../services/drawing.js";
 import { isSubjectAllowedForGrade, getSubjectsForGrade } from "../services/subjects.js";
 import { recordVerifyEvent } from "../services/telemetry.js";
 import { requestSource } from "../middleware/maxInitData.js";
@@ -130,6 +131,8 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     ...solution,
     // График — усиление, не условие: сбой расчёта = решение без графика.
     graph: solution.graph && graphPlots ? { ...solution.graph, plots: graphPlots } : null,
+    // Чертёж — тот же принцип: противоречивые параметры = отказ, решение без чертежа.
+    drawing: validateDrawing(solution.drawing),
     verification,
   };
 

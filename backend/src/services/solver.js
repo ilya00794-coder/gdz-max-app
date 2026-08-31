@@ -114,6 +114,22 @@ const SolutionSchema = z.object({
     .enum(["термометр", "части-растения", "стороны-горизонта", "большая-медведица"])
     .nullable()
     .describe("Готовая проверенная схема из библиотеки приложения (критерий в инструкции). Почти всегда null."),
+  // Поле сжато до минимума: компилируемая грамматика structured output у предела,
+  // 8-полевая версия чертежа переполнила её («compiled grammar is too large»).
+  drawing: z
+    .object({
+      kind: z.enum(["rectangle", "square"]).describe("rectangle — прямоугольник; square — квадрат."),
+      width: z.number().describe("Длина горизонтальной стороны; для square — сторона."),
+      height: z.number().nullable().describe("rectangle: вертикальная сторона; square — null."),
+      widthLabel: z.string().describe("Подпись горизонтальной стороны, как в решении: «6 см», «a = 9 см»."),
+      heightLabel: z.string().nullable().describe("rectangle: подпись вертикальной стороны: «3 см»; square — null."),
+      comment: z.string().describe("Одна короткая фраза: что видно на чертеже."),
+    })
+    .nullable()
+    .describe(
+      "Чертёж фигуры, ЕСЛИ он помогает (критерий в предметных правилах). " +
+        "Только параметры из условия и решения — чертит система. Обычно null."
+    ),
 });
 
 const SYSTEM_BASE = `Ты — школьный репетитор в приложении-помощнике по домашним заданиям.
@@ -482,6 +498,7 @@ function finalizeParsed(parsed, program, quarter) {
     formalExpression: parsed.formalExpression.trim() || null,
     visual: parsed.visual ?? null,
     schemaId: parsed.schemaId ?? null,
+    drawing: parsed.drawing ?? null,
     usedMethods: parsed.usedMethods ?? [],
     programWarning: parsed.programWarning?.trim() || null,
     answerValues: parsed.answerValues ?? null,
