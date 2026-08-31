@@ -73,6 +73,14 @@ const SolutionSchema = z.object({
             "Interval(-oo, Rational(2,5), True, False) — (−∞; 2/5]; Union(...) для объединений; " +
             "FiniteSet(...), EmptySet, S.Reals. Серии корней (πn) сюда НЕ пишутся — null."
         ),
+      seriesExpression: z
+        .string()
+        .nullable()
+        .describe(
+          "ТОЛЬКО для kind 'expression', когда ответ — серия корней (тригонометрия): " +
+            "формы через точку с запятой, Python-запись от n: 'pi/6 + 2*pi*n; 5*pi/6 + 2*pi*n' " +
+            "или школьная '(-1)**n*pi/6 + pi*n'. Интервалы сюда НЕ пишутся — null."
+        ),
     })
     .describe("Машинная форма финального ответа для автоматической проверки. Правило выбора kind — в инструкции, раздел «Поле answerValues»."),
   graph: z
@@ -272,6 +280,15 @@ const SYSTEM_BASE = `Ты — школьный репетитор в прило�
   отдельные точки в множестве → FiniteSet(...).
 - Серии корней тригонометрии (πn, 2πn) в setExpression НЕ пишутся — там null.
 - Ответ НЕ интервального вида → setExpression null.
+
+Серии корней (поле seriesExpression внутри answerValues):
+- Ответ — серия корней (тригонометрическое уравнение): kind "expression"
+  И seriesExpression — формы через «;», Python-запись, переменная n:
+  «x = π/6 + 2πn; x = 5π/6 + 2πn» → "pi/6 + 2*pi*n; 5*pi/6 + 2*pi*n";
+  школьная форма «(−1)^n·π/6 + πn» → "(-1)**n*pi/6 + pi*n";
+  «π/4 + πn/2» → "pi/4 + pi*n/2". Только линейные по n формы.
+- Заполняй ОДНО из двух: интервал → setExpression, серия → seriesExpression;
+  ответ ни то ни другое → оба null.
 
 Согласованность с formalExpression (обязательная):
 - solve(formalExpression) должен давать РОВНО значения из answerValues —

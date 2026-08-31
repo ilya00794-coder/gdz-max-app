@@ -274,6 +274,34 @@ export async function verifyAnswer({ subject, expression, candidateAnswer, answe
         }
       }
     }
+    // Серии корней — mode=series (Б2): канонизация остатков, fail-closed.
+    if (answerValues.seriesExpression && expression) {
+      const candidateSeries = String(answerValues.seriesExpression).trim();
+      const setSafe = (t) => typeof t === "string" && t.length > 0 && t.length <= 2000
+        && !t.includes("__") && /^[\x20-\x7e]+$/.test(t);
+      if (setSafe(candidateSeries) && setSafe(expression)) {
+        try {
+          const run = await runPython({ mode: "series", expression, candidateSeries });
+          const parsed = run.code === 0 && !run.timedOut ? JSON.parse(run.stdout || "{}") : null;
+          if (parsed?.ok === true) {
+            return {
+              verified: parsed.equal === true,
+              confidence: parsed.equal === true ? 1 : 0,
+              method: "sympy-series",
+              details: parsed.equal === true
+                ? { solved: parsed.solved }
+                : { reason: parsed.reason ?? "серия не совпала с формализацией", solved: parsed.solved, candidate: parsed.candidate },
+            };
+          }
+          return {
+            verified: false, confidence: 0, method: "unsupported",
+            details: { reason: `сверка серий не разобрала форму: ${parsed?.reason ?? "сбой процесса"}` },
+          };
+        } catch (err) {
+          return { verified: false, confidence: 0, method: "unsupported", details: { reason: `сверка серий: ${err.message}` } };
+        }
+      }
+    }
     return {
       verified: false, confidence: 0, method: "unsupported",
       details: { reason: "ответ-выражение (серия, интервал, именованные части) — символьная сверка не применима" },

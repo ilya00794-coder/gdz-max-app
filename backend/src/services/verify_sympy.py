@@ -572,9 +572,29 @@ def _canon_residues(all_series, common):
     return frozenset(out)
 
 
+def _promote_solve_to_solveset(text):
+    """solve(Eq(...), x) → solveset(Eq(...), x, S.Reals) для series-режима.
+
+    solve у тригонометрических уравнений возвращает СПИСОК главных решений,
+    а не множество всех, — сравнивать его с серией нельзя. Замена решателя
+    не меняет формализацию задачи (само уравнение — модельное), только
+    доводит решатель до полного. Белый список тот же."""
+    try:
+        tree = ast.parse(text, mode="eval")
+    except SyntaxError:
+        return text
+    node = tree.body
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id == "solve" and len(node.args) == 2):
+        node.func.id = "solveset"
+        node.args.append(ast.parse("S.Reals", mode="eval").body)
+        return ast.unparse(tree)
+    return text
+
+
 def run_series(payload):
     """Сверка серий: множество формализации == множество кандидата."""
-    expression = payload.get("expression") or ""
+    expression = _promote_solve_to_solveset(payload.get("expression") or "")
     candidate_text = payload.get("candidateSeries") or ""
 
     cand_series = []
