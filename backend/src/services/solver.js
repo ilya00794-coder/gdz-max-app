@@ -64,6 +64,15 @@ const SolutionSchema = z.object({
           })
         )
         .describe("Для kind 'expression' — пустой список. Для «корней нет» — kind 'all' и пустой список."),
+      setExpression: z
+        .string()
+        .nullable()
+        .describe(
+          "ТОЛЬКО для kind 'expression', когда ответ — интервал или объединение интервалов: " +
+            "множество решений SymPy-записью. Interval(3, 8, True, True) — открытые концы (3;8); " +
+            "Interval(-oo, Rational(2,5), True, False) — (−∞; 2/5]; Union(...) для объединений; " +
+            "FiniteSet(...), EmptySet, S.Reals. Серии корней (πn) сюда НЕ пишутся — null."
+        ),
     })
     .describe("Машинная форма финального ответа для автоматической проверки. Правило выбора kind — в инструкции, раздел «Поле answerValues»."),
   graph: z
@@ -250,6 +259,19 @@ const SYSTEM_BASE = `Ты — школьный репетитор в прило�
   «Сколько кВт·ч израсходовал утюг… (это 3,6 МДж)» →
   values: [{value:"1", unit:"кВт·ч"}]; вторая форма остаётся только
   в тексте решения для человека.
+
+Интервальные ответы (поле setExpression внутри answerValues):
+- Ответ — интервал, полуинтервал или объединение (метод интервалов, область
+  определения): kind "expression" И setExpression — множество решений
+  SymPy-записью: «x ∈ (3; 8)» → Interval(3, 8, True, True);
+  «(−∞; 2/5]» → Interval(-oo, Rational(2,5), True, False);
+  «(−2; 1) ∪ (5; +∞)» → Union(Interval(-2, 1, True, True), Interval(5, oo, True, True)).
+  Третий и четвёртый аргументы Interval — открытость левого и правого конца:
+  строгое неравенство = True (конец не включён). Дроби — Rational, не десятичные.
+- Пустое множество решений → EmptySet; вся прямая → S.Reals;
+  отдельные точки в множестве → FiniteSet(...).
+- Серии корней тригонометрии (πn, 2πn) в setExpression НЕ пишутся — там null.
+- Ответ НЕ интервального вида → setExpression null.
 
 Согласованность с formalExpression (обязательная):
 - solve(formalExpression) должен давать РОВНО значения из answerValues —

@@ -241,6 +241,39 @@ export async function verifyAnswer({ subject, expression, candidateAnswer, answe
 
   // Машинная форма ответа от solver'а (если есть) — приоритетнее парсинга строки.
   if (answerValues?.kind === "expression") {
+    // П.5 часть А (31.08.2026): интервальные ответы сверяются множествами.
+    // FAIL-CLOSED: любой сбой разбора → unsupported, не verified — ложный
+    // verified лёг бы в кэш и раздавался дальше.
+    if (answerValues.setExpression && expression) {
+      const candidateSet = String(answerValues.setExpression).trim();
+      // isExpressionSafe не годится: он запрещает знаки неравенств, а метод
+      // интервалов — это solve(нер-во). Здесь лёгкий JS-гейт (длина, ASCII,
+      // без «__»); настоящий белый список — AST-фильтр set-режима в питоне.
+      const setSafe = (t) => typeof t === "string" && t.length > 0 && t.length <= 2000
+        && !t.includes("__") && /^[\x20-\x7e]+$/.test(t);
+      if (setSafe(candidateSet) && setSafe(expression)) {
+        try {
+          const run = await runPython({ mode: "set", expression, candidateSet });
+          const parsed = run.code === 0 && !run.timedOut ? JSON.parse(run.stdout || "{}") : null;
+          if (parsed?.ok === true) {
+            return {
+              verified: parsed.equal === true,
+              confidence: parsed.equal === true ? 1 : 0,
+              method: "sympy-set",
+              details: parsed.equal === true
+                ? { solved: parsed.solved }
+                : { reason: "множество решений не совпало с формализацией", solved: parsed.solved, candidate: parsed.candidate },
+            };
+          }
+          return {
+            verified: false, confidence: 0, method: "unsupported",
+            details: { reason: `интервальная сверка не разобрала форму: ${parsed?.reason ?? "сбой процесса"}` },
+          };
+        } catch (err) {
+          return { verified: false, confidence: 0, method: "unsupported", details: { reason: `интервальная сверка: ${err.message}` } };
+        }
+      }
+    }
     return {
       verified: false, confidence: 0, method: "unsupported",
       details: { reason: "ответ-выражение (серия, интервал, именованные части) — символьная сверка не применима" },

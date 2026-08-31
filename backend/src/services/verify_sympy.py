@@ -399,11 +399,126 @@ def run_plot(payload):
     }
 
 
+# ── mode=set: сверка интервального ответа (П.5 часть А, 31.08.2026) ──
+# Кандидат (setExpression солвера) исполняется через СВОЙ точечный белый
+# список — только множества: Interval/Union/FiniteSet/EmptySet/oo/S.Reals/
+# Rational/pi. Основной список не расширяется (там oo убран намеренно —
+# конфликт со школьными переменными; у кандидата-множества конфликтов нет).
+# FAIL-CLOSED: любая неоднозначность → ok:False (unsupported), не verified:
+# ложный verified ложится в кэш и раздаётся дальше.
+
+_SET_CALLS = {
+    "Interval": sympy.Interval,
+    "Union": sympy.Union,
+    "FiniteSet": sympy.FiniteSet,
+    "Rational": sympy.Rational,
+    "sqrt": sympy.sqrt,
+}
+_SET_NAMES = {
+    "oo": sympy.oo,
+    "pi": sympy.pi,
+    "EmptySet": sympy.EmptySet,
+    "S": sympy.S,  # только ради S.Reals — атрибуты фильтруются ниже
+    "True": True,
+    "False": False,
+}
+_SET_ALLOWED_ATTRS = {("S", "Reals")}
+
+
+def _eval_set_candidate(text):
+    """Строка setExpression → sympy-множество. Всё вне белого списка — Rejected."""
+    if not text or len(text) > 500 or "__" in text:
+        raise Rejected("кандидат-множество не прошёл белый список")
+    tree = ast.parse(text, mode="eval")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute):
+            if not (isinstance(node.value, ast.Name) and (node.value.id, node.attr) in _SET_ALLOWED_ATTRS):
+                raise Rejected(f"атрибут вне белого списка: {ast.dump(node)[:60]}")
+        elif isinstance(node, ast.Call):
+            if not (isinstance(node.func, ast.Name) and node.func.id in _SET_CALLS):
+                raise Rejected("вызов вне белого списка множеств")
+        elif isinstance(node, ast.Name):
+            if node.id not in _SET_CALLS and node.id not in _SET_NAMES:
+                raise Rejected(f"имя вне белого списка множеств: {node.id}")
+        elif isinstance(node, (ast.Expression, ast.Load, ast.Constant, ast.UnaryOp, ast.USub, ast.BinOp, ast.Div, ast.Mult, ast.Add, ast.Sub)):
+            continue
+        else:
+            raise Rejected(f"узел вне белого списка множеств: {type(node).__name__}")
+    namespace = dict(_SET_NAMES)
+    namespace.update(_SET_CALLS)
+    return eval(compile(tree, "<set>", "eval"), {"__builtins__": {}}, namespace)
+
+
+def _eval_set_formal(text):
+    """formalExpression для set-режима: как evaluate(), но неравенства разрешены.
+
+    Основной evaluate() намеренно принимает только равенства (защита старого
+    пути) — здесь свой фильтр узлов: те же ALLOWED_CALLS/CONSTANTS, плюс
+    операторы сравнения (метод интервалов — это solve(нер-во)) и S.Reals
+    (третий аргумент solveset). Свободные имена становятся символами,
+    как в основном пути."""
+    if not text or len(text) > MAX_EXPRESSION_LENGTH:
+        raise Rejected("формализация пуста или слишком длинна")
+    tree = ast.parse(text, mode="eval")
+    allowed_extra = (ast.Compare, ast.Lt, ast.LtE, ast.Gt, ast.GtE)
+    namespace = {"S": sympy.S, "Rational": sympy.Rational}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute):
+            if not (isinstance(node.value, ast.Name) and node.value.id == "S" and node.attr == "Reals"):
+                raise Rejected("атрибут вне белого списка (только S.Reals)")
+        elif isinstance(node, ast.Call):
+            if not (isinstance(node.func, ast.Name) and node.func.id in ALLOWED_CALLS):
+                raise Rejected("вызов вне белого списка")
+        elif isinstance(node, ast.Name):
+            if node.id in ALLOWED_CALLS:
+                namespace[node.id] = ALLOWED_CALLS[node.id]
+            elif node.id in ALLOWED_CONSTANTS:
+                namespace[node.id] = ALLOWED_CONSTANTS[node.id]
+            elif node.id != "S":
+                namespace.setdefault(node.id, sympy.Symbol(node.id))
+        elif isinstance(node, ALLOWED_NODES) or isinstance(node, allowed_extra):
+            continue
+        else:
+            raise Rejected(f"узел вне белого списка set-режима: {type(node).__name__}")
+    tree = ast.fix_missing_locations(NumbersToRational().visit(tree))
+    return eval(compile(tree, "<set-formal>", "eval"), {"__builtins__": {}}, namespace)  # noqa: S307
+
+
+def run_set(payload):
+    """Сверка: множество из formalExpression == множество setExpression."""
+    expression = payload.get("expression") or ""
+    candidate_text = payload.get("candidateSet") or ""
+
+    solved = _eval_set_formal(expression)
+    # solve(неравенство) возвращает булево условие — приводим к множеству.
+    if not isinstance(solved, sympy.Set):
+        as_set = getattr(solved, "as_set", None)
+        if as_set is None:
+            raise Rejected(f"результат формализации не множество: {type(solved).__name__}")
+        solved = as_set()
+    candidate = _eval_set_candidate(candidate_text)
+    if not isinstance(candidate, sympy.Set):
+        raise Rejected("кандидат не множество")
+
+    equal = solved.symmetric_difference(candidate) == sympy.EmptySet
+    return {"ok": True, "equal": bool(equal),
+            "solved": str(solved), "candidate": str(candidate)}
+
+
 def main():
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError) as err:
         print(json.dumps({"ok": False, "reason": f"некорректный вход: {err}"}))
+        return
+
+    if payload.get("mode") == "set":
+        try:
+            print(json.dumps(run_set(payload), ensure_ascii=False))
+        except Rejected as err:
+            print(json.dumps({"ok": False, "reason": str(err)}, ensure_ascii=False))
+        except Exception as err:  # fail-closed: неоднозначность = unsupported
+            print(json.dumps({"ok": False, "reason": f"{type(err).__name__}: {err}"}, ensure_ascii=False))
         return
 
     if payload.get("mode") == "plot":
