@@ -182,6 +182,11 @@ ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS user_hash     text;
 -- Метка поста из кнопки канала (?startapp=post_YYYYMMDD) — атрибуция
 -- прихода; не персональные данные.
 ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS start_param   text;
+-- Наблюдение vision о снимке (printed_task | handwritten_task |
+-- handwritten_work | unclear; null у текстовых запросов) — для октябрьского
+-- решения по кэшам: печатные условия распознаются байт-в-байт (кэшируемы),
+-- рукописные вариативнее.
+ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS content_type  text;
 -- Версия фронта (X-App-Version): какой app.js реально исполнялся у клиента.
 -- Надёжнее любой надписи на экране и отвечает задним числом.
 ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS app_version text;

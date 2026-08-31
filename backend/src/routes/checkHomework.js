@@ -207,6 +207,7 @@ router.post("/", async (req, res) => {
         : answerCheck.details?.code ?? null,
       durationMs: Date.now() - startedAt,
       userHash, startParam, cacheHit: false,
+      contentType: recognized?.contentType ?? null,
       inputTokens: totalUsage.input_tokens + totalUsage.cache_read_input_tokens + totalUsage.cache_creation_input_tokens,
       outputTokens: totalUsage.output_tokens,
       costUsd: usageCost(totalUsage),

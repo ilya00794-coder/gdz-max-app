@@ -56,6 +56,7 @@ export function recordVerifyEvent(event) {
     textEdited = null, transport = null, appVersion = null,
     inputTokens = null, outputTokens = null, costUsd = null,
     cacheHit = null, userHash = null, startParam = null,
+    contentType = null,
   } = event;
   getPool()
     .query(
@@ -63,15 +64,17 @@ export function recordVerifyEvent(event) {
          (route, source, grade, subject, verified, method, reason,
           answer_kind, multi_task, invariant_violation, parse_failure_kind,
           duration_ms, error_kind, text_edited, transport, app_version,
-          input_tokens, output_tokens, cost_usd, cache_hit, user_hash, start_param)
+          input_tokens, output_tokens, cost_usd, cache_hit, user_hash, start_param,
+          content_type)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-               $17,$18,$19,$20,$21,$22)`,
+               $17,$18,$19,$20,$21,$22,$23)`,
       [route, source, grade, subject, verified, method,
        reason ? String(reason).slice(0, 300) : null,
        answerKind, multiTask, invariantViolation, parseFailureKind,
        durationMs, errorKind, textEdited, transport, appVersion ? String(appVersion).slice(0, 60) : null,
        inputTokens, outputTokens, costUsd, cacheHit, userHash,
-       startParam ? String(startParam).slice(0, 60) : null]
+       startParam ? String(startParam).slice(0, 60) : null,
+       contentType]
     )
     .catch((err) => console.warn("[telemetry] запись не удалась:", err.message));
 }

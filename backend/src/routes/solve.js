@@ -80,6 +80,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
         outputTokens: visionUsage?.output_tokens ?? null,
         costUsd: usageCost(visionUsage),
         durationMs: Date.now() - startedAt, transport, appVersion, userHash, startParam,
+        contentType: recognition?.contentType ?? null,
       });
       return {
         code: 422,
@@ -102,6 +103,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
         outputTokens: visionUsage?.output_tokens ?? null,
         costUsd: usageCost(visionUsage),
         durationMs: Date.now() - startedAt, transport, appVersion, userHash, startParam,
+        contentType: recognition?.contentType ?? null,
       });
       return {
         code: 422,
@@ -122,6 +124,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
         outputTokens: visionUsage?.output_tokens ?? null,
         costUsd: usageCost(visionUsage),
         durationMs: Date.now() - startedAt, transport, appVersion, userHash, startParam,
+        contentType: recognition?.contentType ?? null,
       });
       return { code: 200, body: { source: "recognized", multipleTasks: true, recognizedText, recognition } };
     }
@@ -142,6 +145,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
       outputTokens: visionUsage?.output_tokens ?? null,
       durationMs: Date.now() - startedAt,
       transport, appVersion, userHash, startParam,
+      contentType: recognition?.contentType ?? null,
     });
     // Записи до слияния visual+drawing (31.08.2026) хранят старые поля —
     // конвертируем на лету, чтобы старый кэш рендерился, а не прятал карточку.
@@ -196,6 +200,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     durationMs: Date.now() - startedAt,
     textEdited: imagesBase64?.length ? null : (textEdited === true ? true : null),
     transport, appVersion, userHash, startParam,
+    contentType: recognition?.contentType ?? null,
     cacheHit: false,
     inputTokens: totalUsage.input_tokens + totalUsage.cache_read_input_tokens + totalUsage.cache_creation_input_tokens,
     outputTokens: totalUsage.output_tokens,
