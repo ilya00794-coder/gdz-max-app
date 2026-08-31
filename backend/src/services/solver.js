@@ -415,7 +415,7 @@ export async function solveTask({ recognizedText, grade, subject, quarter = 4 })
   }
 
   const program = buildProgramBlock({ grade, subject, quarter });
-  const request = buildSolverRequest({ recognizedText, program, subject });
+  const request = buildSolverRequest({ recognizedText, program, subject, grade });
 
   const response = await getClient().messages.parse(request);
 
@@ -444,7 +444,7 @@ export async function solveTaskStream({ recognizedText, grade, subject, quarter 
     throw new InputError(`Четверть должна быть числом от 1 до 4, получено: ${quarter}`);
   }
   const program = buildProgramBlock({ grade, subject, quarter });
-  const request = buildSolverRequest({ recognizedText, program, subject });
+  const request = buildSolverRequest({ recognizedText, program, subject, grade });
 
   const parser = new StepStreamParser();
   let emitted = 0;
@@ -464,8 +464,9 @@ export async function solveTaskStream({ recognizedText, grade, subject, quarter 
 }
 
 /** Один и тот же запрос для parse- и stream-путей — расходиться им нельзя. */
-function buildSolverRequest({ recognizedText, program, subject }) {
-  const rules = subjectRules(subject);
+function buildSolverRequest({ recognizedText, program, subject, grade }) {
+  // grade выбирает блоки наглядности (началка/геометрия) — см. subject-rules.js.
+  const rules = subjectRules(subject, grade);
   return {
     model: SOLVER_MODEL,
     max_tokens: 16000,
