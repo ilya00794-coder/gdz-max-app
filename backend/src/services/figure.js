@@ -28,6 +28,14 @@ const PAIR_KINDS = { "накрест лежащие": "alternate", "соотве
 // далеко) — и равнобедренный, заведомо не равносторонний (65/50/65, не 60).
 const DEFAULT_TRI = [46, 72, 62];
 const DEFAULT_ISO_BASE = 65;
+// Представительный параллелограмм: угол 62° (заведомо не прямоугольник)
+// и стороны 1:1.6 (заведомо не ромб) — требование pg8-geo-3: на чертеже
+// доказательства не должно мерещиться свойств, которых нет в условии.
+const DEFAULT_PARA_RATIO = 1.6;
+// Представительный ромб: диагонали 1:1.5 (равные дали бы квадрат).
+const DEFAULT_RHOMBUS = [1.5, 1];
+// Представительная трапеция: основания 0.6:1, НЕ равнобокая (верх смещён).
+const DEFAULT_TRAP = [0.6, 1];
 const ELEMENT_KINDS = { "медиана": "median", "высота": "height", "биссектриса": "bisector" };
 
 /**
@@ -309,6 +317,82 @@ export function validateFigure(figure) {
       }
 
       return { kind: "triangle", vertices, angles, sides, equalSides, elements, comment: comment(figure) };
+    }
+
+    if (figure.kind === "parallelogram" || figure.kind === "rhombus" || figure.kind === "trapezoid") {
+      const markList = (Array.isArray(figure.marks) ? figure.marks : [])
+        .filter((m) => typeof m === "string" && m.trim()).map((m) => m.trim().toLowerCase());
+      let vertices = ["A", "B", "C", "D"];
+      if (labels.length >= 4 && labels.slice(0, 4).every((l) => typeof l === "string" && l.trim() && l.trim().length <= 2)) {
+        vertices = labels.slice(0, 4).map((l) => l.trim());
+        if (new Set(vertices).size !== 4) return reject("четырёхугольник: буквы вершин повторяются");
+      }
+      const clash = (letter) => vertices.some((v) => v.toUpperCase() === letter.toUpperCase());
+      const extra = (i, def) => {
+        const raw = labels[4 + i];
+        const letter = typeof raw === "string" && raw.trim() && raw.trim().length <= 2 ? raw.trim() : def;
+        if (!clash(letter)) return letter;
+        // Буква совпала с вершиной — берём первую свободную из запаса.
+        return [def, "O", "E", "F", "K", "P"].find((c) => !clash(c)) ?? def;
+      };
+
+      if (figure.kind === "parallelogram") {
+        for (const m of markList) if (m !== "диагонали") return reject(`параллелограмм: непонятная отметка «${m}»`);
+        let angle = null;
+        if (values.length === 1) {
+          angle = values[0];
+          if (!positive(angle) || angle >= 180) return reject(`параллелограмм: угол ${angle}°`);
+          if (Math.min(angle, 180 - angle) < MIN_ANGLE) return reject(`параллелограмм: угол ${angle}° нечитаем`);
+        } else if (values.length !== 0) {
+          return reject(`параллелограмм: ${values.length} значений (нужно 0 или 1 — угол)`);
+        }
+        return {
+          kind: "parallelogram", angle, // null → представительная форма (62°, 1:1.6) на фронте
+          diagonals: markList.includes("диагонали"),
+          vertices, oLetter: extra(0, "O"), comment: comment(figure),
+        };
+      }
+
+      if (figure.kind === "rhombus") {
+        // «диагонали» у ромба безвредны (они рисуются всегда) — игнорируем.
+        const strange = markList.filter((m) => m !== "диагонали");
+        if (strange.length) return reject(`ромб: непонятная отметка «${strange[0]}»`);
+        let d1 = null, d2 = null, given = false;
+        if (values.length === 2) {
+          [d1, d2] = values; given = true;
+          if (!positive(d1) || !positive(d2)) return reject("ромб: диагонали не положительные");
+          if (Math.max(d1, d2) / Math.min(d1, d2) > MAX_RATIO) return reject(`ромб: вырожденные диагонали ${d1}/${d2}`);
+        } else if (values.length !== 0) {
+          return reject(`ромб: ${values.length} значений (нужно 0 или 2 — диагонали)`);
+        } else {
+          [d1, d2] = DEFAULT_RHOMBUS;
+        }
+        return { kind: "rhombus", d1, d2, given, vertices, oLetter: extra(0, "O"), comment: comment(figure) };
+      }
+
+      // trapezoid
+      for (const m of markList) {
+        if (m !== "средняя линия" && m !== "равнобокая") return reject(`трапеция: непонятная отметка «${m}»`);
+      }
+      let b1 = null, b2 = null, given = false;
+      if (values.length === 2) {
+        [b1, b2] = values; given = true;
+        if (!positive(b1) || !positive(b2)) return reject("трапеция: основания не положительные");
+        if (Math.abs(b1 - b2) < 1e-9) return reject("трапеция: основания равны — это параллелограмм, не трапеция");
+        if (Math.max(b1, b2) / Math.min(b1, b2) > MAX_RATIO) return reject(`трапеция: вырожденные основания ${b1}/${b2}`);
+      } else if (values.length !== 0) {
+        return reject(`трапеция: ${values.length} значений (нужно 0 или 2 — основания)`);
+      } else {
+        [b1, b2] = DEFAULT_TRAP;
+      }
+      const midline = markList.includes("средняя линия");
+      return {
+        kind: "trapezoid", b1, b2, given,
+        iso: markList.includes("равнобокая"), midline,
+        vertices,
+        mLetters: midline ? [extra(0, "M"), extra(1, "N")] : null,
+        comment: comment(figure),
+      };
     }
 
     return reject(`неизвестный kind «${figure.kind}»`);

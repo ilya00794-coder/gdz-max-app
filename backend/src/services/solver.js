@@ -100,16 +100,17 @@ const SolutionSchema = z.object({
   // «наглядность»; валидатор services/figure.js разворачивает в форму фронта.
   figure: z
     .object({
-      kind: z.enum(["circles", "numberline", "rectangle", "square", "adjacent-angles", "vertical-angles", "parallel-lines", "triangle"]).describe(
+      kind: z.enum(["circles", "numberline", "rectangle", "square", "adjacent-angles", "vertical-angles", "parallel-lines", "triangle", "parallelogram", "rhombus", "trapezoid"]).describe(
         "circles — кружки для счёта; numberline — числовой луч; rectangle — прямоугольник; square — квадрат; " +
           "adjacent-angles — смежные углы; vertical-angles — вертикальные углы; parallel-lines — параллельные прямые с секущей; " +
-          "triangle — треугольник."
+          "triangle — треугольник; parallelogram — параллелограмм; rhombus — ромб; trapezoid — трапеция."
       ),
       values: z.array(z.number()).describe(
         "Числа фигуры, порядок по kind: circles — [всего, зачеркнуть, размер группы] (2-й и 3-й опциональны); " +
           "numberline — координаты точек (1–4); rectangle — [длина, ширина]; square — [сторона]; " +
           "adjacent-angles — [правый угол, левый угол] в градусах; vertical-angles и parallel-lines — [данный угол]; " +
-          "triangle — три угла [при A, при B, при C] ЛИБО три стороны [AB, BC, CA] — что именно, скажи в marks " +
+          "triangle — три угла [при A, при B, при C] ЛИБО три стороны [AB, BC, CA] — что именно, скажи в marks; " +
+          "parallelogram — [угол при первой вершине]; rhombus — [две диагонали]; trapezoid — [верхнее основание, нижнее] " +
           "(для доказательств без чисел — пустой список, форму выберет система)."
       ),
       labels: z.array(z.string()).describe(
@@ -118,12 +119,16 @@ const SolutionSchema = z.object({
           "adjacent-angles — [буквы точек: левый конец, вершина, правый конец, конец луча]; " +
           "vertical-angles — обозначения четырёх углов от данного против часовой («∠1»…«∠4»); " +
           "parallel-lines — [имена прямых и секущей]; triangle — [вершины A, B, C, затем буквы оснований элементов]; " +
+          "parallelogram и rhombus — [четыре вершины по кругу, затем буква точки пересечения диагоналей]; " +
+          "trapezoid — [четыре вершины по кругу, затем буквы концов средней линии]; " +
           "circles — пустой список. Правила — в предметном блоке."
       ),
       marks: z.array(z.string()).describe(
         "parallel-lines: [тип отмеченной пары углов] — «накрест лежащие», «соответственные» или «односторонние». " +
           "triangle: первой строкой «углы» или «стороны» (что в values), дальше «равные стороны AB BC», " +
-          "«медиана B», «высота A», «биссектриса C» (не больше двух элементов). Для остальных kind — пустой список."
+          "«медиана B», «высота A», «биссектриса C» (не больше двух элементов). " +
+          "parallelogram: «диагонали», если они нужны задаче. trapezoid: «средняя линия», «равнобокая». " +
+          "Для остальных kind — пустой список."
       ),
       range: z.tuple([z.number(), z.number()]).nullable().describe("numberline: [от, до] оси; для остальных — null."),
       comment: z.string().describe("Одна короткая фраза: что видно на рисунке."),
