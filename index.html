@@ -209,6 +209,23 @@
       </div>
     </section>
 
+    <!-- Экран подписки (gating): показывается при 403 not_subscribed.
+         Готов заранее — включение гейтинга должно быть одним флагом. -->
+    <section class="screen screen-light" id="screen-subscribe">
+      <header class="brand-topbar">
+        <img class="brand-logo" src="assets/logo-header.svg" alt="домашка в max" />
+      </header>
+      <div class="setup">
+        <h1 class="setup-title">Нужна подписка</h1>
+        <p class="setup-lead" id="subscribe-text">Домашка бесплатна для подписчиков нашего канала. Подпишись — и решай задачи без ограничений.</p>
+        <div class="subscribe-actions">
+          <button class="cta" id="btn-open-channel" type="button">Открыть канал</button>
+          <button class="btn-light" id="btn-recheck-sub" type="button">Я подписался</button>
+        </div>
+        <p class="subscribe-status" id="subscribe-status" hidden></p>
+      </div>
+    
+
   </div>
 
   <!-- Обычные (не defer) скрипты: KaTeX и auto-render должны быть готовы к моменту загрузки app.js. -->

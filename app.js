@@ -181,6 +181,8 @@ async function getJson(path, timeoutMs) {
     if (!res.ok) {
       const err = new Error(humanizeError(res.status, { serverMessage: data?.error }));
       err.status = res.status;
+      err.body = data;
+      markNotSubscribed(err);
       throw err;
     }
     return data;
@@ -209,6 +211,7 @@ async function loadSubjects(grade) {
     renderSubjectChips(data.subjects);
   } catch (err) {
     if (requestId !== subjectsRequestId) return;
+    if (err.notSubscribed) { showSubscribeScreen(); return; }
     renderSubjectError(err.message, grade);
   }
 }
@@ -779,6 +782,8 @@ async function runRecognition(mode, payload, allowPrompt = true) {
       if (st.final.code !== 200) {
         const err = new Error(humanizeError(st.final.code, { serverMessage: st.final.body?.error }));
         err.status = st.final.code;
+        err.body = st.final.body;
+        markNotSubscribed(err);
         throw err;
       }
       result = st.final.body;
@@ -792,6 +797,7 @@ async function runRecognition(mode, payload, allowPrompt = true) {
     }
     showResult(mode, result);
   } catch (err) {
+    if (err.notSubscribed) { showSubscribeScreen(); return; }
     // 422 — «не разобрали фото» или «печатного условия не найдено»: остаёмся на съёмке.
     showCaptureError(err.message);
   } finally {
@@ -1177,6 +1183,56 @@ const stopCheckStages = stopStages;
  * @param {number|null} status - HTTP-статус, либо null если ответа не было вовсе
  * @param {object} [err] - исходная ошибка и/или сообщение бэкенда
  */
+// ---------- экран подписки (gating) ----------
+// Ссылка канала подтверждена живым GET /chats 31.08.2026.
+const CHANNEL_URL = "https://max.ru/id772408566819_biz";
+let subscribeReturnScreen = "screen-setup";
+
+/** Помечает ошибку гейтинга; экран показывается из верхних обработчиков. */
+function markNotSubscribed(err) {
+  if (err.status === 403 && err.body?.error === "not_subscribed") err.notSubscribed = true;
+}
+
+function showSubscribeScreen() {
+  const active = document.querySelector('.screen[data-active="true"]')?.id;
+  if (active && active !== "screen-subscribe") subscribeReturnScreen = active;
+  const status = document.getElementById("subscribe-status");
+  if (status) { status.hidden = true; status.textContent = ""; }
+  showScreen("screen-subscribe");
+}
+
+document.getElementById("btn-open-channel")?.addEventListener("click", () => {
+  // openMaxLink открывает max.ru-ссылку внутри клиента MAX; вне MAX — новая вкладка.
+  if (window.WebApp?.openMaxLink) window.WebApp.openMaxLink(CHANNEL_URL);
+  else window.open(CHANNEL_URL, "_blank");
+});
+
+document.getElementById("btn-recheck-sub")?.addEventListener("click", async (e) => {
+  const btn = e.currentTarget;
+  const status = document.getElementById("subscribe-status");
+  btn.disabled = true;
+  status.hidden = false;
+  status.textContent = "Проверяю…";
+  try {
+    const r = await postJson("/api/subscription/recheck", {}, 10000);
+    if (r.status === "subscribed") {
+      status.textContent = "Готово! Подписка на месте.";
+      setTimeout(() => showScreen(subscribeReturnScreen), 700);
+    } else if (r.status === "no_user") {
+      status.textContent = "Не получилось узнать, кто ты. Закрой и открой приложение из MAX заново.";
+    } else if (r.status === "error") {
+      status.textContent = "Не получилось проверить. Попробуй ещё раз через пару секунд.";
+    } else {
+      status.textContent = "Пока не видим подписку. Если подписался только что — подожди пару секунд и нажми ещё раз.";
+    }
+  } catch {
+    status.textContent = "Не получилось проверить. Попробуй ещё раз.";
+  } finally {
+    // Сервер лимитирует принудительную проверку раз в 5 секунд — кнопка тоже.
+    setTimeout(() => { btn.disabled = false; }, 5000);
+  }
+});
+
 function humanizeError(status, err) {
   if (err?.name === "AbortError") {
     return "Сервер долго не отвечает. Попробуй ещё раз.";
@@ -1224,6 +1280,7 @@ async function postJson(path, payload, timeoutMs) {
       const err = new Error(humanizeError(res.status, { serverMessage: data?.error }));
       err.status = res.status;
       err.body = data;
+      markNotSubscribed(err);
       throw err;
     }
     return data;
