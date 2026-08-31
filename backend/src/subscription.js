@@ -33,18 +33,6 @@ const FORCE_MIN_INTERVAL_MS = 5 * 1000;
 /** userId → момент последней принудительной проверки. */
 const lastForce = new Map();
 
-/**
- * ВРЕМЕННЫЙ тестовый рычаг (31.08.2026, просьба Ильи): перечисленные id
- * принудительно считаются неподписанными — чтобы посмотреть экран подписки
- * глазами с телефона, не включая гейтинг для всех. Действует в ОБЕИХ точках:
- * гейт блокирует (даже в shadow), recheck отвечает not_subscribed.
- * Убрать по слову Ильи: снять SUBSCRIPTION_TEST_BLOCK_IDS из .env + рестарт.
- */
-const TEST_BLOCK_IDS = new Set(
-  String(process.env.SUBSCRIPTION_TEST_BLOCK_IDS || "").split(",").map((s) => s.trim()).filter(Boolean)
-);
-if (TEST_BLOCK_IDS.size) console.warn(`[gating] ТЕСТ: принудительно неподписанные id: ${[...TEST_BLOCK_IDS].join(",")}`);
-
 /** userId → { status, expires }. 'error' сюда не попадает никогда. */
 const cache = new Map();
 
@@ -59,8 +47,6 @@ let backoffUntil = 0;
  */
 export async function checkSubscription(userId, { force = false } = {}) {
   const key = String(userId);
-
-  if (TEST_BLOCK_IDS.has(key)) return { status: "not_subscribed", raw: { test: true } };
 
   let bypassCache = false;
   if (force) {
@@ -152,12 +138,6 @@ export function subscriptionGate(req, res, next) {
     });
     return status;
   };
-
-  // Тестовые id блокируются даже в shadow — полная симуляция неподписанного.
-  if (TEST_BLOCK_IDS.has(String(userId))) {
-    console.log("[gating]", { режим: GATING_MODE, userId, decision: "not_subscribed (ТЕСТ)" });
-    return res.status(403).json({ error: "not_subscribed" });
-  }
 
   if (GATING_MODE === "shadow") {
     // Без await: пользователь не должен ждать MAX API ради лога.
