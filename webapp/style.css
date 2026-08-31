@@ -868,3 +868,7 @@ body.crop-dragging {
 
 /* Версия фронта на экране настройки: видно с телефона, что фронт свежий. */
 .app-version { margin: 14px 0 0; text-align: center; font-size: 11px; color: var(--l-muted, #B0AFA8); }
+
+/* Экран подписки (gating) */
+.subscribe-actions { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
+.subscribe-status { margin-top: 14px; font-size: 14px; color: #5b5a54; }

@@ -6,7 +6,7 @@ import feedbackRouter from "./src/routes/feedback.js";
 import subjectsRouter from "./src/routes/subjects.js";
 import { assertDatabaseReady, DATABASE_URL } from "./src/services/cache.js";
 import { maxInitData, INIT_DATA_HEADER } from "./src/middleware/maxInitData.js";
-import { subscriptionGate, assertGatingReady } from "./src/subscription.js";
+import { subscriptionGate, assertGatingReady, checkSubscription } from "./src/subscription.js";
 import { startBotPoller } from "./src/services/botChannel.js";
 import { allPlanSubjects, isComputableSubject } from "./src/services/subjects.js";
 import { hasBlockEntry } from "./src/data/subject-rules.js";
@@ -26,6 +26,22 @@ app.use(express.json({ limit: "15mb" })); // фото в base64 могут бы�
 
 // Разбор строки запуска MAX. Пока только логирует, запросы не отвергает.
 app.use("/api", maxInitData);
+
+// Принудительная перепроверка подписки (кнопка «Я подписался» на экране
+// подписки). Монтируется ДО subscriptionGate: при gating=on неподписанный
+// должен мочь перепроверить себя, иначе кнопка сама получала бы 403.
+// Force минует кэш, лимит 1/5с — в checkSubscription.
+app.post("/api/subscription/recheck", async (req, res) => {
+  const userId = req.max?.userId;
+  if (!userId) return res.json({ status: "no_user" });
+  try {
+    const { status } = await checkSubscription(userId, { force: true });
+    res.json({ status });
+  } catch (err) {
+    console.error("[recheck] сбой:", err.message);
+    res.json({ status: "error" });
+  }
+});
 // Gating подписки — строго ПОСЛЕ maxInitData: userId берётся из req.max.
 // /health не под /api и в gating не попадает.
 app.use("/api", subscriptionGate);
