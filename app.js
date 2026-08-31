@@ -1640,6 +1640,109 @@ function drawingSvg(d) {
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img" aria-label="Чертёж: ${isSquare ? "квадрат" : "прямоугольник"}">${out}</svg>`;
 }
 
+// ---------- чертежи углов (№12, часть 2) ----------
+// Примитив «дуга угла + подпись» ОБЩИЙ: его же будут использовать
+// треугольники и четырёхугольники (части 3–4). Углы — математические
+// (против часовой от положительного направления x), y экрана учитён внутри.
+
+const FIG_ACCENT = "#185FA5";
+const FIG_LINE = "#5B5A54";
+const FIG_TEXT = "#444441";
+
+function figPoint(cx, cy, r, deg) {
+  const rad = (deg * Math.PI) / 180;
+  return [cx + r * Math.cos(rad), cy - r * Math.sin(rad)];
+}
+
+/** Дуга от from к to против часовой (видимой), радиуса r. */
+function angleArc(cx, cy, r, from, to, color = FIG_ACCENT) {
+  const [x1, y1] = figPoint(cx, cy, r, from);
+  const [x2, y2] = figPoint(cx, cy, r, to);
+  const span = (((to - from) % 360) + 360) % 360;
+  const large = span > 180 ? 1 : 0;
+  return `<path d="M${x1.toFixed(1)} ${y1.toFixed(1)} A${r} ${r} 0 ${large} 0 ${x2.toFixed(1)} ${y2.toFixed(1)}" fill="none" stroke="${color}" stroke-width="1.6"/>`;
+}
+
+/** Подпись у биссектрисы дуги (текст значения или обозначения угла). */
+function angleText(cx, cy, r, from, to, text, color = FIG_TEXT, size = 11) {
+  const span = (((to - from) % 360) + 360) % 360;
+  const [x, y] = figPoint(cx, cy, r, from + span / 2);
+  return `<text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" font-size="${size}" text-anchor="middle" fill="${color}">${escapeHtml(text)}</text>`;
+}
+
+function figDeg(v) {
+  return `${Number(v.toFixed(1))}°`;
+}
+
+function adjacentAnglesSvg(f) {
+  const W = 300, H = 170, cx = 150, cy = 128;
+  const rayLen = 96;
+  const [rx, ry] = figPoint(cx, cy, rayLen, f.right);
+  let out = `<line x1="22" y1="${cy}" x2="278" y2="${cy}" stroke="${FIG_LINE}" stroke-width="1.8"/>`;
+  out += `<line x1="${cx}" y1="${cy}" x2="${rx.toFixed(1)}" y2="${ry.toFixed(1)}" stroke="${FIG_LINE}" stroke-width="1.8"/>`;
+  out += angleArc(cx, cy, 32, 0, f.right) + angleText(cx, cy, 50, 0, f.right, figDeg(f.right), FIG_ACCENT);
+  out += angleArc(cx, cy, 24, f.right, 180) + angleText(cx, cy, 44, f.right, 180, figDeg(f.left), FIG_ACCENT);
+  if (f.letters) {
+    const [A, O, B, C] = f.letters;
+    const [lx, ly] = figPoint(cx, cy, rayLen + 13, f.right);
+    out += `<text x="18" y="${cy + 16}" font-size="12" fill="${FIG_TEXT}">${escapeHtml(A)}</text>`;
+    out += `<text x="${cx}" y="${cy + 16}" font-size="12" text-anchor="middle" fill="${FIG_TEXT}">${escapeHtml(O)}</text>`;
+    out += `<text x="278" y="${cy + 16}" font-size="12" text-anchor="end" fill="${FIG_TEXT}">${escapeHtml(B)}</text>`;
+    out += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="12" text-anchor="middle" fill="${FIG_TEXT}">${escapeHtml(C)}</text>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img" aria-label="Чертёж: смежные углы">${out}</svg>`;
+}
+
+function verticalAnglesSvg(f) {
+  const W = 300, H = 190, cx = 150, cy = 95, len = 118;
+  const a = f.angle;
+  const [x2, y2] = figPoint(cx, cy, len, a);
+  const [x3, y3] = figPoint(cx, cy, len, a + 180);
+  let out = `<line x1="${cx - len}" y1="${cy}" x2="${cx + len}" y2="${cy}" stroke="${FIG_LINE}" stroke-width="1.8"/>`;
+  out += `<line x1="${x3.toFixed(1)}" y1="${y3.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${FIG_LINE}" stroke-width="1.8"/>`;
+  // Четыре сектора от данного угла против часовой: ∠1 = a, ∠2 = 180−a, ∠3 = a, ∠4 = 180−a.
+  const sectors = [ [0, a, a], [a, 180, 180 - a], [180, 180 + a, a], [180 + a, 360, 180 - a] ];
+  sectors.forEach(([from, to, val], i) => {
+    out += angleArc(cx, cy, 24 + (i % 2) * 5, from, to);
+    out += angleText(cx, cy, 52, from, to, `${f.names[i]} = ${figDeg(val)}`);
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img" aria-label="Чертёж: вертикальные углы">${out}</svg>`;
+}
+
+function parallelLinesSvg(f) {
+  const W = 300, H = 200, y1 = 58, y2 = 142;
+  const a = f.angle;
+  // Секущая идёт сверху-справа вниз-влево при остром угле: пересечения P1 и P2.
+  const p1x = 128;
+  const p2x = p1x + (y2 - y1) / Math.tan((a * Math.PI) / 180);
+  const dirDown = -a; // экранное направление секущей вниз от P1
+  const [t1x, t1y] = figPoint(p1x, y1, 40, dirDown + 180);
+  const [t2x, t2y] = figPoint(p2x, y2, 40, dirDown);
+  let out = `<line x1="20" y1="${y1}" x2="280" y2="${y1}" stroke="${FIG_LINE}" stroke-width="1.8"/>`;
+  out += `<line x1="20" y1="${y2}" x2="280" y2="${y2}" stroke="${FIG_LINE}" stroke-width="1.8"/>`;
+  out += `<line x1="${t1x.toFixed(1)}" y1="${t1y.toFixed(1)}" x2="${t2x.toFixed(1)}" y2="${t2y.toFixed(1)}" stroke="${FIG_LINE}" stroke-width="1.8"/>`;
+  // Шевроны параллельности на обеих прямых.
+  for (const y of [y1, y2]) {
+    out += `<path d="M246 ${y - 5} L254 ${y} L246 ${y + 5}" fill="none" stroke="${FIG_LINE}" stroke-width="1.4"/>`;
+  }
+  // Данный угол — у верхней прямой, между правым направлением и секущей вниз.
+  out += angleArc(p1x, y1, 26, dirDown, 0) + angleText(p1x, y1, 44, dirDown, 0, figDeg(a), FIG_ACCENT);
+  // Парный угол у нижней прямой — по типу пары.
+  const dirUp = 180 - a; // направление секущей вверх от P2
+  if (f.pair === "alternate") {
+    out += angleArc(p2x, y2, 26, dirUp, 180) + angleText(p2x, y2, 44, dirUp, 180, figDeg(a), FIG_ACCENT);
+  } else if (f.pair === "corresponding") {
+    out += angleArc(p2x, y2, 26, dirDown, 0) + angleText(p2x, y2, 44, dirDown, 0, figDeg(a), FIG_ACCENT);
+  } else if (f.pair === "co-interior") {
+    out += angleArc(p2x, y2, 26, 0, dirUp) + angleText(p2x, y2, 46, 0, dirUp, figDeg(180 - a), FIG_ACCENT);
+  }
+  const [n1, n2, n3] = f.names;
+  out += `<text x="284" y="${y1 + 4}" font-size="12" font-style="italic" fill="${FIG_TEXT}">${escapeHtml(n1)}</text>`;
+  out += `<text x="284" y="${y2 + 4}" font-size="12" font-style="italic" fill="${FIG_TEXT}">${escapeHtml(n2)}</text>`;
+  out += `<text x="${(t1x + 8).toFixed(1)}" y="${(t1y + 2).toFixed(1)}" font-size="12" font-style="italic" fill="${FIG_TEXT}">${escapeHtml(n3)}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img" aria-label="Чертёж: параллельные прямые с секущей">${out}</svg>`;
+}
+
 // Единая карточка наглядности (бэкенд отдаёт поле figure, уже нормализованное
 // валидатором services/figure.js; старый кэш конвертируется там же на лету).
 function renderFigureCard(figure) {
@@ -1649,6 +1752,9 @@ function renderFigureCard(figure) {
     figure?.kind === "circles" ? circlesSvg({ circlesTotal: figure.circlesTotal, circlesCrossed: figure.circlesCrossed, circlesGroupSize: figure.circlesGroupSize })
     : figure?.kind === "numberline" ? numberlineSvg({ points: figure.points, range: figure.range })
     : figure?.kind === "rectangle" || figure?.kind === "square" ? drawingSvg(figure)
+    : figure?.kind === "adjacent-angles" ? adjacentAnglesSvg(figure)
+    : figure?.kind === "vertical-angles" ? verticalAnglesSvg(figure)
+    : figure?.kind === "parallel-lines" ? parallelLinesSvg(figure)
     : "";
   if (!svg) { card.hidden = true; card.innerHTML = ""; return; }
   const comment = figure.comment ? `<p class="graph-comment">${escapeHtml(figure.comment)}</p>` : "";
