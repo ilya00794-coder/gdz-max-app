@@ -129,7 +129,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
 
   onRecognized?.(recognizedText, recognition);
 
-  const cacheKey = buildCacheKey({ textbook, grade, subject, taskNumber, rawText: recognizedText });
+  const cacheKey = buildCacheKey({ grade, subject, rawText: recognizedText });
   const cached = await getCached(cacheKey);
 
   if (cached) {

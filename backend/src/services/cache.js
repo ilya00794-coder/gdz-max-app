@@ -61,8 +61,10 @@ export async function assertDatabaseReady() {
 /**
  * Строит канонический ключ задачи. Чистая функция, к базе не обращается.
  *
- * Приоритет: учебник+класс+предмет+номер задания (если распознано на фото).
- * Fallback: хэш нормализованного текста условия.
+ * Ключ — хэш нормализованного текста условия + класс + предмет.
+ * Ветка «учебник+номер» удалена 31.08.2026 (0 срабатываний из 84 записей:
+ * автор учебника не печатается на странице с задачей, vision его не видит).
+ * Будущая форма — в бэклоге: textbook из ПРОФИЛЯ ученика, номер из фото.
  */
 /**
  * Нормализация условия перед хэшированием: два распознавания ОДНОЙ задачи
@@ -89,10 +91,7 @@ function normalizeTaskText(text) {
     .replace(/\s+/g, "");
 }
 
-export function buildCacheKey({ textbook, grade, subject, taskNumber, rawText }) {
-  if (textbook && grade && subject && taskNumber) {
-    return `book:${textbook}:${grade}:${subject}:${taskNumber}`.toLowerCase();
-  }
+export function buildCacheKey({ grade, subject, rawText }) {
   const normalized = normalizeTaskText(rawText);
   const hash = crypto.createHash("sha256").update(normalized).digest("hex").slice(0, 24);
   // Класс и предмет — часть ключа: одно и то же условие для 5 и 8 класса решается
