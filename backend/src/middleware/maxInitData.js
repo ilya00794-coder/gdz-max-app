@@ -178,6 +178,8 @@ export function maxInitData(req, res, next) {
     подпись: check.status,
     возрастСек: check.ageSeconds,
     протухла: req.max.expired,
+    // Значение start_param — метка поста (post_YYYYMMDD), не персональные данные.
+    start_param: parsed?.params?.start_param ?? null,
     локальный: local,
     строгийРежим: STRICT,
     userId,
