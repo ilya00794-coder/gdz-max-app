@@ -7,6 +7,7 @@ import subjectsRouter from "./src/routes/subjects.js";
 import { assertDatabaseReady, DATABASE_URL } from "./src/services/cache.js";
 import { maxInitData, INIT_DATA_HEADER } from "./src/middleware/maxInitData.js";
 import { subscriptionGate, assertGatingReady } from "./src/subscription.js";
+import { startBotPoller } from "./src/services/botChannel.js";
 import { allPlanSubjects, isComputableSubject } from "./src/services/subjects.js";
 import { hasBlockEntry } from "./src/data/subject-rules.js";
 
@@ -85,3 +86,7 @@ try {
 app.listen(PORT, () => {
   console.log(`GDZ MAX backend запущен на http://localhost:${PORT}`);
 });
+
+// Приём личек бота для публикации постов (long polling, botChannel.js).
+// Не await: сбой поллера не должен мешать HTTP-серверу; ошибки логируются внутри.
+startBotPoller();

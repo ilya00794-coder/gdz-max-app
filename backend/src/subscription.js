@@ -22,7 +22,16 @@ export const GATING_MODE = ["off", "shadow", "on"].includes(String(process.env.S
 
 const REQUEST_TIMEOUT_MS = 4000;
 const TTL_SUBSCRIBED_MS = 15 * 60 * 1000;
-const TTL_NOT_SUBSCRIBED_MS = 60 * 1000;
+// Отрицательный TTL короткий: подписка занимает ~10 секунд, и только что
+// подписавшийся ученик не должен сидеть в окне отказа (было 60 с — почти
+// гарантированное попадание в окно; решение Ильи 31.08).
+const TTL_NOT_SUBSCRIBED_MS = 15 * 1000;
+// Принудительная проверка (кнопка «Я подписался») минует кэш, но не чаще
+// раза в 5 секунд на пользователя — защита от долбёжки по MAX API.
+const FORCE_MIN_INTERVAL_MS = 5 * 1000;
+
+/** userId → момент последней принудительной проверки. */
+const lastForce = new Map();
 
 /** userId → { status, expires }. 'error' сюда не попадает никогда. */
 const cache = new Map();
@@ -32,13 +41,26 @@ let backoffUntil = 0;
 
 /**
  * @param {string|number} userId
+ * @param {{force?: boolean}} [opts] force — проверить мимо кэша (кнопка
+ *   «Я подписался»); при превышении лимита 1/5с ведёт себя как обычный вызов.
  * @returns {Promise<{status: "subscribed"|"not_subscribed"|"error", raw: object|null}>}
  */
-export async function checkSubscription(userId) {
+export async function checkSubscription(userId, { force = false } = {}) {
   const key = String(userId);
 
+  let bypassCache = false;
+  if (force) {
+    const last = lastForce.get(key) ?? 0;
+    if (Date.now() - last >= FORCE_MIN_INTERVAL_MS) {
+      lastForce.set(key, Date.now());
+      bypassCache = true;
+    }
+    // Лимит не прошёл — тихо падаем в обычное поведение (кэш): пользователь,
+    // щёлкающий кнопку, получает последний известный статус, не ошибку.
+  }
+
   const hit = cache.get(key);
-  if (hit && hit.expires > Date.now()) return { status: hit.status, raw: null };
+  if (!bypassCache && hit && hit.expires > Date.now()) return { status: hit.status, raw: null };
 
   if (Date.now() < backoffUntil) {
     return { status: "error", raw: { reason: "backoff после 429" } };
