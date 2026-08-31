@@ -869,6 +869,26 @@ body.crop-dragging {
 /* Версия фронта на экране настройки: видно с телефона, что фронт свежий. */
 .app-version { margin: 14px 0 0; text-align: center; font-size: 11px; color: var(--l-muted, #B0AFA8); }
 
-/* Экран подписки (gating) */
-.subscribe-actions { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
-.subscribe-status { margin-top: 14px; font-size: 14px; color: #5b5a54; }
+/* Экран подписки (gating): текст в центре, крупные кнопки внизу. */
+#screen-subscribe .setup { text-align: center; }
+.subscribe-body { margin: auto 0; }
+.subscribe-body .setup-lead { font-size: 16px; line-height: 1.45; margin-top: 10px; }
+.subscribe-actions { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+#screen-subscribe .cta {
+  width: 100%;
+  padding: 15px 16px;
+  border: none;
+  border-radius: 12px;
+  background: var(--l-accent);
+  color: #fff;
+  font-family: var(--font-system);
+  font-size: 16px;
+  font-weight: 600;
+}
+#screen-subscribe .cta-secondary {
+  background: var(--l-bg);
+  color: var(--l-text);
+  border: 0.5px solid var(--l-line);
+}
+#screen-subscribe .cta:disabled { opacity: 0.55; }
+.subscribe-status { margin-bottom: 4px; font-size: 14px; color: #5b5a54; }
