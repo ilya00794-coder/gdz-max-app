@@ -1855,6 +1855,104 @@ function triangleSvg(f) {
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img" aria-label="Чертёж: треугольник">${out}</svg>`;
 }
 
+// ---------- четырёхугольники (№12, часть 4) ----------
+// Переиспользуют angleArc/angleText (дуги углов) и tickMark (равенство сторон).
+// Точки пересечения диагоналей и концы средней линии ВЫЧИСЛЯЮТСЯ из координат,
+// а не рисуются символически.
+
+/** Обход вершин, буквы наружу от центра, общий низ фигур части 4. */
+function quadShell(pts, vertices, W, H) {
+  const P = (p) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`;
+  let out = `<path d="M${pts.map(P).join(" L")} Z" fill="${FIG_ACCENT}" fill-opacity="0.05" stroke="${FIG_LINE}" stroke-width="1.8"/>`;
+  const gx = pts.reduce((a, p) => a + p[0], 0) / 4, gy = pts.reduce((a, p) => a + p[1], 0) / 4;
+  pts.forEach((v, i) => {
+    const dl = Math.hypot(v[0] - gx, v[1] - gy) || 1;
+    out += `<text x="${(v[0] + ((v[0] - gx) / dl) * 14).toFixed(1)}" y="${(v[1] + ((v[1] - gy) / dl) * 14 + 4).toFixed(1)}" font-size="13" text-anchor="middle" fill="${FIG_TEXT}">${escapeHtml(vertices[i])}</text>`;
+  });
+  return out;
+}
+
+function parallelogramSvg(f) {
+  const W = 320, H = 190;
+  const angle = f.angle ?? 62; // представительная форма: не прямоугольник
+  const rad = (Math.min(angle, 180 - angle) * Math.PI) / 180;
+  // Стороны 1.6:1 — представительная форма заведомо не ромб; наклон по углу.
+  const side = 88, base = side * 1.6;
+  const dx = side * Math.cos(rad), dy = side * Math.sin(rad);
+  const x0 = (W - base - dx) / 2, y0 = (H + dy) / 2 + 8;
+  // Обход по кругу: A (низ лев), B (верх лев), C (верх прав), D (низ прав).
+  const A = [x0, y0], B = [x0 + dx, y0 - dy], C = [x0 + dx + base, y0 - dy], D = [x0 + base, y0];
+  const pts = [A, B, C, D];
+  let out = quadShell(pts, f.vertices, W, H);
+  if (f.angle !== null) {
+    // Углы: при A = angle, дальше по кругу 180−angle, angle, 180−angle.
+    const vals = [angle, 180 - angle, angle, 180 - angle];
+    pts.forEach((v, i) => {
+      const [p, q] = [pts[(i + 1) % 4], pts[(i + 3) % 4]];
+      let d1 = figDir(v, p), d2 = figDir(v, q);
+      if ((((d2 - d1) % 360) + 360) % 360 > 180) [d1, d2] = [d2, d1];
+      out += angleArc(v[0], v[1], 16, d1, d2) + angleText(v[0], v[1], 33, d1, d2, figDeg(vals[i]), FIG_ACCENT, 10.5);
+    });
+  }
+  if (f.diagonals) {
+    const O = [(A[0] + C[0]) / 2, (A[1] + C[1]) / 2]; // вычислено: диагонали параллелограмма делятся пополам
+    out += `<line x1="${A[0].toFixed(1)}" y1="${A[1].toFixed(1)}" x2="${C[0].toFixed(1)}" y2="${C[1].toFixed(1)}" stroke="${FIG_ACCENT}" stroke-width="1.5"/>`;
+    out += `<line x1="${B[0].toFixed(1)}" y1="${B[1].toFixed(1)}" x2="${D[0].toFixed(1)}" y2="${D[1].toFixed(1)}" stroke="${FIG_ACCENT}" stroke-width="1.5"/>`;
+    out += `<circle cx="${O[0].toFixed(1)}" cy="${O[1].toFixed(1)}" r="2.4" fill="${FIG_ACCENT}"/>`;
+    out += `<text x="${(O[0] + 9).toFixed(1)}" y="${(O[1] - 7).toFixed(1)}" font-size="12" fill="${FIG_TEXT}">${escapeHtml(f.oLetter)}</text>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img" aria-label="Чертёж: параллелограмм">${out}</svg>`;
+}
+
+function rhombusSvg(f) {
+  const W = 300, H = 220, pad = 30;
+  const k = Math.min((W - 2 * pad) / f.d1, (H - 2 * pad) / f.d2);
+  const cx = W / 2, cy = H / 2;
+  const hx = (f.d1 * k) / 2, hy = (f.d2 * k) / 2;
+  // Диагональ AC горизонтальна, BD вертикальна; обход A, B, C, D по кругу.
+  const A = [cx - hx, cy], B = [cx, cy - hy], C = [cx + hx, cy], D = [cx, cy + hy];
+  let out = quadShell([A, B, C, D], f.vertices, W, H);
+  out += `<line x1="${A[0].toFixed(1)}" y1="${A[1]}" x2="${C[0].toFixed(1)}" y2="${C[1]}" stroke="${FIG_ACCENT}" stroke-width="1.5"/>`;
+  out += `<line x1="${B[0]}" y1="${B[1].toFixed(1)}" x2="${D[0]}" y2="${D[1].toFixed(1)}" stroke="${FIG_ACCENT}" stroke-width="1.5"/>`;
+  out += `<circle cx="${cx}" cy="${cy}" r="2.4" fill="${FIG_ACCENT}"/>`; // вычислено: центр ромба
+  out += `<text x="${cx + 9}" y="${cy - 7}" font-size="12" fill="${FIG_TEXT}">${escapeHtml(f.oLetter)}</text>`;
+  if (f.given) {
+    out += `<text x="${cx - hx / 2}" y="${cy - 6}" font-size="11" text-anchor="middle" fill="${FIG_TEXT}">${escapeHtml(String(f.d1))}</text>`;
+    out += `<text x="${cx + 7}" y="${cy - hy / 2}" font-size="11" fill="${FIG_TEXT}">${escapeHtml(String(f.d2))}</text>`;
+  }
+  // Все стороны ромба равны — отметки на каждой (общий примитив).
+  for (const [p, q] of [[A, B], [B, C], [C, D], [D, A]]) out += tickMark(p[0], p[1], q[0], q[1]);
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img" aria-label="Чертёж: ромб">${out}</svg>`;
+}
+
+function trapezoidSvg(f) {
+  const W = 320, H = 190, pad = 30;
+  const k = (W - 2 * pad) / Math.max(f.b1, f.b2);
+  const top = f.b1 * k, bottom = f.b2 * k, h = 96;
+  const y0 = (H + h) / 2, x0 = (W - bottom) / 2;
+  // Верхнее основание: равнобокая — по центру; иначе смещено влево
+  // (представительная форма заведомо не равнобокая).
+  const shift = f.iso ? (bottom - top) / 2 : (bottom - top) * 0.24;
+  const A = [x0, y0], B = [x0 + shift, y0 - h], C = [x0 + shift + top, y0 - h], D = [x0 + bottom, y0];
+  let out = quadShell([A, B, C, D], f.vertices, W, H);
+  if (f.given) {
+    out += `<text x="${(B[0] + C[0]) / 2}" y="${B[1] - 8}" font-size="11" text-anchor="middle" fill="${FIG_TEXT}">${escapeHtml(String(f.b1))}</text>`;
+    out += `<text x="${(A[0] + D[0]) / 2}" y="${A[1] + 16}" font-size="11" text-anchor="middle" fill="${FIG_TEXT}">${escapeHtml(String(f.b2))}</text>`;
+  }
+  if (f.iso) { out += tickMark(A[0], A[1], B[0], B[1]) + tickMark(C[0], C[1], D[0], D[1]); }
+  if (f.midline) {
+    // Вычислено: середины боковых сторон.
+    const M = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2], N = [(C[0] + D[0]) / 2, (C[1] + D[1]) / 2];
+    out += `<line x1="${M[0].toFixed(1)}" y1="${M[1].toFixed(1)}" x2="${N[0].toFixed(1)}" y2="${N[1].toFixed(1)}" stroke="${FIG_ACCENT}" stroke-width="1.7"/>`;
+    out += `<text x="${(M[0] - 10).toFixed(1)}" y="${(M[1] + 4).toFixed(1)}" font-size="12" text-anchor="end" fill="${FIG_TEXT}">${escapeHtml(f.mLetters[0])}</text>`;
+    out += `<text x="${(N[0] + 10).toFixed(1)}" y="${(N[1] + 4).toFixed(1)}" font-size="12" fill="${FIG_TEXT}">${escapeHtml(f.mLetters[1])}</text>`;
+    if (f.given) {
+      out += `<text x="${((M[0] + N[0]) / 2).toFixed(1)}" y="${((M[1] + N[1]) / 2 - 7).toFixed(1)}" font-size="11" text-anchor="middle" fill="${FIG_ACCENT}">${escapeHtml(String((f.b1 + f.b2) / 2))}</text>`;
+    }
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img" aria-label="Чертёж: трапеция">${out}</svg>`;
+}
+
 // Единая карточка наглядности (бэкенд отдаёт поле figure, уже нормализованное
 // валидатором services/figure.js; старый кэш конвертируется там же на лету).
 function renderFigureCard(figure) {
@@ -1868,6 +1966,9 @@ function renderFigureCard(figure) {
     : figure?.kind === "vertical-angles" ? verticalAnglesSvg(figure)
     : figure?.kind === "parallel-lines" ? parallelLinesSvg(figure)
     : figure?.kind === "triangle" ? triangleSvg(figure)
+    : figure?.kind === "parallelogram" ? parallelogramSvg(figure)
+    : figure?.kind === "rhombus" ? rhombusSvg(figure)
+    : figure?.kind === "trapezoid" ? trapezoidSvg(figure)
     : "";
   if (!svg) { card.hidden = true; card.innerHTML = ""; return; }
   const comment = figure.comment ? `<p class="graph-comment">${escapeHtml(figure.comment)}</p>` : "";
