@@ -69,6 +69,17 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     // Пустой результат в режиме task означает не «плохое фото», а «печатного условия нет»:
     // например, снята одна тетрадь с решением. Совет «переснимите ближе» тут был бы враньём.
     if (!recognizedText) {
+      // Отказ, который видит пользователь, — единственный сбой, после
+      // которого он уходит; без события баг с доской был бы виден только
+      // из жалоб (так и случилось). reason — класс отказа, не текст.
+      recordVerifyEvent({
+        route: "solve", source, grade, subject,
+        errorKind: "refusal", reason: "no_task_found",
+        inputTokens: visionUsage?.input_tokens ?? null,
+        outputTokens: visionUsage?.output_tokens ?? null,
+        costUsd: usageCost(visionUsage),
+        durationMs: Date.now() - startedAt, transport, appVersion, userHash, startParam,
+      });
       return {
         code: 422,
         body: {
@@ -83,6 +94,14 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
 
     // Плохое фото — честно просим переснять, а не решаем «что-то похожее».
     if (recognition.confidence < 0.4) {
+      recordVerifyEvent({
+        route: "solve", source, grade, subject,
+        errorKind: "refusal", reason: "low_confidence",
+        inputTokens: visionUsage?.input_tokens ?? null,
+        outputTokens: visionUsage?.output_tokens ?? null,
+        costUsd: usageCost(visionUsage),
+        durationMs: Date.now() - startedAt, transport, appVersion, userHash, startParam,
+      });
       return {
         code: 422,
         body: { error: "Не удалось разобрать текст на фото — пересними ближе и при лучшем свете", recognition },
@@ -94,6 +113,15 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     // выбрасывает и перерешивает выбранную задачу) и на контрольной из 14 заданий
     // выходило за таймаут запроса. Отдаём только разметку, фронт спросит, что решать.
     if (recognition.tasks?.length > 1) {
+      // Не отказ, а развилка выбора задачи — помечается отдельно (multiTask).
+      recordVerifyEvent({
+        route: "solve", source, grade, subject,
+        multiTask: true, reason: "multiple_tasks_choice",
+        inputTokens: visionUsage?.input_tokens ?? null,
+        outputTokens: visionUsage?.output_tokens ?? null,
+        costUsd: usageCost(visionUsage),
+        durationMs: Date.now() - startedAt, transport, appVersion, userHash, startParam,
+      });
       return { code: 200, body: { source: "recognized", multipleTasks: true, recognizedText, recognition } };
     }
   }

@@ -105,6 +105,14 @@ router.post("/", async (req, res) => {
     });
 
     if (!recognized.recognizedText || recognized.confidence < 0.4) {
+      recordVerifyEvent({
+        route: "check", source, grade, subject,
+        errorKind: "refusal", reason: "unreadable_work",
+        inputTokens: recognized.usage?.input_tokens ?? null,
+        outputTokens: recognized.usage?.output_tokens ?? null,
+        costUsd: usageCost(recognized.usage),
+        durationMs: Date.now() - startedAt, appVersion, userHash, startParam,
+      });
       delete recognized.usage;
       return res.status(422).json({
         error: "Не удалось разобрать написанное в тетради — пересними ближе и при лучшем свете",
@@ -118,7 +126,7 @@ router.post("/", async (req, res) => {
     if (Array.isArray(recognized.tasks) && recognized.tasks.length > 1) {
       recordVerifyEvent({
         route: "check", source, appVersion, grade, subject,
-        multiTask: true, reason: "на листе несколько задач — предложен выбор",
+        multiTask: true, reason: "multiple_tasks_choice",
         durationMs: Date.now() - startedAt,
         userHash, startParam,
         inputTokens: recognized.usage?.input_tokens ?? null,
