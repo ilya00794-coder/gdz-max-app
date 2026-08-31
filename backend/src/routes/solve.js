@@ -3,7 +3,7 @@ import { buildCacheKey, getCached, setCached } from "../services/cache.js";
 import { recognizeFromPhotos } from "../services/vision.js";
 import { solveTask, solveTaskStream } from "../services/solver.js";
 import { verifyAnswer, computeGraphPlots } from "../services/verify.js";
-import { validateDrawing } from "../services/drawing.js";
+import { validateFigure, legacyFigure } from "../services/figure.js";
 import { isSubjectAllowedForGrade, getSubjectsForGrade } from "../services/subjects.js";
 import { recordVerifyEvent } from "../services/telemetry.js";
 import { requestSource } from "../middleware/maxInitData.js";
@@ -100,7 +100,10 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
   const cached = await getCached(cacheKey);
 
   if (cached) {
-    return { code: 200, body: { ...cached, source: "cache", recognizedText, recognition } };
+    // Записи до слияния visual+drawing (31.08.2026) хранят старые поля —
+    // конвертируем на лету, чтобы старый кэш рендерился, а не прятал карточку.
+    const figure = cached.figure ?? legacyFigure(cached);
+    return { code: 200, body: { ...cached, figure, source: "cache", recognizedText, recognition } };
   }
 
   stage = "solver";
@@ -131,8 +134,8 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     ...solution,
     // График — усиление, не условие: сбой расчёта = решение без графика.
     graph: solution.graph && graphPlots ? { ...solution.graph, plots: graphPlots } : null,
-    // Чертёж — тот же принцип: противоречивые параметры = отказ, решение без чертежа.
-    drawing: validateDrawing(solution.drawing),
+    // Рисунок/чертёж — тот же принцип: противоречивые параметры = отказ, решение без рисунка.
+    figure: validateFigure(solution.figure),
     verification,
   };
 

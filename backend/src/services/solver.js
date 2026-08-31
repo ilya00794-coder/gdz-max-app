@@ -93,43 +93,37 @@ const SolutionSchema = z.object({
       "График функции, ЕСЛИ он помогает понять решение (критерий в инструкции). " +
         "Точки и координаты НЕ вычисляй — только функция, диапазон и комментарий. Обычно null."
     ),
-  visual: z
+  // Единое поле наглядности (№12): кружки, числовой луч, фигуры. Слито из
+  // бывших visual+drawing 31.08.2026 — грамматика structured output у предела,
+  // по полю на тип не влезает (замер: docs/backlog.md, «Грамматический бюджет»).
+  // Семантика values/labels ПОЗИЦИОННАЯ по kind — правила в предметном блоке
+  // «наглядность»; валидатор services/figure.js разворачивает в форму фронта.
+  figure: z
     .object({
-      kind: z.enum(["circles", "numberline"]).describe("circles — кружки для счёта (началка); numberline — числовой луч/координатная прямая с отмеченными точками."),
-      circlesTotal: z.number().nullable().describe("circles: сколько всего кружков (из условия, не больше 40); для numberline — null."),
-      circlesCrossed: z.number().nullable().describe("circles: сколько зачеркнуть (вычитаемое); 0 или null, если нечего."),
-      circlesGroupSize: z.number().nullable().describe("circles: размер группы при группировке (счёт по 3 — группы по 3); null, если без групп."),
-      points: z
-        .array(z.object({
-          value: z.number().describe("Координата точки числом: 3/7 → 0.4286, −3.5 → -3.5."),
-          label: z.string().describe("Подпись точки, как в решении: «3/7», «−3,5»."),
-        }))
-        .describe("numberline: отмечаемые точки (1–4 штуки); для circles — пустой список."),
-      range: z.tuple([z.number(), z.number()]).nullable().describe("numberline: [от, до] оси; для circles — null."),
+      kind: z.enum(["circles", "numberline", "rectangle", "square"]).describe(
+        "circles — кружки для счёта; numberline — числовой луч; rectangle — прямоугольник; square — квадрат."
+      ),
+      values: z.array(z.number()).describe(
+        "Числа фигуры, порядок по kind: circles — [всего, зачеркнуть, размер группы] (2-й и 3-й опциональны); " +
+          "numberline — координаты точек (1–4); rectangle — [длина, ширина]; square — [сторона]."
+      ),
+      labels: z.array(z.string()).describe(
+        "Подписи, порядок по kind: numberline — подпись каждой точки (столько же, сколько values); " +
+          "rectangle — [подпись длины, подпись ширины] («6 см», «3 см»); square — [подпись стороны]; circles — пустой список."
+      ),
+      marks: z.array(z.string()).describe("Пока всегда пустой список (задел для отметок на чертеже)."),
+      range: z.tuple([z.number(), z.number()]).nullable().describe("numberline: [от, до] оси; для остальных — null."),
       comment: z.string().describe("Одна короткая фраза: что видно на рисунке."),
     })
     .nullable()
-    .describe("Счётный рисунок, ЕСЛИ он помогает (критерий в инструкции). Только параметры из условия — рисует система. Обычно null."),
+    .describe(
+      "Наглядный рисунок или чертёж, ЕСЛИ он помогает (критерий в предметных правилах). " +
+        "Только параметры из условия и решения — рисует система. Обычно null."
+    ),
   schemaId: z
     .enum(["термометр", "части-растения", "стороны-горизонта", "большая-медведица"])
     .nullable()
     .describe("Готовая проверенная схема из библиотеки приложения (критерий в инструкции). Почти всегда null."),
-  // Поле сжато до минимума: компилируемая грамматика structured output у предела,
-  // 8-полевая версия чертежа переполнила её («compiled grammar is too large»).
-  drawing: z
-    .object({
-      kind: z.enum(["rectangle", "square"]).describe("rectangle — прямоугольник; square — квадрат."),
-      width: z.number().describe("Длина горизонтальной стороны; для square — сторона."),
-      height: z.number().nullable().describe("rectangle: вертикальная сторона; square — null."),
-      widthLabel: z.string().describe("Подпись горизонтальной стороны, как в решении: «6 см», «a = 9 см»."),
-      heightLabel: z.string().nullable().describe("rectangle: подпись вертикальной стороны: «3 см»; square — null."),
-      comment: z.string().describe("Одна короткая фраза: что видно на чертеже."),
-    })
-    .nullable()
-    .describe(
-      "Чертёж фигуры, ЕСЛИ он помогает (критерий в предметных правилах). " +
-        "Только параметры из условия и решения — чертит система. Обычно null."
-    ),
 });
 
 const SYSTEM_BASE = `Ты — школьный репетитор в приложении-помощнике по домашним заданиям.
@@ -334,17 +328,6 @@ const SYSTEM_BASE = `Ты — школьный репетитор в прило�
   функции в expressions — их пересечение и есть решение системы.
 - Сомневаешься — ставь null.
 
-Счётный рисунок (поле visual) — параметры называешь ты, рисует система:
-- КРУЖКИ (kind circles): только 1–4 класс, сложение/вычитание/группировка
-  малых чисел (до 40): «14 − 5» → circlesTotal 14, circlesCrossed 5;
-  «счёт по 3» → circlesGroupSize 3. Кружки объясняют СМЫСЛ действия —
-  в столбиках, уравнениях и у старших классов их НЕ бывает.
-- ЧИСЛОВОЙ ЛУЧ (kind numberline): сравнение чисел и дробей, шаг по
-  координатной прямой («−3,5 + 1,2»): отметь исходные числа и результат.
-  Не для уравнений и не там, где числа не сравниваются наглядно.
-- Числа берёшь ТОЛЬКО из условия и решения, ничего не придумывая.
-- Обычно null. График и рисунок вместе не нужны — выбери одно или ничего.
-
 Готовые схемы (поле schemaId) — нарисованы и проверены заранее, ты только выбираешь:
 - «термометр» — задача про устройство термометра или чтение его шкалы;
 - «части-растения» — задача про части растения (корень, стебель, лист, цветок);
@@ -496,9 +479,8 @@ function finalizeParsed(parsed, program, quarter) {
     steps: parsed.steps,
     finalAnswer: parsed.finalAnswer.trim(),
     formalExpression: parsed.formalExpression.trim() || null,
-    visual: parsed.visual ?? null,
+    figure: parsed.figure ?? null,
     schemaId: parsed.schemaId ?? null,
-    drawing: parsed.drawing ?? null,
     usedMethods: parsed.usedMethods ?? [],
     programWarning: parsed.programWarning?.trim() || null,
     answerValues: parsed.answerValues ?? null,
