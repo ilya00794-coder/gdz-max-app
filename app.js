@@ -749,6 +749,7 @@ function completeStreamedSolution(result) {
   }
   renderGraphCard(result.graph);
   renderVisualCard(result.visual);
+  renderDrawingCard(result.drawing);
   renderSchemaCard(result.schemaId);
   answerBlock.innerHTML = answerMarkup(result);
   renderMath(answerBlock);
@@ -1614,6 +1615,44 @@ function numberlineSvg(v) {
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img">${out}</svg>`;
 }
 
+// ---------- чертежи (№12, чертежи — часть 1): прямоугольник и квадрат ----------
+// Тот же принцип, что кружки и луч: модель назвала параметры, бэкенд их
+// провалидировал (services/drawing.js), здесь — только детерминированный шаблон.
+// Пропорции чертежа истинные (масштаб width:height как в условии).
+
+function drawingSvg(d) {
+  const isSquare = d.kind === "square";
+  const w = isSquare ? d.side : d.width;
+  const h = isSquare ? d.side : d.height;
+  if (!(w > 0) || !(h > 0)) return "";
+  const MAXW = 230, MAXH = 160;
+  const k = Math.min(MAXW / w, MAXH / h);
+  const rw = w * k, rh = h * k;
+  const padL = 30, padT = 12, padR = 14, padB = 30; // слева и снизу — место под подписи
+  const W = padL + rw + padR, H = padT + rh + padB;
+  let out = `<rect x="${padL}" y="${padT}" width="${rw}" height="${rh}" fill="#185FA5" fill-opacity="0.06" stroke="#185FA5" stroke-width="2"/>`;
+  // Подпись горизонтальной стороны — под нижней стороной, по центру.
+  const bottomLabel = isSquare ? d.sideLabel : d.widthLabel;
+  out += `<text x="${padL + rw / 2}" y="${padT + rh + 19}" font-size="13" text-anchor="middle" fill="#444441">${escapeHtml(bottomLabel || "")}</text>`;
+  // У прямоугольника — вторая подпись слева, вертикально вдоль стороны.
+  if (!isSquare) {
+    const cx = padL - 10, cy = padT + rh / 2;
+    out += `<text x="${cx}" y="${cy}" font-size="13" text-anchor="middle" fill="#444441" transform="rotate(-90 ${cx} ${cy})">${escapeHtml(d.heightLabel || "")}</text>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img" aria-label="Чертёж: ${isSquare ? "квадрат" : "прямоугольник"}">${out}</svg>`;
+}
+
+function renderDrawingCard(drawing) {
+  const card = document.getElementById("drawing-card");
+  if (!card) return;
+  const svg = drawing && (drawing.kind === "rectangle" || drawing.kind === "square") ? drawingSvg(drawing) : "";
+  if (!svg) { card.hidden = true; card.innerHTML = ""; return; }
+  const comment = drawing.comment ? `<p class="graph-comment">${escapeHtml(drawing.comment)}</p>` : "";
+  card.innerHTML = svg + comment;
+  card.hidden = false;
+  renderMath(card);
+}
+
 function renderVisualCard(visual) {
   if (!visual || !visualCard) {
     if (visualCard) { visualCard.hidden = true; visualCard.innerHTML = ""; }
@@ -1675,6 +1714,7 @@ function renderSolution(solution) {
   stepsList.innerHTML = stepsMarkup(solution.steps);
   renderGraphCard(solution.graph);
   renderVisualCard(solution.visual);
+  renderDrawingCard(solution.drawing);
   renderSchemaCard(solution.schemaId);
   answerBlock.innerHTML = answerMarkup(solution);
 
