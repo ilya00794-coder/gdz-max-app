@@ -310,7 +310,9 @@ export async function recognizeFromPhotos({ imagesBase64, mode = "task", grade, 
   const response = await client.messages.parse({
     model: VISION_MODEL,
     max_tokens: 16000,
-    system,
+    // Системный промпт стабилен для режима — кэшируем (шаг 2 оптимизации
+    // 31.08.2026): повторный вход по нему идёт со скидкой 90%.
+    system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
     thinking: { type: "adaptive" },
     output_config: {
       format: zodOutputFormat(SCHEMAS[mode], "recognition"),

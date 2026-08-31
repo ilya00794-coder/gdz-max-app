@@ -142,7 +142,8 @@ export async function compareWithReference({ studentWork, referenceSolution, gra
     model: COMPARE_MODEL,
     max_tokens: 16000,
     thinking: { type: "adaptive" },
-    system: SYSTEM,
+    // Системный промпт стабилен — кэшируем (шаг 2 оптимизации 31.08.2026).
+    system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
     output_config: {
       format: zodOutputFormat(ComparisonSchema, "comparison"),
       effort: COMPARE_EFFORT,
