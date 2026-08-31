@@ -26,7 +26,7 @@ export function bindAlertTransport(send, admins) {
   adminIds = [...admins];
 }
 
-async function tellAdmins(text) {
+export async function tellAdmins(text) {
   if (!sendFn || !adminIds.length) {
     console.warn("[alerts] бот недоступен, алерт только в лог:", text.slice(0, 160));
     return;

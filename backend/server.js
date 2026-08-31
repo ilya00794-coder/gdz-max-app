@@ -8,6 +8,7 @@ import { assertDatabaseReady, DATABASE_URL } from "./src/services/cache.js";
 import { maxInitData, INIT_DATA_HEADER } from "./src/middleware/maxInitData.js";
 import { subscriptionGate, assertGatingReady, checkSubscription } from "./src/subscription.js";
 import { startBotPoller } from "./src/services/botChannel.js";
+import { startHourlyReports } from "./src/services/hourlyReport.js";
 import { allPlanSubjects, isComputableSubject } from "./src/services/subjects.js";
 import { hasBlockEntry } from "./src/data/subject-rules.js";
 
@@ -106,3 +107,5 @@ app.listen(PORT, () => {
 // Приём личек бота для публикации постов (long polling, botChannel.js).
 // Не await: сбой поллера не должен мешать HTTP-серверу; ошибки логируются внутри.
 startBotPoller();
+// Часовой отчёт админам (10:00–22:00, hourlyReport.js).
+startHourlyReports();
