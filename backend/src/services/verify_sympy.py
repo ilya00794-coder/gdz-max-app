@@ -484,6 +484,130 @@ def _eval_set_formal(text):
     return eval(compile(tree, "<set-formal>", "eval"), {"__builtins__": {}}, namespace)  # noqa: S307
 
 
+# ── mode=series: сверка серий корней (П.5 часть Б1, 31.08.2026) ──
+# ОБОСНОВАНИЕ МЕТОДА (2 строки, чтобы не выводить заново): множество
+# {a + b·n, n∈Z} периодично с периодом b, поэтому на отрезке длиной в общий
+# период L обеих сторон оно полностью задано своими остатками mod L, а
+# периодичность продолжает их на всю прямую — совпадение множеств остатков
+# на L равносильно совпадению множеств всюду. Ложный verified исключён
+# теоремой, а не подбором окна.
+#
+# Грамматика кандидата СТРОГАЯ (решение Ильи): только линейные по n формы
+# a + b·n и (−1)**n·a + b·n (разворачивается по чётности в две линейные).
+# Всё прочее — нелинейность, несоизмеримые периоды — unsupported. НЕ
+# расширять по ходу.
+
+_SERIES_NODES = (
+    ast.Expression, ast.BinOp, ast.UnaryOp, ast.USub, ast.UAdd,
+    ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow,
+    ast.Constant, ast.Name, ast.Load, ast.Call,
+)
+
+
+def _parse_series_form(text):
+    """Одна форма кандидата → список пар (период, остаток). Rejected вне грамматики."""
+    tree = ast.parse(text, mode="eval")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if not (isinstance(node.func, ast.Name) and node.func.id in ("Rational", "sqrt")):
+                raise Rejected("в серии допустимы только Rational и sqrt")
+        elif isinstance(node, ast.Name):
+            if node.id not in ("n", "k", "pi", "Rational", "sqrt"):
+                raise Rejected(f"имя вне грамматики серий: {node.id}")
+        elif not isinstance(node, _SERIES_NODES):
+            raise Rejected(f"узел вне грамматики серий: {type(node).__name__}")
+    nint = sympy.Symbol("n", integer=True)  # целочисленность нужна, чтобы
+    # (-1)**(2n) упрощалось в 1 при развороте чётности
+    ns = {"n": nint, "k": nint, "pi": sympy.pi,
+          "Rational": sympy.Rational, "sqrt": sympy.sqrt}
+    expr = eval(compile(tree, "<series>", "eval"), {"__builtins__": {}}, ns)  # noqa: S307
+    return _linearize(sympy.expand(expr))
+
+
+def _linearize(expr):
+    """Выражение от n → [(период, остаток), …]. (−1)**n разворачивается по чётности."""
+    nsym = sympy.Symbol("n", integer=True)
+    if expr.has(sympy.Pow(-1, nsym)) or "(-1)**n" in str(expr):
+        two_k = [expr.subs(nsym, 2 * nsym), expr.subs(nsym, 2 * nsym + 1)]
+        out = []
+        for e in two_k:
+            out.extend(_linearize(sympy.expand(e)))
+        return out
+    poly = expr.as_poly(nsym)
+    if poly is None or poly.degree() > 1:
+        raise Rejected("форма не линейна по n")
+    if poly.degree() < 1:
+        raise Rejected("форма без n — это точка, не серия")
+    b = poly.coeff_monomial(nsym)
+    a = poly.coeff_monomial(1)
+    if b == 0:
+        raise Rejected("нулевой период")
+    return [(abs(b), sympy.Mod(a, abs(b)))]
+
+
+def _formal_to_series(solved):
+    """Результат solveset → (список серий, конечные точки). Rejected — не разложимо."""
+    series, points = [], []
+    parts = solved.args if isinstance(solved, sympy.Union) else [solved]
+    for part in parts:
+        if isinstance(part, sympy.ImageSet):
+            if part.base_sets != (sympy.S.Integers,):
+                raise Rejected("ImageSet не над Integers")
+            series.extend(_linearize(sympy.expand(part.lamda.expr.subs(part.lamda.variables[0], sympy.Symbol("n", integer=True)))))
+        elif isinstance(part, sympy.FiniteSet):
+            points.extend(part.args)
+        else:
+            raise Rejected(f"формальная сторона содержит не-серию: {type(part).__name__}")
+    return series, points
+
+
+def _canon_residues(all_series, common):
+    out = set()
+    for period, residue in all_series:
+        m = sympy.simplify(common / period)
+        if not (m.is_integer and m.is_positive):
+            raise Rejected("периоды несоизмеримы")
+        for i in range(int(m)):
+            out.add(sympy.simplify(sympy.Mod(residue + i * period, common)))
+    return frozenset(out)
+
+
+def run_series(payload):
+    """Сверка серий: множество формализации == множество кандидата."""
+    expression = payload.get("expression") or ""
+    candidate_text = payload.get("candidateSeries") or ""
+
+    cand_series = []
+    for chunk in candidate_text.split(";"):
+        chunk = chunk.strip()
+        if chunk:
+            cand_series.extend(_parse_series_form(chunk))
+    if not cand_series:
+        raise Rejected("кандидат пуст")
+
+    solved = _eval_set_formal(expression)
+    if not isinstance(solved, sympy.Set):
+        as_set = getattr(solved, "as_set", None)
+        if as_set is None:
+            raise Rejected(f"результат формализации не множество: {type(solved).__name__}")
+        solved = as_set()
+    formal_series, formal_points = _formal_to_series(solved)
+
+    # Конечные точки против серий — содержательно разные множества (серия
+    # бесконечна): детерминированный false, не unsupported.
+    if formal_points and not formal_series:
+        return {"ok": True, "equal": False, "reason": "формализация даёт конечное множество, кандидат — серию"}
+    if formal_points:
+        raise Rejected("смесь серий и отдельных точек в формализации")
+
+    common = None
+    for period, _ in cand_series + formal_series:
+        common = period if common is None else sympy.lcm(common, period)
+    equal = _canon_residues(cand_series, common) == _canon_residues(formal_series, common)
+    return {"ok": True, "equal": bool(equal),
+            "solved": str(solved)[:200], "candidate": candidate_text[:200]}
+
+
 def run_set(payload):
     """Сверка: множество из formalExpression == множество setExpression."""
     expression = payload.get("expression") or ""
@@ -510,6 +634,15 @@ def main():
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError) as err:
         print(json.dumps({"ok": False, "reason": f"некорректный вход: {err}"}))
+        return
+
+    if payload.get("mode") == "series":
+        try:
+            print(json.dumps(run_series(payload), ensure_ascii=False))
+        except Rejected as err:
+            print(json.dumps({"ok": False, "reason": str(err)}, ensure_ascii=False))
+        except Exception as err:  # fail-closed
+            print(json.dumps({"ok": False, "reason": f"{type(err).__name__}: {err}"}, ensure_ascii=False))
         return
 
     if payload.get("mode") == "set":
