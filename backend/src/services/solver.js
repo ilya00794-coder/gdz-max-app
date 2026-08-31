@@ -100,18 +100,27 @@ const SolutionSchema = z.object({
   // «наглядность»; валидатор services/figure.js разворачивает в форму фронта.
   figure: z
     .object({
-      kind: z.enum(["circles", "numberline", "rectangle", "square"]).describe(
-        "circles — кружки для счёта; numberline — числовой луч; rectangle — прямоугольник; square — квадрат."
+      kind: z.enum(["circles", "numberline", "rectangle", "square", "adjacent-angles", "vertical-angles", "parallel-lines"]).describe(
+        "circles — кружки для счёта; numberline — числовой луч; rectangle — прямоугольник; square — квадрат; " +
+          "adjacent-angles — смежные углы; vertical-angles — вертикальные углы; parallel-lines — параллельные прямые с секущей."
       ),
       values: z.array(z.number()).describe(
         "Числа фигуры, порядок по kind: circles — [всего, зачеркнуть, размер группы] (2-й и 3-й опциональны); " +
-          "numberline — координаты точек (1–4); rectangle — [длина, ширина]; square — [сторона]."
+          "numberline — координаты точек (1–4); rectangle — [длина, ширина]; square — [сторона]; " +
+          "adjacent-angles — [правый угол, левый угол] в градусах; vertical-angles и parallel-lines — [данный угол] " +
+          "(для доказательств без чисел — пустой список, форму выберет система)."
       ),
       labels: z.array(z.string()).describe(
         "Подписи, порядок по kind: numberline — подпись каждой точки (столько же, сколько values); " +
-          "rectangle — [подпись длины, подпись ширины] («6 см», «3 см»); square — [подпись стороны]; circles — пустой список."
+          "rectangle — [подпись длины, подпись ширины] («6 см», «3 см»); square — [подпись стороны]; " +
+          "adjacent-angles — [буквы точек: левый конец, вершина, правый конец, конец луча]; " +
+          "vertical-angles — обозначения четырёх углов от данного против часовой («∠1»…«∠4»); " +
+          "parallel-lines — [имена прямых и секущей]; circles — пустой список. Правила — в предметном блоке."
       ),
-      marks: z.array(z.string()).describe("Пока всегда пустой список (задел для отметок на чертеже)."),
+      marks: z.array(z.string()).describe(
+        "parallel-lines: [тип отмеченной пары углов] — «накрест лежащие», «соответственные» или «односторонние»; " +
+          "для остальных kind — пустой список."
+      ),
       range: z.tuple([z.number(), z.number()]).nullable().describe("numberline: [от, до] оси; для остальных — null."),
       comment: z.string().describe("Одна короткая фраза: что видно на рисунке."),
     })

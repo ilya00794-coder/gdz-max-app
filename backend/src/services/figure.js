@@ -16,6 +16,13 @@ const MAX_RATIO = 12; // тоньше — чертёж вырожденно уз
 const MAX_LABEL = 30;
 const MAX_CIRCLES = 40;
 const MAX_POINTS = 4;
+// Углы: тоньше 8° дуга и подпись сливаются — отказ честнее нечитаемого чертежа.
+const MIN_ANGLE = 8;
+// Представительный угол для задач без чисел (доказательства): заведомо
+// НЕспециальный — не 90° (перпендикуляр) и не 45/60 (красивые кратные),
+// чтобы ученик не увидел на чертеже свойств, которых нет в условии.
+const DEFAULT_ANGLE = 62;
+const PAIR_KINDS = { "накрест лежащие": "alternate", "соответственные": "corresponding", "односторонние": "co-interior" };
 
 /**
  * Числа из подписи: «a = 9 см» → [9]; десятичная запятая понимается;
@@ -149,6 +156,50 @@ export function validateFigure(figure) {
       if (!positive(side)) return reject("сторона квадрата не положительное число");
       if (!labelConsistent(sideLabel, side)) return reject(`подпись стороны «${sideLabel}» не согласуется с ${side}`);
       return { kind: "square", side, sideLabel: sideLabel.trim(), comment: comment(figure) };
+    }
+
+    if (figure.kind === "adjacent-angles") {
+      let [right, left] = values;
+      if (values.length === 0) { right = DEFAULT_ANGLE; left = 180 - DEFAULT_ANGLE; }
+      if (!positive(right) || !positive(left)) return reject("смежные: углы не положительные");
+      if (Math.abs(right + left - 180) > 0.01) return reject(`смежные: сумма ${right} + ${left} ≠ 180 — противоречие`);
+      if (Math.min(right, left) < MIN_ANGLE) return reject(`смежные: угол ${Math.min(right, left)}° нечитаемо мал`);
+      let letters = null;
+      if (labels.length === 4 && labels.every((l) => typeof l === "string" && l.trim() && l.trim().length <= 4)) {
+        letters = labels.map((l) => l.trim());
+        if (new Set(letters).size !== 4) letters = null; // повторы букв — рисуем без букв
+      }
+      return { kind: "adjacent-angles", right, left, letters, comment: comment(figure) };
+    }
+
+    if (figure.kind === "vertical-angles") {
+      const angle = values.length === 0 ? DEFAULT_ANGLE : values[0];
+      if (!positive(angle) || angle >= 180) return reject(`вертикальные: угол ${angle}°`);
+      if (Math.min(angle, 180 - angle) < MIN_ANGLE) return reject(`вертикальные: угол ${angle}° нечитаемо близок к прямой`);
+      let names = ["∠1", "∠2", "∠3", "∠4"];
+      if (labels.length === 4 && labels.every((l) => typeof l === "string" && l.trim() && l.trim().length <= 6)) {
+        names = labels.map((l) => l.trim());
+      }
+      return { kind: "vertical-angles", angle, names, comment: comment(figure) };
+    }
+
+    if (figure.kind === "parallel-lines") {
+      const angle = values.length === 0 ? DEFAULT_ANGLE : values[0];
+      if (!positive(angle) || angle >= 180) return reject(`параллельные: угол ${angle}°`);
+      if (Math.min(angle, 180 - angle) < MIN_ANGLE) return reject(`параллельные: секущая под ${angle}° нечитаемо близка к прямым`);
+      const markList = Array.isArray(figure.marks) ? figure.marks.filter((m) => typeof m === "string" && m.trim()) : [];
+      let pair = null;
+      if (markList.length === 1) {
+        pair = PAIR_KINDS[markList[0].trim().toLowerCase()] ?? undefined;
+        if (pair === undefined) return reject(`параллельные: неизвестная пара углов «${markList[0]}»`);
+      } else if (markList.length > 1) {
+        return reject(`параллельные: ${markList.length} отметок пар вместо одной`);
+      }
+      let names = ["a", "b", "c"];
+      if (labels.length === 3 && labels.every((l) => typeof l === "string" && l.trim() && l.trim().length <= 4)) {
+        names = labels.map((l) => l.trim());
+      }
+      return { kind: "parallel-lines", angle, pair, names, comment: comment(figure) };
     }
 
     return reject(`неизвестный kind «${figure.kind}»`);
