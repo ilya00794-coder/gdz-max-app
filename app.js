@@ -711,7 +711,7 @@ function renderSolutionStreaming(st) {
   renderMath(stepsList);
   for (const li of stepsList.children) enqueueTyping(li);
   renderGraphCard(null);
-  renderVisualCard(null);
+  renderFigureCard(null);
   renderSchemaCard(null);
   // Резерв под ответ и бейдж: плашка стоит на месте будущего блока ответа,
   // финал заменяет её целиком — прочитанные шаги выше не сдвигаются.
@@ -748,8 +748,7 @@ function completeStreamedSolution(result) {
     renderMath(stepsList);
   }
   renderGraphCard(result.graph);
-  renderVisualCard(result.visual);
-  renderDrawingCard(result.drawing);
+  renderFigureCard(result.figure);
   renderSchemaCard(result.schemaId);
   answerBlock.innerHTML = answerMarkup(result);
   renderMath(answerBlock);
@@ -1291,7 +1290,6 @@ function renderMath(root) {
 // Свайпа нет: всё решение одним вертикальным списком, шаги пронумерованы кружками.
 const stepsList = document.getElementById("steps-list");
 const graphCard = document.getElementById("graph-card");
-const visualCard = document.getElementById("visual-card");
 const answerBlock = document.getElementById("answer-block");
 const solutionTask = document.getElementById("solution-task");
 const btnNewTask = document.getElementById("btn-new-task");
@@ -1642,28 +1640,21 @@ function drawingSvg(d) {
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img" aria-label="Чертёж: ${isSquare ? "квадрат" : "прямоугольник"}">${out}</svg>`;
 }
 
-function renderDrawingCard(drawing) {
-  const card = document.getElementById("drawing-card");
+// Единая карточка наглядности (бэкенд отдаёт поле figure, уже нормализованное
+// валидатором services/figure.js; старый кэш конвертируется там же на лету).
+function renderFigureCard(figure) {
+  const card = document.getElementById("figure-card");
   if (!card) return;
-  const svg = drawing && (drawing.kind === "rectangle" || drawing.kind === "square") ? drawingSvg(drawing) : "";
+  const svg =
+    figure?.kind === "circles" ? circlesSvg({ circlesTotal: figure.circlesTotal, circlesCrossed: figure.circlesCrossed, circlesGroupSize: figure.circlesGroupSize })
+    : figure?.kind === "numberline" ? numberlineSvg({ points: figure.points, range: figure.range })
+    : figure?.kind === "rectangle" || figure?.kind === "square" ? drawingSvg(figure)
+    : "";
   if (!svg) { card.hidden = true; card.innerHTML = ""; return; }
-  const comment = drawing.comment ? `<p class="graph-comment">${escapeHtml(drawing.comment)}</p>` : "";
+  const comment = figure.comment ? `<p class="graph-comment">${escapeHtml(figure.comment)}</p>` : "";
   card.innerHTML = svg + comment;
   card.hidden = false;
   renderMath(card);
-}
-
-function renderVisualCard(visual) {
-  if (!visual || !visualCard) {
-    if (visualCard) { visualCard.hidden = true; visualCard.innerHTML = ""; }
-    return;
-  }
-  const svg = visual.kind === "circles" ? circlesSvg(visual) : numberlineSvg(visual);
-  if (!svg) { visualCard.hidden = true; visualCard.innerHTML = ""; return; }
-  const comment = visual.comment ? `<p class="graph-comment">${escapeHtml(visual.comment)}</p>` : "";
-  visualCard.innerHTML = svg + comment;
-  visualCard.hidden = false;
-  renderMath(visualCard);
 }
 
 // Библиотека готовых схем (пилот №12, группа В): статические SVG, нарисованы
@@ -1713,8 +1704,7 @@ function renderSolution(solution) {
 
   stepsList.innerHTML = stepsMarkup(solution.steps);
   renderGraphCard(solution.graph);
-  renderVisualCard(solution.visual);
-  renderDrawingCard(solution.drawing);
+  renderFigureCard(solution.figure);
   renderSchemaCard(solution.schemaId);
   answerBlock.innerHTML = answerMarkup(solution);
 
