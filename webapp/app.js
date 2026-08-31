@@ -848,7 +848,9 @@ let pendingResult = null;
 
 function suggestedMode(mode, contentType) {
   if (mode === "solve" && contentType === "handwritten_work") return "check";
-  if (mode === "check" && contentType === "printed_task") return "solve";
+  // Рукописное УСЛОВИЕ (доска, карточка) в режиме проверки — предлагать решение:
+  // проверять там нечего, работы ученика на фото нет.
+  if (mode === "check" && (contentType === "printed_task" || contentType === "handwritten_task")) return "solve";
   return null;
 }
 
