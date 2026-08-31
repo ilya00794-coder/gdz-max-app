@@ -1743,6 +1743,118 @@ function parallelLinesSvg(f) {
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img" aria-label="Чертёж: параллельные прямые с секущей">${out}</svg>`;
 }
 
+// ---------- треугольник (№12, часть 3) ----------
+// Примитив «отметка равенства отрезков» ОБЩИЙ — четырёхугольники (часть 4)
+// используют его же, как и angleArc.
+
+/** Короткий штрих поперёк отрезка в его середине — школьная отметка равенства. */
+function tickMark(x1, y1, x2, y2, color = FIG_LINE) {
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+  const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+  const nx = -(y2 - y1) / len, ny = (x2 - x1) / len;
+  return `<line x1="${(mx - nx * 5).toFixed(1)}" y1="${(my - ny * 5).toFixed(1)}" x2="${(mx + nx * 5).toFixed(1)}" y2="${(my + ny * 5).toFixed(1)}" stroke="${color}" stroke-width="1.6"/>`;
+}
+
+/** Математический угол (градусы) направления из точки p в точку q, y экрана учтён. */
+function figDir(p, q) {
+  return (Math.atan2(-(q[1] - p[1]), q[0] - p[0]) * 180) / Math.PI;
+}
+
+function triangleSvg(f) {
+  // Координаты вершин: основание AC горизонтально, B сверху.
+  let A, B, C;
+  if (f.sides) {
+    const [ab, bc, ca] = f.sides;
+    const cosA = (ab * ab + ca * ca - bc * bc) / (2 * ab * ca);
+    A = [0, 0]; C = [ca, 0];
+    B = [ab * cosA, -ab * Math.sqrt(Math.max(0, 1 - cosA * cosA))];
+  } else {
+    const [alpha, beta, gamma] = f.angles.map((d) => (d * Math.PI) / 180);
+    const ab = Math.sin(gamma) / Math.sin(beta);
+    A = [0, 0]; C = [1, 0];
+    B = [ab * Math.cos(alpha), -ab * Math.sin(alpha)];
+  }
+  // Вписываем в кадр.
+  const W = 300, H = 215, pad = 34;
+  const xs = [A[0], B[0], C[0]], ys = [A[1], B[1], C[1]];
+  const k = Math.min((W - 2 * pad) / (Math.max(...xs) - Math.min(...xs)), (H - 2 * pad) / (Math.max(...ys) - Math.min(...ys)));
+  const ox = pad - Math.min(...xs) * k, oy = pad - Math.min(...ys) * k;
+  const tr = (p) => [p[0] * k + ox, p[1] * k + oy];
+  [A, B, C] = [tr(A), tr(B), tr(C)];
+  const V = [A, B, C];
+  const P = (p) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`;
+
+  let out = `<path d="M${P(A)} L${P(B)} L${P(C)} Z" fill="${FIG_ACCENT}" fill-opacity="0.05" stroke="${FIG_LINE}" stroke-width="1.8"/>`;
+
+  // Дуги углов со значениями — когда заданы углы; подписи сторон — когда стороны.
+  if (f.angles && !f.sides) {
+    V.forEach((v, i) => {
+      const [p, q] = [V[(i + 1) % 3], V[(i + 2) % 3]];
+      let d1 = figDir(v, p), d2 = figDir(v, q);
+      if ((((d2 - d1) % 360) + 360) % 360 > 180) [d1, d2] = [d2, d1];
+      out += angleArc(v[0], v[1], 20, d1, d2) + angleText(v[0], v[1], 36, d1, d2, figDeg(f.angles[i]), FIG_ACCENT, 10.5);
+    });
+  }
+  if (f.sides) {
+    const mids = [[A, B, f.sides[0]], [B, C, f.sides[1]], [C, A, f.sides[2]]];
+    const cx = (A[0] + B[0] + C[0]) / 3, cy = (A[1] + B[1] + C[1]) / 3;
+    for (const [p, q, val] of mids) {
+      const mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2;
+      const dl = Math.hypot(mx - cx, my - cy) || 1;
+      out += `<text x="${(mx + ((mx - cx) / dl) * 13).toFixed(1)}" y="${(my + ((my - cy) / dl) * 13 + 4).toFixed(1)}" font-size="11" text-anchor="middle" fill="${FIG_TEXT}">${escapeHtml(String(val))}</text>`;
+    }
+  }
+
+  // Отметки равных сторон (пара индексов по [AB, BC, CA]).
+  const sidePts = [[A, B], [B, C], [C, A]];
+  for (const pair of f.equalSides) {
+    for (const i of pair) out += tickMark(...sidePts[i][0], ...sidePts[i][1]);
+  }
+
+  // Элементы: медиана/высота/биссектриса — основание считаем честной геометрией;
+  // совпавшие основания (равнобедренный) рисуются одной точкой с одной буквой.
+  const feet = [];
+  for (const el of f.elements) {
+    const v = V[el.from];
+    const [p, q] = [V[(el.from + 1) % 3], V[(el.from + 2) % 3]];
+    let foot;
+    if (el.type === "median") {
+      foot = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+    } else if (el.type === "height") {
+      const dx = q[0] - p[0], dy = q[1] - p[1];
+      const t = ((v[0] - p[0]) * dx + (v[1] - p[1]) * dy) / (dx * dx + dy * dy);
+      foot = [p[0] + t * dx, p[1] + t * dy];
+      if (t < 0 || t > 1) {
+        const from = t < 0 ? p : q;
+        out += `<line x1="${from[0].toFixed(1)}" y1="${from[1].toFixed(1)}" x2="${foot[0].toFixed(1)}" y2="${foot[1].toFixed(1)}" stroke="${FIG_LINE}" stroke-width="1.2" stroke-dasharray="4 4"/>`;
+      }
+    } else {
+      const vp = Math.hypot(p[0] - v[0], p[1] - v[1]);
+      const vq = Math.hypot(q[0] - v[0], q[1] - v[1]);
+      const t = vp / (vp + vq);
+      foot = [p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])];
+    }
+    const twin = feet.find((g) => Math.hypot(g.foot[0] - foot[0], g.foot[1] - foot[1]) < 3);
+    if (twin) { twin.merged = true; continue; } // совпадение показываем честно: одна линия, одна буква
+    out += `<line x1="${v[0].toFixed(1)}" y1="${v[1].toFixed(1)}" x2="${foot[0].toFixed(1)}" y2="${foot[1].toFixed(1)}" stroke="${FIG_ACCENT}" stroke-width="1.7"/>`;
+    feet.push({ foot, letter: el.foot });
+  }
+  for (const g of feet) {
+    out += `<circle cx="${g.foot[0].toFixed(1)}" cy="${g.foot[1].toFixed(1)}" r="2.4" fill="${FIG_ACCENT}"/>`;
+    out += `<text x="${g.foot[0].toFixed(1)}" y="${(g.foot[1] + 15).toFixed(1)}" font-size="12" text-anchor="middle" fill="${FIG_TEXT}">${escapeHtml(g.letter)}</text>`;
+  }
+
+  // Буквы вершин — наружу от центра тяжести.
+  const gx = (A[0] + B[0] + C[0]) / 3, gy = (A[1] + B[1] + C[1]) / 3;
+  V.forEach((v, i) => {
+    const dl = Math.hypot(v[0] - gx, v[1] - gy) || 1;
+    const lx = v[0] + ((v[0] - gx) / dl) * 15, ly = v[1] + ((v[1] - gy) / dl) * 15;
+    out += `<text x="${lx.toFixed(1)}" y="${(ly + 4).toFixed(1)}" font-size="13" text-anchor="middle" fill="${FIG_TEXT}">${escapeHtml(f.vertices[i])}</text>`;
+  });
+
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img" aria-label="Чертёж: треугольник">${out}</svg>`;
+}
+
 // Единая карточка наглядности (бэкенд отдаёт поле figure, уже нормализованное
 // валидатором services/figure.js; старый кэш конвертируется там же на лету).
 function renderFigureCard(figure) {
@@ -1755,6 +1867,7 @@ function renderFigureCard(figure) {
     : figure?.kind === "adjacent-angles" ? adjacentAnglesSvg(figure)
     : figure?.kind === "vertical-angles" ? verticalAnglesSvg(figure)
     : figure?.kind === "parallel-lines" ? parallelLinesSvg(figure)
+    : figure?.kind === "triangle" ? triangleSvg(figure)
     : "";
   if (!svg) { card.hidden = true; card.innerHTML = ""; return; }
   const comment = figure.comment ? `<p class="graph-comment">${escapeHtml(figure.comment)}</p>` : "";

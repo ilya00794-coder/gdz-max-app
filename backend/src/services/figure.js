@@ -23,6 +23,12 @@ const MIN_ANGLE = 8;
 // чтобы ученик не увидел на чертеже свойств, которых нет в условии.
 const DEFAULT_ANGLE = 62;
 const PAIR_KINDS = { "накрест лежащие": "alternate", "соответственные": "corresponding", "односторонние": "co-interior" };
+// Представительные углы треугольника для задач без чисел: заведомо
+// разносторонний и заведомо не прямоугольный (разности углов ≥10°, до 90°
+// далеко) — и равнобедренный, заведомо не равносторонний (65/50/65, не 60).
+const DEFAULT_TRI = [46, 72, 62];
+const DEFAULT_ISO_BASE = 65;
+const ELEMENT_KINDS = { "медиана": "median", "высота": "height", "биссектриса": "bisector" };
 
 /**
  * Числа из подписи: «a = 9 см» → [9]; десятичная запятая понимается;
@@ -200,6 +206,109 @@ export function validateFigure(figure) {
         names = labels.map((l) => l.trim());
       }
       return { kind: "parallel-lines", angle, pair, names, comment: comment(figure) };
+    }
+
+    if (figure.kind === "triangle") {
+      const markList = (Array.isArray(figure.marks) ? figure.marks : [])
+        .filter((m) => typeof m === "string" && m.trim()).map((m) => m.trim());
+      let vertices = ["A", "B", "C"];
+      if (labels.length >= 3 && labels.slice(0, 3).every((l) => typeof l === "string" && l.trim() && l.trim().length <= 2)) {
+        vertices = labels.slice(0, 3).map((l) => l.trim());
+        if (new Set(vertices).size !== 3) return reject("треугольник: буквы вершин повторяются");
+      }
+      const sideNames = [vertices[0] + vertices[1], vertices[1] + vertices[2], vertices[2] + vertices[0]]; // [AB, BC, CA]
+      const sideIndex = (name) => {
+        const canon = name.toUpperCase();
+        return sideNames.findIndex((sn) => sn.toUpperCase() === canon || (sn[1] + sn[0]).toUpperCase() === canon);
+      };
+
+      // Разбор marks: тип values, равные стороны, элементы.
+      let valuesKind = null; // "углы" | "стороны"
+      const equalSides = [];
+      const elements = [];
+      for (const m of markList) {
+        const low = m.toLowerCase();
+        if (low === "углы" || low === "стороны") {
+          if (valuesKind) return reject("треугольник: тип values указан дважды");
+          valuesKind = low;
+          continue;
+        }
+        const eq = low.match(/^равные стороны\s+([а-яa-z]{2})\s+([а-яa-z]{2})$/i);
+        if (eq) {
+          const i1 = sideIndex(eq[1]), i2 = sideIndex(eq[2]);
+          if (i1 < 0 || i2 < 0 || i1 === i2) return reject(`треугольник: непонятные равные стороны «${m}»`);
+          equalSides.push([i1, i2]);
+          continue;
+        }
+        const el = low.match(/^(медиана|высота|биссектриса)\s+([а-яa-z])$/i);
+        if (el) {
+          const from = vertices.findIndex((v) => v.toUpperCase() === el[2].toUpperCase());
+          if (from < 0) return reject(`треугольник: элемент из неизвестной вершины «${m}»`);
+          elements.push({ type: ELEMENT_KINDS[el[1]], from });
+          continue;
+        }
+        return reject(`треугольник: непонятная отметка «${m}»`);
+      }
+      if (elements.length > 2) return reject(`треугольник: ${elements.length} элементов (максимум 2)`);
+      if (equalSides.length > 1) return reject("треугольник: больше одной пары равных сторон (равносторонний не рисуем)");
+
+      // Буквы оснований элементов — labels после вершин; дефолт D, E.
+      const defaultFeet = ["D", "E"];
+      elements.forEach((el, i) => {
+        const raw = labels[3 + i];
+        const foot = typeof raw === "string" && raw.trim() && raw.trim().length <= 2 ? raw.trim() : defaultFeet[i];
+        el.foot = vertices.some((v) => v.toUpperCase() === foot.toUpperCase()) ? defaultFeet[i] : foot;
+      });
+
+      let angles = null, sides = null;
+      if (values.length === 3) {
+        if (!valuesKind) return reject("треугольник: values даны, но marks не говорит «углы» или «стороны»");
+        if (!values.every(positive)) return reject("треугольник: значения не положительные");
+        if (valuesKind === "углы") {
+          if (Math.abs(values[0] + values[1] + values[2] - 180) > 0.5) {
+            return reject(`треугольник: сумма углов ${values[0]}+${values[1]}+${values[2]} ≠ 180 — противоречие`);
+          }
+          if (Math.min(...values) < MIN_ANGLE) return reject(`треугольник: угол ${Math.min(...values)}° нечитаемо мал`);
+          angles = values;
+        } else {
+          const [ab, bc, ca] = values;
+          if (ab + bc <= ca || bc + ca <= ab || ca + ab <= bc) {
+            return reject(`треугольник: стороны ${values.join("/")} нарушают неравенство треугольника`);
+          }
+          if (Math.max(...values) / Math.min(...values) > MAX_RATIO) {
+            return reject(`треугольник: вырожденные пропорции сторон ${values.join("/")}`);
+          }
+          sides = values;
+        }
+      } else if (values.length !== 0) {
+        return reject(`треугольник: ${values.length} значений (нужно 0 или 3)`);
+      } else if (equalSides.length === 1) {
+        // Представительный равнобедренный: равные углы против равных сторон.
+        // Сторона i лежит против вершины (i+2)%3; равные стороны i1,i2 →
+        // равные углы при вершинах (i1+2)%3 и (i2+2)%3.
+        const a1 = (equalSides[0][0] + 2) % 3, a2 = (equalSides[0][1] + 2) % 3;
+        angles = [0, 0, 0];
+        angles[a1] = DEFAULT_ISO_BASE;
+        angles[a2] = DEFAULT_ISO_BASE;
+        angles[3 - a1 - a2] = 180 - 2 * DEFAULT_ISO_BASE;
+      } else {
+        angles = DEFAULT_TRI;
+      }
+
+      // Непротиворечивость отметки равенства с числами.
+      for (const [i1, i2] of equalSides) {
+        if (sides && Math.abs(sides[i1] - sides[i2]) > 1e-9) {
+          return reject(`треугольник: отмечены равными стороны ${sideNames[i1]} и ${sideNames[i2]}, а длины разные`);
+        }
+        if (angles) {
+          const a1 = (i1 + 2) % 3, a2 = (i2 + 2) % 3;
+          if (Math.abs(angles[a1] - angles[a2]) > 0.5) {
+            return reject(`треугольник: равные стороны ${sideNames[i1]}=${sideNames[i2]} требуют равных углов при ${vertices[a1]} и ${vertices[a2]}`);
+          }
+        }
+      }
+
+      return { kind: "triangle", vertices, angles, sides, equalSides, elements, comment: comment(figure) };
     }
 
     return reject(`неизвестный kind «${figure.kind}»`);

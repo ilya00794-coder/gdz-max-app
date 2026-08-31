@@ -100,14 +100,16 @@ const SolutionSchema = z.object({
   // «наглядность»; валидатор services/figure.js разворачивает в форму фронта.
   figure: z
     .object({
-      kind: z.enum(["circles", "numberline", "rectangle", "square", "adjacent-angles", "vertical-angles", "parallel-lines"]).describe(
+      kind: z.enum(["circles", "numberline", "rectangle", "square", "adjacent-angles", "vertical-angles", "parallel-lines", "triangle"]).describe(
         "circles — кружки для счёта; numberline — числовой луч; rectangle — прямоугольник; square — квадрат; " +
-          "adjacent-angles — смежные углы; vertical-angles — вертикальные углы; parallel-lines — параллельные прямые с секущей."
+          "adjacent-angles — смежные углы; vertical-angles — вертикальные углы; parallel-lines — параллельные прямые с секущей; " +
+          "triangle — треугольник."
       ),
       values: z.array(z.number()).describe(
         "Числа фигуры, порядок по kind: circles — [всего, зачеркнуть, размер группы] (2-й и 3-й опциональны); " +
           "numberline — координаты точек (1–4); rectangle — [длина, ширина]; square — [сторона]; " +
-          "adjacent-angles — [правый угол, левый угол] в градусах; vertical-angles и parallel-lines — [данный угол] " +
+          "adjacent-angles — [правый угол, левый угол] в градусах; vertical-angles и parallel-lines — [данный угол]; " +
+          "triangle — три угла [при A, при B, при C] ЛИБО три стороны [AB, BC, CA] — что именно, скажи в marks " +
           "(для доказательств без чисел — пустой список, форму выберет система)."
       ),
       labels: z.array(z.string()).describe(
@@ -115,11 +117,13 @@ const SolutionSchema = z.object({
           "rectangle — [подпись длины, подпись ширины] («6 см», «3 см»); square — [подпись стороны]; " +
           "adjacent-angles — [буквы точек: левый конец, вершина, правый конец, конец луча]; " +
           "vertical-angles — обозначения четырёх углов от данного против часовой («∠1»…«∠4»); " +
-          "parallel-lines — [имена прямых и секущей]; circles — пустой список. Правила — в предметном блоке."
+          "parallel-lines — [имена прямых и секущей]; triangle — [вершины A, B, C, затем буквы оснований элементов]; " +
+          "circles — пустой список. Правила — в предметном блоке."
       ),
       marks: z.array(z.string()).describe(
-        "parallel-lines: [тип отмеченной пары углов] — «накрест лежащие», «соответственные» или «односторонние»; " +
-          "для остальных kind — пустой список."
+        "parallel-lines: [тип отмеченной пары углов] — «накрест лежащие», «соответственные» или «односторонние». " +
+          "triangle: первой строкой «углы» или «стороны» (что в values), дальше «равные стороны AB BC», " +
+          "«медиана B», «высота A», «биссектриса C» (не больше двух элементов). Для остальных kind — пустой список."
       ),
       range: z.tuple([z.number(), z.number()]).nullable().describe("numberline: [от, до] оси; для остальных — null."),
       comment: z.string().describe("Одна короткая фраза: что видно на рисунке."),
