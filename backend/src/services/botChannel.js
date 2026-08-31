@@ -16,7 +16,11 @@
 //
 // Ссылка на бота ПОДТВЕРЖДЕНА живым GET /me 31.08.2026: id772408566819_bot.
 
-import { bindAlertTransport, notifyFixed, reportError } from "./alerts.js";
+import { bindAlertTransport, notifyFixed, reportError, tellAdmins } from "./alerts.js";
+
+/** Логи бота — с таймстампом: разбор сбоя 01.09 упёрся в «когда началось». */
+const log = (...a) => console.log(new Date().toISOString(), ...a);
+const logErr = (...a) => console.error(new Date().toISOString(), ...a);
 
 const HOST = process.env.MAX_API_HOST || "platform-api.max.ru";
 const TOKEN = process.env.MAX_BOT_TOKEN || "";
@@ -141,7 +145,7 @@ async function flushDraft(userId, buf, io) {
   } catch (err) {
     // Вложения в превью не встали (например, токен не принят) — показываем
     // текстовое превью с предупреждением, публикация всё равно попробует ступени.
-    console.warn("[bot] превью с фото не отправилось, шлю без фото:", err.message);
+    logErr("[bot] превью с фото не отправилось, шлю без фото:", err.message);
     await io.sendToUser(userId, `${head}\n(фото в превью показать не удалось: ${err.message.slice(0, 120)})\n\n${buf.text}`, [[
       { type: "callback", text: "✅ Опубликовать", payload: "publish" },
       { type: "callback", text: "❌ Отмена", payload: "cancel" },
@@ -230,12 +234,12 @@ export async function handleUpdate(update, io = { sendToUser, postToChannel, ans
     // перезаписью лога: shadow-гейтинг и первая проба фото).
     if (msg?.body?.attachments?.length) {
       const line = JSON.stringify({ ts: new Date().toISOString(), attachments: msg.body.attachments });
-      console.log("[bot] attachments:", line.slice(0, 900));
+      log("[bot] attachments:", line.slice(0, 900));
       try {
         const { appendFileSync } = await import("node:fs");
         appendFileSync(new URL("../../attachment-structures.jsonl", import.meta.url), line + "\n");
       } catch (err) {
-        console.warn("[bot] не записал структуру вложения в файл:", err.message);
+        logErr("[bot] не записал структуру вложения в файл:", err.message);
       }
     }
     const text = msg?.body?.text?.trim();
@@ -250,19 +254,19 @@ export async function handleUpdate(update, io = { sendToUser, postToChannel, ans
       const ageMs = msg?.timestamp ? Date.now() - msg.timestamp : 0;
       const last = autoReplied.get(userId) ?? 0;
       if (ageMs > STALE_MS) {
-        console.log("[bot] старое сообщение не из вайтлиста, только лог", { userId });
+        log("[bot] старое сообщение не из вайтлиста, только лог", { userId });
       } else if (Date.now() - last < AUTOREPLY_MIN_INTERVAL_MS) {
-        console.log("[bot] не из вайтлиста, автоответ уже был сегодня", { userId });
+        log("[bot] не из вайтлиста, автоответ уже был сегодня", { userId });
       } else {
         autoReplied.set(userId, Date.now());
-        console.log("[bot] не из вайтлиста, шлю автоответ", { userId });
+        log("[bot] не из вайтлиста, шлю автоответ", { userId });
         await io.sendToUser(userId, AUTOREPLY_TEXT, [[appButton()]]);
       }
       return;
     }
     const ageMs = msg?.timestamp ? Date.now() - msg.timestamp : 0;
     if (ageMs > STALE_MS) {
-      console.log("[bot] старое сообщение из очереди, только лог", { userId, ageMin: Math.round(ageMs / 60000) });
+      log("[bot] старое сообщение из очереди, только лог", { userId, ageMin: Math.round(ageMs / 60000) });
       return;
     }
 
@@ -293,7 +297,7 @@ export async function handleUpdate(update, io = { sendToUser, postToChannel, ans
     if (buf.timer) clearTimeout(buf.timer);
     buf.timer = setTimeout(() => {
       collecting.delete(userId);
-      flushDraft(userId, buf, io).catch((err) => console.error("[bot] ошибка превью:", err.message));
+      flushDraft(userId, buf, io).catch((err) => logErr("[bot] ошибка превью:", err.message));
     }, FLUSH_MS);
     collecting.set(userId, buf);
     return;
@@ -306,7 +310,7 @@ export async function handleUpdate(update, io = { sendToUser, postToChannel, ans
     const userId = String(update.user?.user_id ?? "");
     if (!userId) return;
     // Атрибуция диплинка: только лог, в телеметрию не пишем (решение Ильи).
-    console.log("[bot] bot_started", { userId, payload: update.payload ?? null });
+    log("[bot] bot_started", { userId, payload: update.payload ?? null });
     if (greeted.has(userId)) return;
     greeted.add(userId);
     await io.sendToUser(userId, GREETING_TEXT, [[appButton()]]);
@@ -334,10 +338,10 @@ export async function handleUpdate(update, io = { sendToUser, postToChannel, ans
       pending.delete(userId);
       try {
         const { posted, step } = await publishWithImages(draft.text, draft.images ?? [], io);
-        console.log("[bot] пост опубликован", { userId, step, messageId: posted?.message?.body?.mid ?? null });
+        log("[bot] пост опубликован", { userId, step, messageId: posted?.message?.body?.mid ?? null });
         await io.answerCallback(cb.callback_id, "Опубликовано ✅");
       } catch (err) {
-        console.error("[bot] публикация не удалась:", err.message);
+        logErr("[bot] публикация не удалась:", err.message);
         await io.answerCallback(cb.callback_id, "Не опубликовано ❌");
         await io.sendToUser(userId, `Пост НЕ опубликован. Что сломалось:\n${err.message}`);
       }
@@ -356,32 +360,59 @@ async function answerCallback(callbackId, notification) {
 
 /** Бесконечный цикл long polling. Ошибки не роняют процесс — пауза и дальше. */
 export async function startBotPoller() {
-  if (!TOKEN) { console.warn("[bot] MAX_BOT_TOKEN не задан — поллер не запущен"); return; }
+  if (!TOKEN) { logErr("[bot] MAX_BOT_TOKEN не задан — поллер не запущен"); return; }
   try {
     await resolveBotUsername();
     bindAlertTransport(sendToUser, ADMIN_IDS);
     console.log(`[bot] поллер запускается: @${botUsername}, вайтлист: ${ADMIN_IDS.size || "ПУСТ (только лог id)"}`);
   } catch (err) {
-    console.error("[bot] GET /me не удался, поллер не запущен:", err.message);
+    logErr("[bot] GET /me не удался, поллер не запущен:", err.message);
     return;
   }
 
   let marker = null;
+  // Здоровье поллера (после залипания 01.09: процесс жив, health ok, а
+  // функция мертва). K подряд сбоев — НЕМЕДЛЕННЫЙ живой алерт (не фоновый
+  // агрегат), затем самолечение пересозданием сетевого агента; алерт идёт
+  // ДО лечения — админ знает о случае, даже если починилось само.
+  const FAILS_BEFORE_ALERT = 4;
+  let consecutiveFails = 0;
+  let downSince = null;
   for (;;) {
     try {
       const query = { timeout: POLL_TIMEOUT_S, types: "message_created,message_callback,bot_started" };
       if (marker !== null) query.marker = marker;
       const res = await api("GET", "/updates", { query });
+      if (downSince) {
+        const mins = Math.round((Date.now() - downSince) / 60000);
+        log("[bot] поллер восстановился после", consecutiveFails, "сбоев");
+        tellAdmins(`🟢 Бот снова принимает сообщения (простой ~${mins} мин, сбоев подряд: ${consecutiveFails}).`).catch(() => {});
+        downSince = null;
+      }
+      consecutiveFails = 0;
       marker = res.marker ?? marker;
       for (const u of res.updates ?? []) {
         try {
           await handleUpdate(u);
         } catch (err) {
-          console.error("[bot] ошибка обработки update:", err.message);
+          logErr("[bot] ошибка обработки update:", err.message);
         }
       }
     } catch (err) {
-      console.error("[bot] сбой long polling, пауза:", err.message);
+      consecutiveFails += 1;
+      logErr("[bot] сбой long polling", `(№${consecutiveFails} подряд), пауза:`, err.message, err.cause?.code ?? "");
+      if (consecutiveFails === FAILS_BEFORE_ALERT) {
+        downSince = Date.now();
+        // Живой алерт ДО лечения.
+        tellAdmins(`🔴 Бот НЕ принимает сообщения: ${consecutiveFails} сбоя поллера подряд (${String(err.message).slice(0, 80)}). Пробую пересоздать сетевой агент.`).catch(() => {});
+        try {
+          const { Agent, setGlobalDispatcher } = await import("undici");
+          setGlobalDispatcher(new Agent());
+          log("[bot] сетевой агент пересоздан");
+        } catch (e2) {
+          logErr("[bot] пересоздать агент не удалось:", e2.message);
+        }
+      }
       reportError({ kind: "bot_poller", reason: err.message, source: "local" });
       await new Promise((r) => setTimeout(r, RETRY_PAUSE_MS));
     }

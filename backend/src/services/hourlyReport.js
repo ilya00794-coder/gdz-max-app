@@ -122,7 +122,13 @@ export function startHourlyReports() {
     hourStart.setMinutes(0, 0, 0);
     try {
       const text = await buildHourlyReport(hourStart, { withYesterday: hour === REPORT_FROM_HOUR });
-      if (text) await tellAdmins(text);
+      if (text) {
+        await tellAdmins(text);
+        // Успех отправки логируется явно: 01.09 «ушёл или тихий час» было не отличить.
+        console.log(new Date().toISOString(), `[report] отчёт за ${hourStart.getHours()}:00 отправлен (${text.split("\n").length} строк)`);
+      } else {
+        console.log(new Date().toISOString(), `[report] час ${hourStart.getHours()}:00 пуст — молчание`);
+      }
     } catch (err) {
       console.error("[report] сбой часового отчёта:", err.message);
     }
