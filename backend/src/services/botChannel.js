@@ -69,7 +69,19 @@ const GREETING_TEXT =
 // CONTEST_MODE выключен по умолчанию — вне конкурса поведение прежнее.
 const CONTEST_MODE = ["1", "true", "on", "yes"].includes(String(process.env.CONTEST_MODE || "").toLowerCase());
 const URL_RE = /https?:\/\/\S+/i;
-const CONTEST_ACCEPTED = "Заявка на конкурс принята 👍";
+// Слова конкурса — короткий закрытый список (решение Ильи 02.09): сообщение
+// про конкурс БЕЗ ссылки → просим полную ссылку на ролик, а не описание.
+const CONTEST_WORDS_RE = /конкурс|ролик|тикток|видео|участ/i;
+const CONTEST_ACCEPTED =
+  "Заявка на конкурс принята 👍\n" +
+  "А решать и проверять домашку можно прямо здесь — жми кнопку ниже 👇";
+const CONTEST_NEED_LINK =
+  "Чтобы участвовать в конкурсе роликов, пришли сюда полную ссылку на ролик " +
+  "(целиком, вида https://…), а не описание — так мы засчитаем заявку.\n" +
+  "А само приложение открывается кнопкой ниже 👇";
+// Строка про конкурс в общем автоответе — добавляется только при CONTEST_MODE.
+const CONTEST_LINE =
+  "И ещё: идёт конкурс роликов — пришли ссылку на свой ролик сюда, засчитаем заявку.";
 
 const AUTOREPLY_TEXT =
   "Я не читаю сообщения — но приложение работает! Сфотографируй задачу или " +
@@ -92,13 +104,13 @@ async function api(method, path, { query = {}, body = null } = {}) {
 }
 
 /** Кнопка постов: открывает мини-апп сразу, payload — атрибуция поста. */
-function appButton() {
+function appButton(payload = null) {
   const d = new Date();
-  const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+  const stamp = payload ?? `post_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
   return {
     type: "link",
     text: "Открыть Домашку",
-    url: `https://max.ru/${botUsername}?startapp=post_${stamp}`,
+    url: `https://max.ru/${botUsername}?startapp=${stamp}`,
   };
 }
 
@@ -263,27 +275,38 @@ export async function handleUpdate(update, io = { sendToUser, postToChannel, ans
     if (!userId || !isDialog) return;
 
     if (!ADMIN_IDS.has(userId)) {
-      const ageMs = msg?.timestamp ? Date.now() - msg.timestamp : 0;
-      // Конкурс: сообщение со ссылкой = заявка (собираем ВСЕ, разбор вручную).
+      const fresh = msg?.timestamp ? Date.now() - msg.timestamp <= STALE_MS : true;
+      // Ветка 1: ссылка = заявка (собираем ВСЕ, разбор вручную). ВСЕГДА
+      // подтверждаем — ДО троттла и вне его: участник, приславший ссылку после
+      // автоответа в тот же день, всё равно получает 👍.
       const link = text && CONTEST_MODE ? (text.match(URL_RE)?.[0] ?? null) : null;
-      if (link && ageMs <= STALE_MS) {
+      if (link && fresh) {
         await saveContestEntry(userId, link);
         log("[bot] заявка на конкурс принята", { userId });
-        await io.sendToUser(userId, CONTEST_ACCEPTED);
+        await io.sendToUser(userId, CONTEST_ACCEPTED, [[appButton("contest")]]);
         return;
       }
-      // Ссылка на бота публична, люди пишут в надежде на ответ (в очереди
-      // был пользователь с 8 попытками). Молчание выглядит как сломанный
-      // сервис — отвечаем ссылкой на приложение, не чаще раза в сутки.
+      // Ветка 2: про конкурс, но без ссылки — ведём к полной ссылке. БЕЗ троттла
+      // (решение Ильи 02.09): молчать в ответ на «как отправить ролик» вредит
+      // конкурсу. Только при CONTEST_MODE — иначе про конкурс не заговариваем.
+      if (CONTEST_MODE && fresh && text && CONTEST_WORDS_RE.test(text)) {
+        log("[bot] конкурс без ссылки, прошу полную ссылку", { userId });
+        await io.sendToUser(userId, CONTEST_NEED_LINK, [[appButton("contest")]]);
+        return;
+      }
+      // Ветка 3: общий автоответ. Ссылка на бота публична, люди пишут в надежде
+      // на ответ (был пользователь с 8 попытками); молчание выглядит как
+      // сломанный сервис. Троттл «не чаще раза в сутки» остаётся ТОЛЬКО здесь.
       const last = autoReplied.get(userId) ?? 0;
-      if (ageMs > STALE_MS) {
+      if (!fresh) {
         log("[bot] старое сообщение не из вайтлиста, только лог", { userId });
       } else if (Date.now() - last < AUTOREPLY_MIN_INTERVAL_MS) {
         log("[bot] не из вайтлиста, автоответ уже был сегодня", { userId });
       } else {
         autoReplied.set(userId, Date.now());
         log("[bot] не из вайтлиста, шлю автоответ", { userId });
-        await io.sendToUser(userId, AUTOREPLY_TEXT, [[appButton()]]);
+        const body = CONTEST_MODE ? `${AUTOREPLY_TEXT}\n${CONTEST_LINE}` : AUTOREPLY_TEXT;
+        await io.sendToUser(userId, body, [[CONTEST_MODE ? appButton("contest") : appButton()]]);
       }
       return;
     }
