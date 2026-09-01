@@ -31,12 +31,21 @@ export async function tellAdmins(text) {
     console.warn("[alerts] бот недоступен, алерт только в лог:", text.slice(0, 160));
     return;
   }
+  let delivered = 0;
   for (const id of adminIds) {
     try {
       await sendFn(id, text);
+      delivered += 1;
     } catch (err) {
       console.error("[alerts] не доставил алерт админу:", err.message);
     }
+  }
+  // Успешную отправку пишем в лог — чтобы число срабатываний (красный, белый,
+  // восстановление — все идут через эту точку) читалось из лога, а не только
+  // из ЛС. Урок 01.09: белый агрегат не логировался, и число не восстановить.
+  // Первая строка text несёт эмодзи-тип (🔴/⚪/🟢) — по ней алерт опознаётся.
+  if (delivered) {
+    console.log(new Date().toISOString(), `[alerts] алерт доставлен ${delivered}/${adminIds.length}:`, text.split("\n")[0].slice(0, 120));
   }
 }
 
