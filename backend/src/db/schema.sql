@@ -213,3 +213,16 @@ CREATE TABLE IF NOT EXISTS incident_users (
   last_seen   timestamptz NOT NULL DEFAULT now(),
   notified_at timestamptz
 );
+
+-- Заявки на конкурс роликов (01.09.2026). То же узкое ИСКЛЮЧЕНИЕ из политики
+-- «max_user_id не хранится», что и incident_users и по той же причине:
+-- победителю нужно написать в личку, по необратимому хэшу это невозможно.
+-- Больше НИЧЕГО не собираем (аудитория детская): только id, ссылка, время.
+-- Несколько заявок от одного человека сохраняются все (разбор — вручную).
+-- Таблица не связана с задачами и вердиктами.
+CREATE TABLE IF NOT EXISTS contest_entries (
+  id         bigserial   PRIMARY KEY,
+  user_id    text        NOT NULL,
+  url        text        NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);

@@ -17,6 +17,7 @@
 // Ссылка на бота ПОДТВЕРЖДЕНА живым GET /me 31.08.2026: id772408566819_bot.
 
 import { bindAlertTransport, notifyFixed, reportError, tellAdmins } from "./alerts.js";
+import { getPool } from "./cache.js";
 
 /** Логи бота — с таймстампом: разбор сбоя 01.09 упёрся в «когда началось». */
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -64,6 +65,12 @@ const GREETING_TEXT =
   "Привет! Я — Домашка в МАХ 📚\n" +
   "Сфотографируй задачу — решу по шагам и объясню. Могу проверить и готовую " +
   "домашку по фото тетради. Жми кнопку 👇";
+// Конкурс роликов: любое http/https в сообщении не-админа = заявка.
+// CONTEST_MODE выключен по умолчанию — вне конкурса поведение прежнее.
+const CONTEST_MODE = ["1", "true", "on", "yes"].includes(String(process.env.CONTEST_MODE || "").toLowerCase());
+const URL_RE = /https?:\/\/\S+/i;
+const CONTEST_ACCEPTED = "Заявка на конкурс принята 👍";
+
 const AUTOREPLY_TEXT =
   "Я не читаю сообщения — но приложение работает! Сфотографируй задачу или " +
   "страницу тетради — решу и проверю 👇";
@@ -128,6 +135,14 @@ export async function resolveBotUsername() {
   const me = await api("GET", "/me");
   botUsername = me.username;
   return botUsername;
+}
+
+/** Заявка на конкурс: только user_id, ссылка, время (см. schema.sql). */
+async function saveContestEntry(userId, url) {
+  return getPool().query(
+    `INSERT INTO contest_entries (user_id, url) VALUES ($1, $2)`,
+    [String(userId), String(url).slice(0, 500)]
+  );
 }
 
 /** Превью собранного черновика: тем же составом (текст + те же вложения). */
@@ -248,10 +263,18 @@ export async function handleUpdate(update, io = { sendToUser, postToChannel, ans
     if (!userId || !isDialog) return;
 
     if (!ADMIN_IDS.has(userId)) {
+      const ageMs = msg?.timestamp ? Date.now() - msg.timestamp : 0;
+      // Конкурс: сообщение со ссылкой = заявка (собираем ВСЕ, разбор вручную).
+      const link = text && CONTEST_MODE ? (text.match(URL_RE)?.[0] ?? null) : null;
+      if (link && ageMs <= STALE_MS) {
+        await saveContestEntry(userId, link);
+        log("[bot] заявка на конкурс принята", { userId });
+        await io.sendToUser(userId, CONTEST_ACCEPTED);
+        return;
+      }
       // Ссылка на бота публична, люди пишут в надежде на ответ (в очереди
       // был пользователь с 8 попытками). Молчание выглядит как сломанный
       // сервис — отвечаем ссылкой на приложение, не чаще раза в сутки.
-      const ageMs = msg?.timestamp ? Date.now() - msg.timestamp : 0;
       const last = autoReplied.get(userId) ?? 0;
       if (ageMs > STALE_MS) {
         log("[bot] старое сообщение не из вайтлиста, только лог", { userId });
@@ -279,8 +302,30 @@ export async function handleUpdate(update, io = { sendToUser, postToChannel, ans
         await io.sendToUser(userId, total === 0
           ? "Пострадавших в списке нет — уведомлять некого."
           : `Уведомлено ${ok} из ${total}${failed ? `, не доставлено ${failed} (остались в списке)` : ""}.`);
+      } else if (cmd === "/заявки") {
+        const { rows } = await getPool().query(
+          `SELECT user_id, url, to_char(created_at, 'DD.MM HH24:MI') AS t
+           FROM contest_entries ORDER BY created_at DESC LIMIT 200`
+        );
+        const body = rows.length
+          ? rows.map((r) => `${r.t} · ${r.user_id} · ${r.url}`).join("\n")
+          : "Заявок пока нет.";
+        await io.sendToUser(userId, `Заявок: ${rows.length}\n\n${body}`.slice(0, 3900));
+      } else if (cmd === "/победитель") {
+        const target = rest[0];
+        const message = rest.slice(1).join(" ").trim();
+        if (!target || !message) {
+          await io.sendToUser(userId, "Формат: /победитель <user_id> <текст сообщения>");
+        } else {
+          try {
+            await io.sendToUser(target, message);
+            await io.sendToUser(userId, `Отправлено пользователю ${target}.`);
+          } catch (err) {
+            await io.sendToUser(userId, `Не доставлено ${target}: ${err.message}`);
+          }
+        }
       } else {
-        await io.sendToUser(userId, "Знаю команду /починили [текст] — уведомить пострадавших от сбоя. Остальное считаю постом.");
+        await io.sendToUser(userId, "Команды: /починили [текст], /заявки, /победитель <user_id> <текст>. Остальное считаю постом.");
       }
       return;
     }
