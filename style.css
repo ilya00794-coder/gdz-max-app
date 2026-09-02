@@ -892,3 +892,29 @@ body.crop-dragging {
 }
 #screen-subscribe .cta:disabled { opacity: 0.55; }
 .subscribe-status { margin-bottom: 4px; font-size: 14px; color: #5b5a54; }
+
+/* ---------- поле «опиши словами» на экране съёмки (02.09) ----------
+   Запасной путь к фото: заметное, но не перебивает кадр — пунктирная рамка
+   тоньше и ниже тап-цели съёмки. Прячется при снимке и в режиме проверки. */
+.capture-text { margin-top: 10px; }
+.capture-text-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1.5px dashed #c8c7c0;
+  border-radius: 14px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #444441;
+  background: #fff;
+  resize: none;
+}
+.capture-text-input::placeholder { color: #8b8a84; }
+.capture-text-input:focus { outline: none; border-color: #185fa5; border-style: solid; }
+.capture-text-hint {
+  margin: 6px 2px 0;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: #8a6d1f; /* мягкое предупреждение, не ошибка */
+}
