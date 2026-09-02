@@ -478,22 +478,33 @@ html, body {
 /* =========================================================
    Выделение области задания на фото — светлый стиль A.
    ========================================================= */
-.crop-frame { position: relative; line-height: 0; touch-action: none; }
+/* Окно превью (02.09, заход 2): фото — во всю ШИРИНУ (страница учебника
+   должна быть разборчивой для точного кропа), высота ограничена окном
+   с вертикальной прокруткой. Потолок по высоте на самом изображении
+   (прежний 50svh) давал вертикальному кадру узкую полоску по центру.
+   Жест однозначен: свободное поле фото = pan-y (прокрутка), рамка и ручки
+   несут touch-action:none — во время их жеста прокрутка невозможна,
+   дельта-математика кропа не тронута. */
+.photo-viewport {
+  width: 100%;
+  max-height: 55vh;   /* fallback для старых вебвью без svh */
+  max-height: 55svh;
+  overflow-y: auto;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  border-radius: 8px;
+}
+
+.crop-frame { position: relative; line-height: 0; touch-action: pan-y; }
 
 .crop-image {
   display: block;
-  /* Жест по самому снимку тоже не должен уезжать в прокрутку страницы. */
-  touch-action: none;
-  max-width: 100%;
-  /* Жёсткий потолок превью (02.09): прежний max-height:100% не работал —
-     у родителя нет определённой высоты (flex:1 при min-height её не даёт),
-     и вертикальное фото раздувало экран, унося кнопку «Решить» за нижнюю
-     границу. 50svh, не меньше: страница учебника должна оставаться
-     разборчивой для точного кропа (решение Ильи 02.09 — разборчивость
-     важнее пары процентов запаса). Кроп безопасен: рамка хранится в долях
-     (cropNorm) и пересчитывается от фактического clientWidth/Height. */
-  max-height: 50vh;   /* fallback для старых вебвью без svh */
-  max-height: 50svh;
+  width: 100%;
+  /* pan-y: жест по свободному полю снимка прокручивает окно превью (и только
+     вертикально); в прокрутку СТРАНИЦЫ он не уезжает — overscroll-behavior
+     contain на окне. Рамка кропа безопасна: хранится в долях (cropNorm),
+     пересчитывается от фактического clientWidth/Height. */
+  touch-action: pan-y;
   user-select: none;
   -webkit-user-drag: none;
 }
@@ -646,13 +657,12 @@ html, body {
    прямо на снимке (docs/design-spec.md).
    ========================================================= */
 .capture-photo {
-  flex: 1;
+  /* Без flex:1 (02.09): растяжение на весь остаток экрана давало большое
+     серое поле вокруг маленького превью. Теперь контейнер — по содержимому
+     (окну photo-viewport, до 55svh). */
   position: relative;
-  touch-action: none;
+  touch-action: pan-y;
   overscroll-behavior: contain;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   padding: 8px;
   border-radius: 12px;
   background: var(--l-surface);
@@ -945,3 +955,11 @@ body.crop-dragging {
 }
 .capture:focus-within .capture-icon,
 .capture:focus-within .capture-sub { display: none; }
+/* iOS (WebKit): svh не реагирует на клавиатуру — при фокусе поля высота
+   экрана съёмки берётся из --vvh (реальная видимая высота, пишет JS-хук
+   visualViewport в app.js). Без JS/на Chromium fallback = 100svh, поведение
+   прежнее. Только capture: у confirm жалоб нет, не трогаем. */
+#screen-capture:focus-within {
+  min-height: 0;
+  height: var(--vvh, 100svh);
+}

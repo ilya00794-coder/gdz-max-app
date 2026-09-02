@@ -118,6 +118,29 @@ const state = {
   solution: null,
 };
 
+// ---------- клавиатура на iOS (WebKit): честная высота через visualViewport ----------
+// WebKit игнорирует interactive-widget (это Chromium-фича) и не сжимает
+// svh под клавиатуру: она ложится ПОВЕРХ, а страницу WebKit панорамирует
+// сам. visualViewport (iOS 13+, есть и в WKWebView) даёт реальную видимую
+// высоту и событие resize при клавиатуре. Пишем её в --vvh; экран съёмки
+// при фокусе поля использует var(--vvh) вместо svh (style.css), плюс
+// возвращаем сфокусированное поле в видимую область — компенсация
+// авто-панорамирования. В Chromium vv.height совпадает с layout-высотой,
+// хук ничего не меняет.
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  const applyVvh = () => {
+    document.documentElement.style.setProperty("--vvh", `${Math.round(vv.height)}px`);
+    const el = document.activeElement;
+    if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT")) {
+      // Задержка — WebKit доводит панорамирование после resize.
+      setTimeout(() => el.scrollIntoView({ block: "center", behavior: "smooth" }), 60);
+    }
+  };
+  vv.addEventListener("resize", applyVvh);
+  applyVvh();
+}
+
 // ---------- навигация между экранами ----------
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach((el) => {
