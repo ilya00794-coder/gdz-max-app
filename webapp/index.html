@@ -2,7 +2,10 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <!-- interactive-widget: в Chromium-вебвью (MAX на Android) клавиатура сжимает
+       layout-вьюпорт — низ экрана (поле, кнопка) прижимается к ней честно,
+       а svh-высоты (style.css) пересчитываются. Другие движки игнорируют. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>Решебник — MAX mini app</title>
   <link rel="icon" type="image/svg+xml" href="assets/logo-icon.svg" />
   <!-- KaTeX: решение приходит с бэкенда с формулами в LaTeX ($...$), их надо отрисовать,

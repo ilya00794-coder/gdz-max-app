@@ -18,7 +18,11 @@ html, body {
 .app {
   max-width: 480px;
   margin: 0 auto;
+  /* svh — «малый» вьюпорт (02.09): честная высота при видимой системной UI;
+     с interactive-widget=resizes-content (index.html) сжимается и под
+     клавиатуру в Chromium-вебвью. Строка с vh — fallback для старых. */
   min-height: 100vh;
+  min-height: 100svh;
   position: relative;
   overflow: hidden;
 }
@@ -26,6 +30,7 @@ html, body {
 .screen {
   display: none;
   min-height: 100vh;
+  min-height: 100svh;
   flex-direction: column;
   position: relative;
   z-index: 1;
@@ -480,7 +485,15 @@ html, body {
   /* Жест по самому снимку тоже не должен уезжать в прокрутку страницы. */
   touch-action: none;
   max-width: 100%;
-  max-height: 100%;
+  /* Жёсткий потолок превью (02.09): прежний max-height:100% не работал —
+     у родителя нет определённой высоты (flex:1 при min-height её не даёт),
+     и вертикальное фото раздувало экран, унося кнопку «Решить» за нижнюю
+     границу. 50svh, не меньше: страница учебника должна оставаться
+     разборчивой для точного кропа (решение Ильи 02.09 — разборчивость
+     важнее пары процентов запаса). Кроп безопасен: рамка хранится в долях
+     (cropNorm) и пересчитывается от фактического clientWidth/Height. */
+  max-height: 50vh;   /* fallback для старых вебвью без svh */
+  max-height: 50svh;
   user-select: none;
   -webkit-user-drag: none;
 }
@@ -918,3 +931,17 @@ body.crop-dragging {
   line-height: 1.35;
   color: #8a6d1f; /* мягкое предупреждение, не ошибка */
 }
+
+/* ---------- клавиатура на экране съёмки (02.09) ----------
+   У MAX Bridge НЕТ событий клавиатуры (проверено по докам: только разовый
+   getViewportSize) — обходимся чистым CSS: клавиатура открыта ⇔ поле в
+   фокусе, значит :focus-within. Тап-цель съёмки сжимается до одной строки,
+   поле и кнопка поднимаются в верхнюю половину экрана — над клавиатурой.
+   Закрыл клавиатуру — вернулось само. */
+.capture:focus-within .capture-frame {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 12px 24px;
+}
+.capture:focus-within .capture-icon,
+.capture:focus-within .capture-sub { display: none; }
