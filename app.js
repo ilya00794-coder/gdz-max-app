@@ -116,6 +116,11 @@ const state = {
   photo: null, // { file, dataUrl, cropNorm, cropTouched }
   recognizedText: "",
   solution: null,
+  // Аккордеон нескольких задач (02.09): исходный массив разметки vision и
+  // клиентский кэш решений по индексу — повторный тап раскрывает из памяти,
+  // без повторной генерации (решение Ильи).
+  sheetTasks: null,
+  taskState: new Map(), // index → { status: "streaming"|"done"|"error", solution }
 };
 
 // ---------- клавиатура на iOS (WebKit): честная высота через visualViewport ----------
@@ -400,6 +405,8 @@ function startNewTask() {
   state.recognizedText = "";
   state.solution = null;
   state.check = null;
+  state.sheetTasks = null;
+  state.taskState = new Map();
   recognizedTextEl.value = "";
   taskTextInput.value = "";
   multiTaskHint.hidden = true;
@@ -775,6 +782,16 @@ function waitTypeQueue() {
   return new Promise((r) => typeQueueEmptyResolvers.push(r));
 }
 
+/** Мгновенно допечатывает всё, что ждёт в очереди (аккордеон: старт новой
+ * задачи не должен бросать чужие слова скрытыми — прежнее обнуление
+ * typeQueue.length=0 именно это и делало). Начатый li дорисует своим темпом. */
+function flushTypeQueue() {
+  for (const li of typeQueue) {
+    for (const w of li.querySelectorAll(".tw")) w.style.visibility = "";
+  }
+  typeQueue.length = 0;
+}
+
 /** Живой рендер экрана решения: буфер шагов + дорисовка + финал одним блоком. */
 function renderSolutionStreaming(st) {
   solutionTask.textContent = state.recognizedText || "";
@@ -969,10 +986,15 @@ function taskCardMarkup(task, index, order) {
     .split("\n")
     .map((line) => `<p class="task-card-line">${escapeHtml(line)}</p>`)
     .join("");
+  // Шапка кликабельна (тап = решить/раскрыть), task-acc — контейнер аккордеона:
+  // решение раскрывается ВНУТРИ карточки, остальные задачи уходят под него.
   return `
     <li class="task-card" data-index="${index}">
-      <p class="task-card-num">${label}</p>
-      <div class="task-card-text">${text}</div>
+      <div class="task-card-head">
+        <p class="task-card-num">${label}</p>
+        <div class="task-card-text">${text}</div>
+      </div>
+      <div class="task-acc" hidden></div>
     </li>`;
 }
 
@@ -1066,19 +1088,175 @@ function renderTaskList(tasks) {
   // Формулы отрисовываем после вставки: сырой LaTeX выбрать невозможно.
   renderMath(taskList);
 
+  // Аккордеон (02.09, решение Ильи): тап по шапке = ленивая генерация прямо
+  // в карточке, мимо confirm. Клик слушает ШАПКА, не вся карточка — иначе
+  // тапы по раскрытому решению схлопывали бы его.
+  state.sheetTasks = tasks;
+  state.taskState = new Map();
   taskList.querySelectorAll(".task-card").forEach((card) => {
-    card.addEventListener("click", () => selectTask(tasks[Number(card.dataset.index)]));
+    card.querySelector(".task-card-head").addEventListener("click", () => toggleTask(card, Number(card.dataset.index)));
   });
+  document.querySelector("#screen-tasks .tasks-lead").textContent = "Нажми на задачу — решим её.";
 }
 
-function selectTask(task) {
-  // Решение из первого ответа относилось ко всему снимку сразу, к выбранной
-  // задаче оно не подходит — сбрасываем, чтобы экран подтверждения решил заново.
-  state.solution = null;
-  state.recognizedText = task.text;
-  recognizedTextEl.value = task.text;
-  setRecognizedEditing(false);
-  showScreen("screen-confirm");
+// ---------- аккордеон решений (02.09) ----------
+// Генерация ЛЕНИВАЯ (только по тапу — уже было так) и ПОСЛЕДОВАТЕЛЬНАЯ:
+// стрим-слой держит один активный поток (solveStream — глобаль, события
+// чужого потока отбрасываются), поэтому тап по другой задаче во время
+// генерации получает подсказку, а не второй поток. Раскрытых решений может
+// быть НЕСКОЛЬКО (сравнение): очередь печати element-based, контейнеры
+// независимы. Экраны confirm/solution и check-путь не тронуты.
+
+const streamBusy = () => solveStream && !solveStream.final && !solveStream.error;
+
+function toggleTask(card, index) {
+  const acc = card.querySelector(".task-acc");
+  const ts = state.taskState.get(index);
+  if (ts?.status === "done" || ts?.status === "streaming") {
+    acc.hidden = !acc.hidden; // клиентский кэш: раскрытие без генерации
+    return;
+  }
+  if (streamBusy()) {
+    acc.hidden = false;
+    if (!acc.innerHTML) acc.innerHTML = `<p class="task-busy">Дорешиваем предыдущую задачу — как допишется, нажми ещё раз.</p>`;
+    return;
+  }
+  startTaskSolve(card, index, {});
+}
+
+/** Старт (или перезапуск после правки условия) генерации в карточку. */
+function startTaskSolve(card, index, extra) {
+  const task = state.sheetTasks[index];
+  state.taskState.set(index, { status: "streaming", solution: null });
+  card.querySelector(".task-acc").hidden = false;
+  const st = startSolveStream(
+    // Без textEdited/textSource: текст задачи — производный от фото (vision),
+    // это не ручной ввод и не правка. Правка условия шлёт edited (см. ниже).
+    { text: task.text, grade: state.grade, subject: state.subject, ...extra },
+    { allowEarlyConfirm: false, allowPrompt: false }
+  );
+  renderTaskStreamInto(card, index, st);
+  st.promise.catch(() => {}); // сбой уже показан в карточке
+}
+
+/** Живой рендер решения в контейнер карточки — аналог renderSolutionStreaming,
+ * но без синглтон-элементов экрана решения. */
+function renderTaskStreamInto(card, index, st) {
+  const acc = card.querySelector(".task-acc");
+  flushTypeQueue(); // недопечатанное прошлой задачи доводим мгновенно, не бросаем
+  acc.innerHTML = `
+    <button class="task-edit-link" type="button">Исправить условие</button>
+    <div class="task-edit" hidden>
+      <textarea class="task-edit-text" rows="3"></textarea>
+      <button class="btn-light task-edit-go" type="button">Решить заново</button>
+    </div>
+    <ol class="steps task-steps"></ol>
+    <div class="graph-card task-extra" hidden></div>
+    <div class="answer-block task-answer"><p class="answer-pending">Дорешиваем и проверяем ответ вычислением…</p></div>
+    <div class="task-actions"></div>`;
+  wireTaskEdit(card, index);
+  const steps = acc.querySelector(".task-steps");
+  steps.innerHTML = st.steps.map((s, i) => stepMarkup(s, i, true)).join("");
+  renderMath(steps);
+  for (const li of steps.children) enqueueTyping(li);
+  st.onStep = (step) => {
+    steps.insertAdjacentHTML("beforeend", stepMarkup(step, steps.children.length, true));
+    renderMath(steps.lastElementChild);
+    enqueueTyping(steps.lastElementChild);
+  };
+  st.onDone = async (fin) => {
+    st.onStep = null;
+    st.onDone = null;
+    await waitTypeQueue();
+    if (fin && fin.code === 200 && !fin.body.multipleTasks) {
+      state.taskState.set(index, { status: "done", solution: fin.body });
+      renderTaskDone(card, index, fin.body);
+    } else {
+      // error-статус: повторный тап по шапке = новая попытка (см. toggleTask).
+      state.taskState.set(index, { status: "error", solution: null });
+      const msg = fin
+        ? humanizeError(fin.code, { serverMessage: fin.body?.error })
+        : (st.error?.message ?? "Что-то пошло не так на нашей стороне. Попробуй позже.");
+      acc.querySelector(".task-answer").innerHTML =
+        `<p class="answer-pending">${escapeHtml(msg)} Нажми на задачу ещё раз — попробуем снова.</p>`;
+    }
+  };
+  if (st.final || st.error) st.onDone(st.final); // финал успел раньше подписки
+}
+
+/** Финал в карточке: графики/фигуры/схемы, ответ, «Ошибка в ответе». */
+function renderTaskDone(card, index, solution) {
+  const acc = card.querySelector(".task-acc");
+  const steps = acc.querySelector(".task-steps");
+  if (steps.children.length !== (solution.steps?.length ?? 0)) {
+    // Финал пришёл фолбэк-POST'ом без стрим-шагов — дорисовываем целиком.
+    steps.innerHTML = stepsMarkup(solution.steps);
+    renderMath(steps);
+  }
+  const extra = acc.querySelector(".task-extra");
+  const extraHtml = graphCardMarkup(solution.graph) + figureCardMarkup(solution.figure) + schemaCardMarkup(solution.schemaId);
+  extra.innerHTML = extraHtml;
+  extra.hidden = !extraHtml;
+  if (extraHtml) renderMath(extra);
+  const answer = acc.querySelector(".task-answer");
+  answer.innerHTML = answerMarkup(solution);
+  renderMath(answer);
+  const actions = acc.querySelector(".task-actions");
+  actions.innerHTML = `<button class="btn-light btn-report task-report" type="button">Ошибка в ответе</button>`;
+  actions.querySelector(".task-report").addEventListener("click", () => taskFeedback(actions, index));
+}
+
+/** Жалоба ПРО ЭТУ задачу: контекст (условие+решение) передаётся overrides,
+ * иначе при нескольких решениях на экране жалоба уехала бы с чужим текстом
+ * из глобального state (решение Ильи №3). Шаблон формы — дубль feedbackForm
+ * (сознательно: та вставляется относительно .sheet-actions экрана). */
+function taskFeedback(actions, index) {
+  let box = actions.querySelector(".feedback");
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "feedback";
+    box.innerHTML = `
+      <p class="feedback-title">Что не так?</p>
+      <textarea class="feedback-text" rows="3"
+                placeholder="Например: неправильный ответ / не та задача / ошибка в шаге 3"></textarea>
+      <div class="feedback-actions">
+        <button class="btn-light feedback-send" type="button">Отправить</button>
+        <button class="btn-light feedback-cancel" type="button">Отмена</button>
+      </div>
+      <p class="feedback-status" hidden></p>`;
+    actions.appendChild(box);
+    const over = {
+      recognizedText: state.sheetTasks?.[index]?.text ?? "",
+      solutionSnapshot: state.taskState.get(index)?.solution ?? null,
+    };
+    box.querySelector(".feedback-cancel").addEventListener("click", () => box.remove());
+    box.querySelector(".feedback-send").addEventListener("click", () => sendFeedback(box, "solve", over));
+  }
+  box.querySelector(".feedback-text")?.focus();
+}
+
+/** «Исправить условие»: правка → перезапуск генерации этой задачи с edited. */
+function wireTaskEdit(card, index) {
+  const acc = card.querySelector(".task-acc");
+  const editBox = acc.querySelector(".task-edit");
+  const ta = acc.querySelector(".task-edit-text");
+  acc.querySelector(".task-edit-link").addEventListener("click", () => {
+    editBox.hidden = !editBox.hidden;
+    if (!editBox.hidden) {
+      ta.value = state.sheetTasks[index].text;
+      ta.focus();
+    }
+  });
+  acc.querySelector(".task-edit-go").addEventListener("click", () => {
+    const t = ta.value.trim();
+    if (!t || streamBusy()) return; // пустое не шлём; генерация одна за раз
+    state.sheetTasks[index].text = t;
+    const head = card.querySelector(".task-card-text");
+    head.innerHTML = t.split("\n").map((l) => `<p class="task-card-line">${escapeHtml(l)}</p>`).join("");
+    renderMath(head);
+    state.taskState.delete(index); // клиентский кэш этой задачи сброшен
+    startTaskSolve(card, index, { textEdited: true, textSource: "edited" });
+  });
 }
 
 document.getElementById("btn-back-tasks").addEventListener("click", () => showScreen("screen-capture"));
