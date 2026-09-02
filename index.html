@@ -84,8 +84,11 @@
           <p class="capture-text-hint" id="multi-task-hint" hidden>Похоже, тут несколько задач. Опиши одну — так решение будет точнее</p>
         </div>
 
-        <!-- После съёмки: снимок крупно, рамка выделения сразу на нём. -->
+        <!-- После съёмки: снимок во всю ширину внутри окна фиксированной высоты
+             (photo-viewport, прокрутка pan-y по свободному полю фото); рамка
+             выделения сразу на нём. -->
         <div class="capture-photo" id="capture-photo" hidden>
+          <div class="photo-viewport" id="photo-viewport">
           <div class="crop-frame" id="crop-frame">
             <img class="crop-image" id="crop-image" alt="Снимок задачи" />
             <div class="crop-box" id="crop-box">
@@ -95,6 +98,7 @@
               <span class="crop-handle" data-handle="se"></span>
             </div>
           </div>
+          </div><!-- /photo-viewport; кнопка удаления — вне окна, не прокручивается -->
 
           <button class="photo-remove" id="btn-remove-photo" type="button" aria-label="Убрать снимок">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7"
