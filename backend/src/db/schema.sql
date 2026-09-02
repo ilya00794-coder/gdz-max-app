@@ -196,6 +196,11 @@ ALTER TABLE verify_events ADD CONSTRAINT verify_events_source_check CHECK (sourc
 
 -- Дозаливка колонки в уже существующие базы: CREATE IF NOT EXISTS выше её не добавит.
 ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS text_edited boolean;
+-- Откуда пришёл текст условия (02.09.2026, поле ввода на экране съёмки):
+-- 'typed' — ученик написал условие сам (фото не было); 'edited' — правка
+-- распознанного с фото. Разведено, чтобы ручной ввод не портил метрику
+-- «доля правок распознанного» (text_edited остаётся про правки, как раньше).
+ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS text_source text;
 
 CREATE INDEX IF NOT EXISTS verify_events_route_source_idx
   ON verify_events (route, source, created_at DESC);

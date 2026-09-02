@@ -64,7 +64,7 @@ export function recordVerifyEvent(event) {
     verified = null, method = null, reason = null,
     answerKind = null, multiTask = null, invariantViolation = null,
     parseFailureKind = null, durationMs = null, errorKind = null,
-    textEdited = null, transport = null, appVersion = null,
+    textEdited = null, textSource = null, transport = null, appVersion = null,
     inputTokens = null, outputTokens = null, costUsd = null,
     cacheHit = null, userHash = null, startParam = null,
     contentType = null,
@@ -74,15 +74,15 @@ export function recordVerifyEvent(event) {
       `INSERT INTO verify_events
          (route, source, grade, subject, verified, method, reason,
           answer_kind, multi_task, invariant_violation, parse_failure_kind,
-          duration_ms, error_kind, text_edited, transport, app_version,
+          duration_ms, error_kind, text_edited, text_source, transport, app_version,
           input_tokens, output_tokens, cost_usd, cache_hit, user_hash, start_param,
           content_type)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-               $17,$18,$19,$20,$21,$22,$23)`,
+               $17,$18,$19,$20,$21,$22,$23,$24)`,
       [route, source, grade, subject, verified, method,
        reason ? String(reason).slice(0, 300) : null,
        answerKind, multiTask, invariantViolation, parseFailureKind,
-       durationMs, errorKind, textEdited, transport, appVersion ? String(appVersion).slice(0, 60) : null,
+       durationMs, errorKind, textEdited, textSource, transport, appVersion ? String(appVersion).slice(0, 60) : null,
        inputTokens, outputTokens, costUsd, cacheHit, userHash,
        startParam ? String(startParam).slice(0, 60) : null,
        contentType]

@@ -281,6 +281,7 @@ function applyMode(mode) {
     : "Один снимок — одно задание";
   btnSolve.textContent = check ? "Проверить" : "Решить";
   btnSolve.dataset.idleLabel = btnSolve.textContent;
+  updateCaptureTextVisibility(); // поле «опиши словами» — только в режиме решения
 }
 
 function enterCapture(mode) {
@@ -332,6 +333,7 @@ function showPhoto() {
   captureEmpty.hidden = true;
   capturePhoto.hidden = false;
   cropTip.hidden = false;
+  updateCaptureTextVisibility(); // снимок есть — текстовое поле прячется
 
   cropImage.onload = () => {
     const w = cropImage.clientWidth;
@@ -357,6 +359,7 @@ function resetPhoto() {
   capturePhoto.hidden = true;
   cropTip.hidden = true;
   captureEmpty.hidden = false;
+  updateCaptureTextVisibility(); // снимка нет — поле возвращается (в режиме решения)
   hideCaptureError();
   hideModePrompt();
 }
@@ -375,6 +378,8 @@ function startNewTask() {
   state.solution = null;
   state.check = null;
   recognizedTextEl.value = "";
+  taskTextInput.value = "";
+  multiTaskHint.hidden = true;
   renderRecognizedView();
   updateConfirmCta();
 }
@@ -538,19 +543,62 @@ function hideCaptureError() {
   if (el) el.hidden = true;
 }
 
+// ---------- ввод условия словами (запасной путь к фото, только «решить») ----------
+const captureTextBlock = document.getElementById("capture-text-block");
+const taskTextInput = document.getElementById("task-text-input");
+const multiTaskHint = document.getElementById("multi-task-hint");
+
+/** Поле видно до съёмки и только в режиме решения: проверка домашки требует
+ * снимок тетради, текстом её не опишешь. */
+function updateCaptureTextVisibility() {
+  captureTextBlock.hidden = state.mode === "check" || Boolean(state.photo);
+}
+
+/**
+ * Признаки НЕСКОЛЬКИХ заданий в тексте: ≥2 буквенных пунктов («а) … б) …»)
+ * или ≥2 строк, начинающихся с номера («1) …», «№2 …»). Только мягкая
+ * подсказка под полем — отправку НЕ блокирует (решение Ильи 02.09: текст =
+ * одна задача, разметку не тянем). Родственник MULTI_TASK_MARKS в
+ * routes/checkHomework.js — независимый канал с той же природой меток.
+ */
+function detectMultiTaskText(text) {
+  const letterMarks = (text.match(/(?:^|[\s.,;])[абвгдежз]\)/gi) ?? []).length;
+  const numberedLines = text.split("\n").filter((l) => /^\s*(№\s*\d+|\d+\))/.test(l)).length;
+  return letterMarks >= 2 || numberedLines >= 2;
+}
+
+taskTextInput.addEventListener("input", () => {
+  multiTaskHint.hidden = !detectMultiTaskText(taskTextInput.value);
+});
+
 btnSolve.addEventListener("click", async () => {
   hideCaptureError();
   hideModePrompt();
 
-  // Фото нет — это не ошибка, а сценарий «введу условие сам»: идём на confirm с пустым полем.
-  // Подсказка живёт в placeholder, а не в value: иначе ученик отправил бы чужой пример.
+  // Фото нет: запасной путь — условие, написанное словами. МИМО confirm
+  // (ученик сам написал текст, проверять распознавание нечего) — сразу в стрим,
+  // ровно той же веткой, что перерешивание после правки на confirm.
   if (!state.photo) {
+    const typed = taskTextInput.value.trim();
+    if (state.mode === "check" || !typed) {
+      // Пустое не отправляем; для проверки домашки текста недостаточно.
+      showCaptureError(state.mode === "check"
+        ? "Сфотографируй страницу тетради с решением — проверяю по фото."
+        : "Сфотографируй задачу или опиши её словами.");
+      return;
+    }
     state.solution = null;
-    state.recognizedText = "";
-    recognizedTextEl.value = "";
-    // Показывать нечего — сразу поле ввода.
-    setRecognizedEditing(true);
-    showScreen("screen-confirm");
+    state.recognizedText = typed;
+    recognizedTextEl.value = typed; // confirm-поле в курсе: возврат с решения покажет актуальный текст
+    const st = startSolveStream(
+      // textSource: 'typed' — свежий ввод, НЕ правка распознанного (textEdited
+      // не шлём: метрика «доля правок» не должна портиться ручным вводом).
+      { text: typed, grade: state.grade, subject: state.subject, textSource: "typed" },
+      { allowEarlyConfirm: false, allowPrompt: false }
+    );
+    renderSolutionStreaming(st);
+    showScreen("screen-solution");
+    st.promise.catch(() => {}); // сбой уже показан плашкой живого рендера
     return;
   }
 
@@ -1121,7 +1169,9 @@ btnConfirm.addEventListener("click", async () => {
   const st2 = startSolveStream(
     // textEdited — телеметрии: ученик правил распознанный текст (сам текст
     // и так уходит; флаг отмечает «второй платёж» для решения о жадной схеме).
-    { text: currentText, grade: state.grade, subject: state.subject, textEdited: true },
+    // textSource: 'edited' — правка распознанного, в отличие от 'typed'
+    // (свежий ввод с экрана съёмки): метрика «доля правок» не смешивается.
+    { text: currentText, grade: state.grade, subject: state.subject, textEdited: true, textSource: "edited" },
     { allowEarlyConfirm: false, allowPrompt: false }
   );
   renderSolutionStreaming(st2);

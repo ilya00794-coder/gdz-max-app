@@ -73,6 +73,14 @@
         <!-- Без capture: система сама предложит снять камерой или выбрать готовое фото. -->
         <input type="file" id="file-input" accept="image/*" hidden />
 
+        <!-- Запасной путь: условие словами вместо фото (только режим «решить»).
+             Прячется при сделанном снимке и в режиме проверки — фото главный сценарий. -->
+        <div class="capture-text" id="capture-text-block">
+          <textarea class="capture-text-input" id="task-text-input" rows="2"
+                    placeholder="Или опиши задачу словами"></textarea>
+          <p class="capture-text-hint" id="multi-task-hint" hidden>Похоже, тут несколько задач. Опиши одну — так решение будет точнее</p>
+        </div>
+
         <!-- После съёмки: снимок крупно, рамка выделения сразу на нём. -->
         <div class="capture-photo" id="capture-photo" hidden>
           <div class="crop-frame" id="crop-frame">

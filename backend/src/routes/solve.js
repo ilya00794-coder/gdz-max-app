@@ -22,6 +22,10 @@ const router = Router();
  */
 async function runSolvePipeline({ body, source, startedAt, transport, appVersion, userHash, startParam, onStep, onRecognized }) {
   const { imagesBase64, text, subject, quarter, textEdited } = body;
+  // Откуда текст: 'typed' — ученик написал сам (поле на экране съёмки),
+  // 'edited' — правка распознанного. Белый список; мусор от кривого клиента → null.
+  // Разведено с textEdited, чтобы ручной ввод не портил метрику «доля правок».
+  const textSource = ["typed", "edited"].includes(body.textSource) ? body.textSource : null;
   const grade = Number(body.grade);
 
   if (!grade || !subject || (!imagesBase64?.length && !text)) {
@@ -150,6 +154,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
       inputTokens: visionUsage?.input_tokens ?? null,
       outputTokens: visionUsage?.output_tokens ?? null,
       durationMs: Date.now() - startedAt,
+      textSource: imagesBase64?.length ? null : textSource,
       transport, appVersion, userHash, startParam,
       contentType: recognition?.contentType ?? null,
     });
@@ -218,6 +223,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     invariantViolation: verification.details?.invariantViolation ?? null,
     durationMs: Date.now() - startedAt,
     textEdited: imagesBase64?.length ? null : (textEdited === true ? true : null),
+    textSource: imagesBase64?.length ? null : textSource,
     transport, appVersion, userHash, startParam,
     contentType: recognition?.contentType ?? null,
     cacheHit: false,
