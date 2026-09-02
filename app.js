@@ -357,6 +357,18 @@ fileInput.addEventListener("change", async (e) => {
 });
 
 /** Показывает снимок крупно и ставит рамку выделения поверх него. */
+// Признак прокручиваемости окна превью (№1, 02.09): overlay-скроллбары в
+// мобильных вебвью невидимы, ученик не понимал, что фото листается. Градиентные
+// кромки (CSS) включаются классами, пока сверху/снизу есть скрытая часть фото.
+const photoViewport = document.getElementById("photo-viewport");
+function updatePhotoScrollHints() {
+  const canDown = photoViewport.scrollTop + photoViewport.clientHeight < photoViewport.scrollHeight - 2;
+  const canUp = photoViewport.scrollTop > 2;
+  capturePhoto.classList.toggle("scroll-down", canDown);
+  capturePhoto.classList.toggle("scroll-up", canUp);
+}
+photoViewport.addEventListener("scroll", updatePhotoScrollHints);
+
 function showPhoto() {
   captureEmpty.hidden = true;
   capturePhoto.hidden = false;
@@ -373,6 +385,8 @@ function showPhoto() {
       ? { x: n.x * w, y: n.y * h, w: n.w * w, h: n.h * h }
       : { x: w * 0.1, y: h * 0.1, w: w * 0.8, h: h * 0.8 };
     drawCropBox();
+    // Кромки-градиенты — после раскладки: scrollHeight известен только теперь.
+    requestAnimationFrame(updatePhotoScrollHints);
   };
   cropImage.src = state.photo.dataUrl;
 }
@@ -385,6 +399,7 @@ function resetPhoto() {
   lockScroll(false);
   cropImage.removeAttribute("src");
   capturePhoto.hidden = true;
+  capturePhoto.classList.remove("scroll-down", "scroll-up");
   cropTip.hidden = true;
   captureEmpty.hidden = false;
   updateCaptureTextVisibility(); // снимка нет — поле возвращается (в режиме решения)
@@ -806,7 +821,7 @@ function renderSolutionStreaming(st) {
   renderSchemaCard(null);
   // Резерв под ответ и бейдж: плашка стоит на месте будущего блока ответа,
   // финал заменяет её целиком — прочитанные шаги выше не сдвигаются.
-  answerBlock.innerHTML = `<p class="answer-pending">Дорешиваем и проверяем ответ вычислением…</p>`;
+  answerBlock.innerHTML = `<p class="answer-pending answer-pending--busy">${pendingBusyMarkup("Дорешиваем и проверяем ответ вычислением")}</p>`;
   resetFeedback(solutionScreen);
   solutionScreen.querySelector(".sheet-scroll").scrollTop = 0;
   st.onStep = (step) => {
@@ -1109,16 +1124,33 @@ function renderTaskList(tasks) {
 
 const streamBusy = () => solveStream && !solveStream.final && !solveStream.error;
 
+/** Плашка «идёт работа» (№4, 02.09): статичный текст читался как зависание —
+ * до первого шага solver молчит 5–15 с. Карандаш + многоточие анимируются
+ * чистым CSS (pen-write/dot-blink); ошибки остаются простым .answer-pending
+ * без анимации — там работа НЕ идёт. */
+function pendingBusyMarkup(text) {
+  return `<span class="pending-pen" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></span><span>${escapeHtml(text)}<span class="pending-dots"><span>.</span><span>.</span><span>.</span></span></span>`;
+}
+
+/** Раскрытие/схлопывание с видимой границей (№2, 02.09): раскрытая карточка
+ * получает акцентную рамку --open, решение — фон-«вложенный лист». */
+function setTaskOpen(card, open) {
+  card.querySelector(".task-acc").hidden = !open;
+  card.classList.toggle("task-card--open", open);
+}
+
 function toggleTask(card, index) {
   const acc = card.querySelector(".task-acc");
   const ts = state.taskState.get(index);
   if (ts?.status === "done" || ts?.status === "streaming") {
-    acc.hidden = !acc.hidden; // клиентский кэш: раскрытие без генерации
+    setTaskOpen(card, acc.hidden); // клиентский кэш: раскрытие без генерации
     return;
   }
   if (streamBusy()) {
-    acc.hidden = false;
-    if (!acc.innerHTML) acc.innerHTML = `<p class="task-busy">Дорешиваем предыдущую задачу — как допишется, нажми ещё раз.</p>`;
+    setTaskOpen(card, true);
+    if (!acc.innerHTML) {
+      acc.innerHTML = `<p class="task-busy answer-pending--busy">${pendingBusyMarkup("Дорешиваем предыдущую задачу — как допишется, нажми ещё раз")}</p>`;
+    }
     return;
   }
   startTaskSolve(card, index, {});
@@ -1128,7 +1160,7 @@ function toggleTask(card, index) {
 function startTaskSolve(card, index, extra) {
   const task = state.sheetTasks[index];
   state.taskState.set(index, { status: "streaming", solution: null });
-  card.querySelector(".task-acc").hidden = false;
+  setTaskOpen(card, true);
   const st = startSolveStream(
     // Без textEdited/textSource: текст задачи — производный от фото (vision),
     // это не ручной ввод и не правка. Правка условия шлёт edited (см. ниже).
@@ -1152,7 +1184,7 @@ function renderTaskStreamInto(card, index, st) {
     </div>
     <ol class="steps task-steps"></ol>
     <div class="graph-card task-extra" hidden></div>
-    <div class="answer-block task-answer"><p class="answer-pending">Дорешиваем и проверяем ответ вычислением…</p></div>
+    <div class="answer-block task-answer"><p class="answer-pending answer-pending--busy">${pendingBusyMarkup("Дорешиваем и проверяем ответ вычислением")}</p></div>
     <div class="task-actions"></div>`;
   wireTaskEdit(card, index);
   const steps = acc.querySelector(".task-steps");
