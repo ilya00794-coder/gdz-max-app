@@ -1525,9 +1525,10 @@ function stepsMarkup(steps) {
 
 // Единая карточка наглядности (бэкенд отдаёт поле figure, уже нормализованное
 // валидатором services/figure.js; старый кэш конвертируется там же на лету).
-function renderFigureCard(figure) {
-  const card = document.getElementById("figure-card");
-  if (!card) return;
+/** Чистая разметка карточки фигуры ("" — карточка не нужна). Извлечено из
+ * renderFigureCard, чтобы аккордеон задач рендерил те же карточки в свои
+ * контейнеры; сам renderFigureCard — тонкая DOM-обёртка (экран решения). */
+function figureCardMarkup(figure) {
   const svg =
     figure?.kind === "circles" ? circlesSvg({ circlesTotal: figure.circlesTotal, circlesCrossed: figure.circlesCrossed, circlesGroupSize: figure.circlesGroupSize })
     : figure?.kind === "numberline" ? numberlineSvg({ points: figure.points, range: figure.range })
@@ -1540,9 +1541,17 @@ function renderFigureCard(figure) {
     : figure?.kind === "rhombus" ? rhombusSvg(figure)
     : figure?.kind === "trapezoid" ? trapezoidSvg(figure)
     : "";
-  if (!svg) { card.hidden = true; card.innerHTML = ""; return; }
+  if (!svg) return "";
   const comment = figure.comment ? `<p class="graph-comment">${escapeHtml(figure.comment)}</p>` : "";
-  card.innerHTML = svg + comment;
+  return svg + comment;
+}
+
+function renderFigureCard(figure) {
+  const card = document.getElementById("figure-card");
+  if (!card) return;
+  const html = figureCardMarkup(figure);
+  if (!html) { card.hidden = true; card.innerHTML = ""; return; }
+  card.innerHTML = html;
   card.hidden = false;
   renderMath(card);
 }
@@ -1556,25 +1565,39 @@ const SCHEMA_LIBRARY = {
   "большая-медведица": { file: "bolshaya-medveditsa.svg", alt: "Ковш Большой Медведицы и Полярная звезда" },
 };
 
+/** Чистая разметка готовой схемы ("" — нет такой в библиотеке). */
+function schemaCardMarkup(schemaId) {
+  const entry = SCHEMA_LIBRARY[schemaId];
+  if (!entry) return "";
+  return `<img src="assets/schemas/${entry.file}" alt="${escapeHtml(entry.alt)}" style="width:100%;height:auto" loading="lazy">`;
+}
+
 function renderSchemaCard(schemaId) {
   const card = document.getElementById("schema-card");
-  const entry = SCHEMA_LIBRARY[schemaId];
   if (!card) return;
-  if (!entry) { card.hidden = true; card.innerHTML = ""; return; }
-  card.innerHTML = `<img src="assets/schemas/${entry.file}" alt="${escapeHtml(entry.alt)}" style="width:100%;height:auto" loading="lazy">`;
+  const html = schemaCardMarkup(schemaId);
+  if (!html) { card.hidden = true; card.innerHTML = ""; return; }
+  card.innerHTML = html;
   card.hidden = false;
 }
 
+/** Чистая разметка карточки графика ("" — графика нет). */
+function graphCardMarkup(graph) {
+  if (!graph?.plots?.length) return "";
+  const comment = graph.comment
+    ? `<p class="graph-comment">${escapeHtml(graph.comment)}</p>`
+    : "";
+  return graphSvg(graph) + comment;
+}
+
 function renderGraphCard(graph) {
-  if (!graph?.plots?.length) {
+  const html = graphCardMarkup(graph);
+  if (!html) {
     graphCard.hidden = true;
     graphCard.innerHTML = "";
     return;
   }
-  const comment = graph.comment
-    ? `<p class="graph-comment">${escapeHtml(graph.comment)}</p>`
-    : "";
-  graphCard.innerHTML = graphSvg(graph) + comment;
+  graphCard.innerHTML = html;
   graphCard.hidden = false;
   renderMath(graphCard); // comment может содержать $...$
 }
@@ -1616,7 +1639,10 @@ btnNewTask.addEventListener("click", () => {
 // здесь честное. Фотографии не отправляются — только текст и структура показанного.
 const FEEDBACK_TIMEOUT_MS = 15000;
 
-function feedbackPayload(type, comment) {
+/** over — контекст конкретной задачи (аккордеон): при нескольких решениях
+ * на экране глобальный state указывал бы на чужую задачу. Без over —
+ * прежнее поведение (экраны решения/проверки). */
+function feedbackPayload(type, comment, over = {}) {
   return {
     type,
     grade: state.grade,
@@ -1624,6 +1650,7 @@ function feedbackPayload(type, comment) {
     recognizedText: state.recognizedText,
     solutionSnapshot: type === "check" ? state.check : state.solution,
     userComment: comment,
+    ...over,
   };
 }
 
@@ -1650,7 +1677,7 @@ function feedbackForm(screen, type) {
   return box;
 }
 
-async function sendFeedback(box, type) {
+async function sendFeedback(box, type, over = {}) {
   const send = box.querySelector(".feedback-send");
   const status = box.querySelector(".feedback-status");
   const comment = box.querySelector(".feedback-text").value;
@@ -1658,7 +1685,7 @@ async function sendFeedback(box, type) {
   status.hidden = true;
   setButtonBusy(send, true, "Отправляем…");
   try {
-    await postJson("/api/feedback", feedbackPayload(type, comment), FEEDBACK_TIMEOUT_MS);
+    await postJson("/api/feedback", feedbackPayload(type, comment, over), FEEDBACK_TIMEOUT_MS);
     // Жалоба записана в базу — только теперь можно благодарить.
     box.innerHTML = `<p class="feedback-done">Спасибо, передали на проверку</p>`;
   } catch (err) {
