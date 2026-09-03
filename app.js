@@ -361,8 +361,13 @@ function enterCapture(mode) {
   showScreen("screen-capture");
 }
 
-btnModeSolve.addEventListener("click", () => enterCapture("solve"));
-btnModeCheck.addEventListener("click", () => enterCapture("check"));
+// Выбор режима — в телеметрию (03.09): доля «Проверить домашку» отличает
+// «вход не нашли» от «сценарий не нужен». Fire-and-forget, UX не ждёт.
+function trackMode(kind) {
+  postJson("/api/ui-event", { kind }, 5000).catch(() => {});
+}
+btnModeSolve.addEventListener("click", () => { trackMode("mode_solve"); enterCapture("solve"); });
+btnModeCheck.addEventListener("click", () => { trackMode("mode_check"); enterCapture("check"); });
 // Возврат к выбору класса — это начало новой сессии, снимки прошлой задачи не нужны.
 document.getElementById("btn-back-setup").addEventListener("click", () => {
   startNewTask();
