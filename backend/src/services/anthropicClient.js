@@ -73,6 +73,25 @@ export function getClient() {
   return client;
 }
 
+/**
+ * Транзиентные классы ошибок API с СОБСТВЕННЫМ действием пользователя
+ * (подождать/повторить) — фронт показывает текст и НЕ считает их в серию
+ * «стены» (03.09). null — обычный сбой без класса (идёт в серию).
+ * SDK-типы держим здесь, чтобы роуты не импортировали Anthropic.
+ */
+export function classifyUpstreamError(err) {
+  if (err?.status === 529 || /overloaded_error/.test(String(err?.message))) {
+    return { errorClass: "overloaded", error: "Сервис сейчас перегружен — попробуй через минуту." };
+  }
+  if (err instanceof Anthropic.RateLimitError) {
+    return { errorClass: "rate_limit", error: "Слишком много запросов сразу — подожди минуту и попробуй снова." };
+  }
+  if (err instanceof Anthropic.APIConnectionError) {
+    return { errorClass: "upstream_network", error: "Не получилось связаться с сервисом решения. Попробуй ещё раз." };
+  }
+  return null;
+}
+
 /** Приводит ошибку SDK к короткому человекочитаемому виду для логов/ответа. */
 export function describeApiError(err) {
   if (err instanceof ConfigError || err instanceof InputError) return err.message;

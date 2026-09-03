@@ -8,7 +8,7 @@ import { reportError } from "../services/alerts.js";
 import { isSubjectAllowedForGrade, getSubjectsForGrade } from "../services/subjects.js";
 import { recordVerifyEvent, hashUser, addUsage, usageCost } from "../services/telemetry.js";
 import { requestSource } from "../middleware/maxInitData.js";
-import { ConfigError, InputError, describeApiError } from "../services/anthropicClient.js";
+import { ConfigError, InputError, describeApiError, classifyUpstreamError } from "../services/anthropicClient.js";
 
 const router = Router();
 
@@ -267,13 +267,13 @@ function errorResponse(err, { source, startedAt, transport, appVersion, userHash
   if (err instanceof ConfigError) {
     return { code: 503, body: { error: describeApiError(err) } };
   }
-  // Перегрузка Anthropic (529) — ДРУГОЕ действие для человека: подождать,
-  // а не переснимать. errorClass читает фронт: такой сбой НЕ идёт в серию
-  // «стены» (совет «сфотографируй иначе» при перегрузке был бы враньём).
-  // SDK уже сделал 3 попытки с бэкоффом — свой ретрай поверх не добавляем
-  // (решение Ильи 03.09).
-  if (err.status === 529 || /overloaded_error/.test(String(err.message))) {
-    return { code: 503, body: { error: "Сервис сейчас перегружен — попробуй через минуту.", errorClass: "overloaded" } };
+  // Транзиентные классы API (перегрузка/лимит/сеть) — ДРУГОЕ действие для
+  // человека: подождать или повторить, а не переснимать. errorClass читает
+  // фронт: такие сбои НЕ идут в серию «стены». SDK уже сделал 3 попытки
+  // с бэкоффом — свой ретрай поверх не добавляем (решение Ильи 03.09).
+  const upstream = classifyUpstreamError(err);
+  if (upstream) {
+    return { code: 503, body: upstream };
   }
   return { code: 500, body: { error: "Внутренняя ошибка при решении задачи", detail: describeApiError(err) } };
 }
