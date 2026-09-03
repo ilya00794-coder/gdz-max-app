@@ -257,11 +257,11 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: describeApiError(err) });
     }
     if (err instanceof ConfigError) {
-      recordVerifyEvent({ route: "check", source, durationMs: Date.now() - startedAt, errorKind: "config", reason: String(err.message).slice(0, 200), userHash, startParam });
+      recordVerifyEvent({ route: "check", source, grade, subject, durationMs: Date.now() - startedAt, errorKind: "config", reason: String(err.message).slice(0, 200), userHash, startParam });
       reportError({ kind: "config", reason: err.message, route: "check", source, userId: req.max?.userId ?? null });
       return res.status(503).json({ error: describeApiError(err) });
     }
-    recordVerifyEvent({ route: "check", source, durationMs: Date.now() - startedAt, errorKind: stage, reason: String(err.message).slice(0, 200), userHash, startParam });
+    recordVerifyEvent({ route: "check", source, grade, subject, durationMs: Date.now() - startedAt, errorKind: stage, reason: String(err.message).slice(0, 200), userHash, startParam });
     reportError({ kind: stage, reason: err.message, route: "check", source, userId: req.max?.userId ?? null });
     res.status(500).json({
       error: "Внутренняя ошибка при проверке домашней работы",

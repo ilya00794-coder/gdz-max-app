@@ -201,6 +201,10 @@ ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS text_edited boolean;
 -- распознанного с фото. Разведено, чтобы ручной ввод не портил метрику
 -- «доля правок распознанного» (text_edited остаётся про правки, как раньше).
 ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS text_source text;
+-- Причина остановки модели при parse-сбоях solver (03.09.2026, инцидент
+-- «5 обрывов JSON подряд»): без неё класс сбоя (max_tokens/refusal/…) был
+-- невидим в разборе. Заполняется только у ошибок.
+ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS stop_reason text;
 
 CREATE INDEX IF NOT EXISTS verify_events_route_source_idx
   ON verify_events (route, source, created_at DESC);

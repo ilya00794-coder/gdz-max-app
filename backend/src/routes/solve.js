@@ -246,7 +246,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
 }
 
 /** Общая обработка ошибок ядра: телеметрия + человеческий текст. */
-function errorResponse(err, { source, startedAt, transport, appVersion, userHash = null, startParam = null, rawUserId = null }) {
+function errorResponse(err, { source, startedAt, transport, appVersion, userHash = null, startParam = null, rawUserId = null, grade = null, subject = null }) {
   console.error(err);
   if (err instanceof InputError) {
     return { code: 400, body: { error: describeApiError(err) } };
@@ -256,6 +256,10 @@ function errorResponse(err, { source, startedAt, transport, appVersion, userHash
     route: "solve", source, durationMs: Date.now() - startedAt,
     errorKind: kind,
     reason: String(err.message).slice(0, 200),
+    // grade/subject у ошибок были NULL (дыра, найдена разбором инцидента 03.09);
+    // stopReason — причина остановки модели при parse-сбоях solver.
+    grade, subject,
+    stopReason: err.stopReason ?? null,
     transport, appVersion, userHash, startParam,
   });
   // Немедленный алерт админам; живой пользователь запоминается для /починили.
@@ -282,7 +286,7 @@ router.post("/", async (req, res) => {
     const { code, body } = await runSolvePipeline({ body: req.body, source, startedAt, transport, appVersion, userHash, startParam });
     res.status(code).json(body);
   } catch (err) {
-    const { code, body } = errorResponse(err, { source, startedAt, transport, appVersion, userHash, startParam, rawUserId: req.max?.userId ?? null });
+    const { code, body } = errorResponse(err, { source, startedAt, transport, appVersion, userHash, startParam, rawUserId: req.max?.userId ?? null, grade: Number(req.body?.grade) || null, subject: req.body?.subject ?? null });
     res.status(code).json(body);
   }
 });
@@ -320,7 +324,7 @@ router.post("/stream", async (req, res) => {
     });
     send({ type: "final", code, body });
   } catch (err) {
-    const { code, body } = errorResponse(err, { source, startedAt, transport: "stream", appVersion: req.get("X-App-Version") ?? null, userHash, startParam, rawUserId: req.max?.userId ?? null });
+    const { code, body } = errorResponse(err, { source, startedAt, transport: "stream", appVersion: req.get("X-App-Version") ?? null, userHash, startParam, rawUserId: req.max?.userId ?? null, grade: Number(req.body?.grade) || null, subject: req.body?.subject ?? null });
     send({ type: "error", code, body });
   } finally {
     if (!closed) res.end();
