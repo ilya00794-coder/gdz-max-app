@@ -425,6 +425,8 @@ function startNewTask() {
   recognizedTextEl.value = "";
   taskTextInput.value = "";
   multiTaskHint.hidden = true;
+  composerPh.hidden = false;
+  btnComposerSend.disabled = true;
   renderRecognizedView();
   updateConfirmCta();
 }
@@ -588,16 +590,44 @@ function hideCaptureError() {
   if (el) el.hidden = true;
 }
 
-// ---------- ввод условия словами (запасной путь к фото, только «решить») ----------
+// ---------- композер «условие словами» (запасной путь к фото, только «решить») ----------
 const captureTextBlock = document.getElementById("capture-text-block");
 const taskTextInput = document.getElementById("task-text-input");
 const multiTaskHint = document.getElementById("multi-task-hint");
+const captureActions = document.getElementById("capture-actions");
+const composerPh = document.getElementById("composer-ph");
+const btnComposerSend = document.getElementById("btn-composer-send");
 
-/** Поле видно до съёмки и только в режиме решения: проверка домашки требует
- * снимок тетради, текстом её не опишешь. */
+/** Композер виден до съёмки и только в режиме решения; отправка — его кнопкой,
+ * большая «Решить» в этом состоянии прячется (03.09: две кнопки путали бы).
+ * Проверка домашки требует снимок тетради — там всегда прежняя CTA. */
 function updateCaptureTextVisibility() {
-  captureTextBlock.hidden = state.mode === "check" || Boolean(state.photo);
+  const composer = state.mode !== "check" && !state.photo;
+  captureTextBlock.hidden = !composer;
+  captureActions.hidden = composer;
 }
+
+/** Отправка типизированного условия — общая для композера и страховочной
+ * ветки btnSolve: мимо confirm сразу в стрим. false — поле пустое. */
+function submitTypedTask() {
+  const typed = taskTextInput.value.trim();
+  if (!typed) return false;
+  state.solution = null;
+  state.recognizedText = typed;
+  recognizedTextEl.value = typed; // confirm-поле в курсе: возврат с решения покажет актуальный текст
+  const st = startSolveStream(
+    // textSource: 'typed' — свежий ввод, НЕ правка распознанного (textEdited
+    // не шлём: метрика «доля правок» не должна портиться ручным вводом).
+    { text: typed, grade: state.grade, subject: state.subject, textSource: "typed" },
+    { allowEarlyConfirm: false, allowPrompt: false }
+  );
+  renderSolutionStreaming(st);
+  showScreen("screen-solution");
+  st.promise.catch(() => {}); // сбой уже показан плашкой живого рендера
+  return true;
+}
+
+btnComposerSend.addEventListener("click", () => { submitTypedTask(); });
 
 /**
  * Признаки НЕСКОЛЬКИХ заданий в тексте: ≥2 буквенных пунктов («а) … б) …»)
@@ -614,36 +644,24 @@ function detectMultiTaskText(text) {
 
 taskTextInput.addEventListener("input", () => {
   multiTaskHint.hidden = !detectMultiTaskText(taskTextInput.value);
+  // Оверлей-плейсхолдер и кнопка отправки живут от того же события.
+  composerPh.hidden = taskTextInput.value.length > 0;
+  btnComposerSend.disabled = taskTextInput.value.trim().length === 0;
 });
 
 btnSolve.addEventListener("click", async () => {
   hideCaptureError();
   hideModePrompt();
 
-  // Фото нет: запасной путь — условие, написанное словами. МИМО confirm
-  // (ученик сам написал текст, проверять распознавание нечего) — сразу в стрим,
-  // ровно той же веткой, что перерешивание после правки на confirm.
+  // Фото нет: в режиме решения эта кнопка скрыта (отправляет композер), ветка —
+  // страховка; в режиме проверки без фото — честная ошибка (текстом тетрадь
+  // не опишешь). Типизированный путь целиком в submitTypedTask (мимо confirm).
   if (!state.photo) {
-    const typed = taskTextInput.value.trim();
-    if (state.mode === "check" || !typed) {
-      // Пустое не отправляем; для проверки домашки текста недостаточно.
+    if (state.mode === "check" || !submitTypedTask()) {
       showCaptureError(state.mode === "check"
         ? "Сфотографируй страницу тетради с решением — проверяю по фото."
         : "Сфотографируй задачу или опиши её словами.");
-      return;
     }
-    state.solution = null;
-    state.recognizedText = typed;
-    recognizedTextEl.value = typed; // confirm-поле в курсе: возврат с решения покажет актуальный текст
-    const st = startSolveStream(
-      // textSource: 'typed' — свежий ввод, НЕ правка распознанного (textEdited
-      // не шлём: метрика «доля правок» не должна портиться ручным вводом).
-      { text: typed, grade: state.grade, subject: state.subject, textSource: "typed" },
-      { allowEarlyConfirm: false, allowPrompt: false }
-    );
-    renderSolutionStreaming(st);
-    showScreen("screen-solution");
-    st.promise.catch(() => {}); // сбой уже показан плашкой живого рендера
     return;
   }
 
