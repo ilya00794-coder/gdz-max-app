@@ -10,6 +10,7 @@ import { maxInitData, INIT_DATA_HEADER } from "./src/middleware/maxInitData.js";
 import { subscriptionGate, assertGatingReady, checkSubscription } from "./src/subscription.js";
 import { startBotPoller } from "./src/services/botChannel.js";
 import { startHourlyReports } from "./src/services/hourlyReport.js";
+import { startTunnelWatch } from "./src/services/tunnelWatch.js";
 import { allPlanSubjects, isComputableSubject } from "./src/services/subjects.js";
 import { hasBlockEntry } from "./src/data/subject-rules.js";
 
@@ -111,3 +112,6 @@ app.listen(PORT, () => {
 startBotPoller();
 // Часовой отчёт админам (10:00–22:00, hourlyReport.js).
 startHourlyReports();
+// Сторож работоспособности туннеля (граница: молчит при смерти бэкенда —
+// того поднимет launchd; см. session-state).
+startTunnelWatch();
