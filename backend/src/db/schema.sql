@@ -209,6 +209,25 @@ ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS stop_reason text;
 -- и «тихо лежащий сегмент» были невидимы. Композит на фронте: UA "wv" →
 -- android-приложение (Bridge platform ненадёжен — скакал ios/web на iPhone).
 ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS platform text;
+-- Усечённый хэш ключа кэша (03.09.2026, решение Ильи): sha256-часть ключа,
+-- необратим, текстов условий по-прежнему нет. Даёт долю повторов условий
+-- по ВСЕМ предметам → потолок кэша и решение про кэш непроверенных
+-- (гуманитарные) числом, а не верой. Пишется в solve-путях (hit и miss).
+ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS key_hash text;
+
+-- События интерфейса (03.09.2026): пока единственный класс — выбор режима
+-- на первом экране. Без этого «проверку домашки не нашли» неотличимо от
+-- «не нужна» (3 check-запроса при 267 solve за два дня, а в сценарий
+-- вложена половина бэклога). Персональных данных нет: user_hash необратим.
+CREATE TABLE IF NOT EXISTS ui_events (
+  id          bigserial   PRIMARY KEY,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  kind        text        NOT NULL CHECK (kind IN ('mode_solve', 'mode_check')),
+  user_hash   text,
+  platform    text,
+  start_param text
+);
+CREATE INDEX IF NOT EXISTS ui_events_kind_idx ON ui_events (kind, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS verify_events_route_source_idx
   ON verify_events (route, source, created_at DESC);
