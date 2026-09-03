@@ -357,6 +357,7 @@ html, body {
   display: flex;
   gap: 10px;
   padding-top: 16px;
+  margin-top: auto; /* кнопка у низа экрана (03.09), как setup-actions */
 }
 
 /* Кнопки перекрашиваются только на этом экране: классы .cta и .cta-outline
@@ -497,13 +498,22 @@ html, body {
    дельта-математика кропа не тронута. */
 .photo-viewport {
   width: 100%;
-  max-height: 55vh;   /* fallback для старых вебвью без svh */
-  max-height: 55svh;
+  /* Высота ВЫВОДИТСЯ из экрана (03.09, решение Ильи), а не константой:
+     210px — фикс-хром (шапка ~50 + отступы капчера ~46 + подсказка ~28 +
+     кнопка ~68 + рамка 16). Жёсткая height, не max-: при фото ниже окна
+     max- схлопнул бы окно и центрировать было бы не в чем. */
+  height: calc(100vh - 210px);   /* fallback для старых вебвью без svh */
+  height: calc(100svh - 210px);
   overflow-y: auto;
   touch-action: pan-y;
   overscroll-behavior: contain;
   border-radius: 8px;
+  /* Центр по вертикали при фото ниже окна: margin:auto у crop-frame внутри
+     flex-колонки; при переполнении margin схлопывается — скролл как был. */
+  display: flex;
+  flex-direction: column;
 }
+.photo-viewport .crop-frame { margin: auto 0; }
 
 .crop-frame { position: relative; line-height: 0; touch-action: pan-y; }
 
@@ -928,25 +938,76 @@ button.task-card:active { background: var(--l-accent-soft); }
 #screen-subscribe .cta:disabled { opacity: 0.55; }
 .subscribe-status { margin-bottom: 4px; font-size: 14px; color: #5b5a54; }
 
-/* ---------- поле «опиши словами» на экране съёмки (02.09) ----------
-   Запасной путь к фото: заметное, но не перебивает кадр — пунктирная рамка
-   тоньше и ниже тап-цели съёмки. Прячется при снимке и в режиме проверки. */
-.capture-text { margin-top: 10px; }
-.capture-text-input {
-  width: 100%;
-  box-sizing: border-box;
-  border: 1.5px dashed #c8c7c0;
-  border-radius: 14px;
-  padding: 10px 12px;
-  font: inherit;
-  font-size: 14px;
-  line-height: 1.4;
-  color: #444441;
+/* ---------- композер «опиши словами» (03.09; заменил пунктирную рамку) ----------
+   Поле-капсула у низа экрана, отправка кнопкой внутри справа. Место под
+   микрофон — слева от отправки, появится только если зонд подтвердит запись
+   звука (дырки в вёрстке до тех пор нет: кнопки лежат flex-рядом). */
+.composer { margin-top: auto; padding-top: 12px; }
+.composer-field {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  border: 1px solid var(--l-line);
+  border-radius: 22px;
   background: #fff;
-  resize: none;
+  padding: 8px 8px 8px 16px;
+  box-shadow: 0 2px 10px rgba(44, 44, 42, 0.07);
 }
-.capture-text-input::placeholder { color: #8b8a84; }
-.capture-text-input:focus { outline: none; border-color: #185fa5; border-style: solid; }
+.composer-field:focus-within { border-color: var(--l-accent); }
+.composer-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: none;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--l-text);
+  resize: none;
+  padding: 6px 0;
+  min-height: 24px;
+  max-height: 96px;
+}
+.composer-send {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: var(--l-accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.composer-send:disabled { background: var(--l-line); color: var(--l-muted); cursor: default; }
+/* Оверлей-плейсхолдер с переливом (№4): настоящий ::placeholder ненадёжен
+   для background-clip:text — анимируем свой span поверх пустого поля. */
+.composer-ph {
+  position: absolute;
+  left: 17px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: 15px;
+  background: linear-gradient(90deg, var(--l-muted) 30%, var(--l-accent) 50%, var(--l-muted) 70%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ph-wave 2.4s linear infinite;
+}
+@keyframes ph-wave {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .composer-ph { animation: none; background: none; color: var(--l-muted); }
+  .pending-pen svg { animation: none; }
+  .pending-dots span { animation: none; opacity: 1; }
+}
 .capture-text-hint {
   margin: 6px 2px 0;
   font-size: 12.5px;

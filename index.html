@@ -76,14 +76,6 @@
         <!-- Без capture: система сама предложит снять камерой или выбрать готовое фото. -->
         <input type="file" id="file-input" accept="image/*" hidden />
 
-        <!-- Запасной путь: условие словами вместо фото (только режим «решить»).
-             Прячется при сделанном снимке и в режиме проверки — фото главный сценарий. -->
-        <div class="capture-text" id="capture-text-block">
-          <textarea class="capture-text-input" id="task-text-input" rows="2"
-                    placeholder="Или опиши задачу словами"></textarea>
-          <p class="capture-text-hint" id="multi-task-hint" hidden>Похоже, тут несколько задач. Опиши одну — так решение будет точнее</p>
-        </div>
-
         <!-- После съёмки: снимок во всю ширину внутри окна фиксированной высоты
              (photo-viewport, прокрутка pan-y по свободному полю фото); рамка
              выделения сразу на нём. -->
@@ -119,7 +111,27 @@
           </div>
         </div>
 
-        <div class="capture-actions">
+        <!-- Композер (03.09): запасной путь «условие словами» — заметное
+             поле-капсула у низа экрана, отправка кнопкой внутри. Виден только
+             в режиме решения и до снимка; при фото вместо него — кнопка
+             «Решить». Плейсхолдер — оверлей (не ::placeholder: на нём
+             градиентная анимация ненадёжна), место под микрофон появится
+             слева от отправки, если зонд подтвердит запись звука. -->
+        <div class="composer" id="capture-text-block">
+          <p class="capture-text-hint" id="multi-task-hint" hidden>Похоже, тут несколько задач. Опиши одну — так решение будет точнее</p>
+          <div class="composer-field">
+            <textarea class="composer-input" id="task-text-input" rows="1"></textarea>
+            <span class="composer-ph" id="composer-ph" aria-hidden="true">Опиши задачу словами</span>
+            <button class="composer-send" id="btn-composer-send" type="button" aria-label="Решить" disabled>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 19V5M5 12l7-7 7 7" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="capture-actions" id="capture-actions">
           <button class="cta" id="btn-solve">Решить</button>
         </div>
       </div>
