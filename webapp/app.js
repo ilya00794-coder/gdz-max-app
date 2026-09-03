@@ -361,13 +361,15 @@ function enterCapture(mode) {
   showScreen("screen-capture");
 }
 
-// Выбор режима — в телеметрию (03.09): доля «Проверить домашку» отличает
-// «вход не нашли» от «сценарий не нужен». Fire-and-forget, UX не ждёт.
-function trackMode(kind) {
-  postJson("/api/ui-event", { kind }, 5000).catch(() => {});
+// События интерфейса — в телеметрию (03.09). Fire-and-forget, UX не ждёт.
+// mode_*: доля «Проверить домашку» отличает «вход не нашли» от «не нужен».
+// voice_*: отказы getUserMedia c err.name + успехи (знаменатель) — класс
+// был невидим, узнавали только от людей (репорт Android 03.09).
+function trackUi(kind, detail) {
+  postJson("/api/ui-event", { kind, ...(detail ? { detail } : {}) }, 5000).catch(() => {});
 }
-btnModeSolve.addEventListener("click", () => { trackMode("mode_solve"); enterCapture("solve"); });
-btnModeCheck.addEventListener("click", () => { trackMode("mode_check"); enterCapture("check"); });
+btnModeSolve.addEventListener("click", () => { trackUi("mode_solve"); enterCapture("solve"); });
+btnModeCheck.addEventListener("click", () => { trackUi("mode_check"); enterCapture("check"); });
 // Возврат к выбору класса — это начало новой сессии, снимки прошлой задачи не нужны.
 document.getElementById("btn-back-setup").addEventListener("click", () => {
   startNewTask();
@@ -715,7 +717,21 @@ async function toggleVoice() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (err) {
-    showCaptureError("Нет доступа к микрофону — разреши его в настройках или напиши текстом.");
+    trackUi("voice_fail", err.name || "unknown");
+    // Развод по err.name (решение Ильи 03.09). NotAllowedError в webview MAX
+    // Android = хост не реализовал onPermissionRequest: диалога НЕ БЫЛО,
+    // «разреши в настройках» — тупик (разрешение у приложения может быть
+    // выдано, а WebView всё равно откажет). Кнопку прячем НА СЕССИЮ (не
+    // навсегда: отказ мог быть случайным, MAX может обновиться — вернётся
+    // при следующем открытии). Прочие ошибки (NotFound/NotReadable/Abort)
+    // временные или наши — кнопку НЕ прячем, фичу не глушим.
+    if (err.name === "NotAllowedError") {
+      btnMic.hidden = true;
+      composerPh.textContent = "Опиши задачу словами";
+      showCaptureError("В приложении MAX микрофон пока недоступен — напиши текстом. В веб-версии MAX (через браузер) голос работает.");
+    } else {
+      showCaptureError("Микрофон сейчас не отвечает — попробуй ещё раз или напиши текстом.");
+    }
     return;
   }
   const mime = ["audio/mp4", "audio/webm"].find((m) => MediaRecorder.isTypeSupported?.(m));
@@ -734,6 +750,7 @@ async function toggleVoice() {
     try {
       const dataUrl = await fileToDataUrl(blob);
       const res = await postJson("/api/transcribe", { audioBase64: dataUrl }, 30000);
+      trackUi("voice_ok", rec.mimeType || mime || "unknown"); // знаменатель доли отказов
       if (res.text) {
         taskTextInput.value = taskTextInput.value.trim()
           ? taskTextInput.value.trim() + " " + res.text

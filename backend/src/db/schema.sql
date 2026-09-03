@@ -228,6 +228,14 @@ CREATE TABLE IF NOT EXISTS ui_events (
   start_param text
 );
 CREATE INDEX IF NOT EXISTS ui_events_kind_idx ON ui_events (kind, created_at DESC);
+-- Голосовые события (03.09, репорт живого Android-пользователя): voice_fail
+-- с err.name (NotAllowedError = хост MAX не дал getUserMedia) и voice_ok —
+-- знаменатель, без него доля отказов не считается. Класс был полностью
+-- невидим — узнавали только от людей. Пересоздание CHECK — как у source_check.
+ALTER TABLE ui_events ADD COLUMN IF NOT EXISTS detail text;
+ALTER TABLE ui_events DROP CONSTRAINT IF EXISTS ui_events_kind_check;
+ALTER TABLE ui_events ADD CONSTRAINT ui_events_kind_check
+  CHECK (kind IN ('mode_solve', 'mode_check', 'voice_ok', 'voice_fail'));
 
 CREATE INDEX IF NOT EXISTS verify_events_route_source_idx
   ON verify_events (route, source, created_at DESC);
