@@ -267,6 +267,14 @@ function errorResponse(err, { source, startedAt, transport, appVersion, userHash
   if (err instanceof ConfigError) {
     return { code: 503, body: { error: describeApiError(err) } };
   }
+  // Перегрузка Anthropic (529) — ДРУГОЕ действие для человека: подождать,
+  // а не переснимать. errorClass читает фронт: такой сбой НЕ идёт в серию
+  // «стены» (совет «сфотографируй иначе» при перегрузке был бы враньём).
+  // SDK уже сделал 3 попытки с бэкоффом — свой ретрай поверх не добавляем
+  // (решение Ильи 03.09).
+  if (err.status === 529 || /overloaded_error/.test(String(err.message))) {
+    return { code: 503, body: { error: "Сервис сейчас перегружен — попробуй через минуту.", errorClass: "overloaded" } };
+  }
   return { code: 500, body: { error: "Внутренняя ошибка при решении задачи", detail: describeApiError(err) } };
 }
 
