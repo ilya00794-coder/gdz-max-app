@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Бэкенд «Домашки в МАХ» под launchd (03.09.2026).
+  Причина: два процесса прода жили «на памяти» сессий Claude Code — тихая
+  смерть/чужой kill клали прод (инцидент 03.09: убит ngrok, ~5.5 мин простоя).
+  Источник правды — этот файл в репо; в ~/Library/LaunchAgents кладётся КОПИЯ
+  (scripts/install-launchd.sh). Правки — здесь, затем переустановка.
+
+  PATH обязателен: launchd не читает shell-профиль, а бэкенд зовёт через PATH
+  python3 (SymPy, /usr/bin), ffmpeg и whisper-cli (/opt/homebrew/bin).
+  Процедуры (рестарт/стоп/логи) — docs/session-state.md.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.gdz.backend</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/node</string>
+    <string>--env-file-if-exists=.env</string>
+    <string>server.js</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/ilya/projects/gdz-max-app/backend</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/Users/ilya/gdz-max-backend.log</string>
+  <key>StandardErrorPath</key><string>/Users/ilya/gdz-max-backend.log</string>
+</dict>
+</plist>
