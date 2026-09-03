@@ -967,8 +967,10 @@ function renderSolutionStreaming(st) {
         ? humanizeError(fin.code, { serverMessage: fin.body?.error })
         : (st.error?.message ?? "Что-то пошло не так на нашей стороне. Попробуй позже.");
       // Серия — только по техническим сбоям (5xx/двойной обрыв): у 4xx-отказов
-      // совет уже в самом тексте.
-      if (!fin || fin.code >= 500) msg = solverFailMessage(state.recognizedText, msg);
+      // совет уже в самом тексте. errorClass'ы с СОБСТВЕННЫМ действием
+      // (overloaded → «подожди минуту») в стену не идут: «сфотографируй
+      // иначе» при перегрузке было бы враньём (решение Ильи 03.09).
+      if ((!fin || fin.code >= 500) && !fin?.body?.errorClass) msg = solverFailMessage(state.recognizedText, msg);
       answerBlock.innerHTML = `<p class="answer-pending">${escapeHtml(msg)}</p>`;
     }
   };
@@ -1340,7 +1342,8 @@ function renderTaskStreamInto(card, index, st) {
         ? humanizeError(fin.code, { serverMessage: fin.body?.error })
         : (st.error?.message ?? "Что-то пошло не так на нашей стороне. Попробуй позже.");
       let wall = false;
-      if (!fin || fin.code >= 500) {
+      // errorClass с собственным действием (overloaded) — вне серии, см. выше.
+      if ((!fin || fin.code >= 500) && !fin?.body?.errorClass) {
         msg = solverFailMessage(state.sheetTasks?.[index]?.text ?? "", msg);
         wall = state.failStreak.count >= 2;
       }
@@ -1664,9 +1667,11 @@ function humanizeError(status, err) {
   if (status === 413) {
     return "Фото слишком большое. Сними одну задачу крупнее или сожми снимок.";
   }
-  // 4xx бэкенд формулирует для ученика сам (422 «переснимите», 400 про формат файла) —
-  // такой текст показываем как есть, он точнее любого общего.
-  if (status < 500 && err?.serverMessage) {
+  // Текст бэкенда показываем как есть НА ЛЮБОМ статусе: он всегда пишется
+  // для ученика (422 «переснимите», 503 «перегружен — подожди», 500
+  // «внутренняя ошибка») и точнее любого общего. Раньше 5xx-тексты
+  // молча глотались (дыра, найдена разбором 529 03.09).
+  if (err?.serverMessage) {
     return err.serverMessage;
   }
   return "Что-то пошло не так на нашей стороне. Попробуй позже.";
