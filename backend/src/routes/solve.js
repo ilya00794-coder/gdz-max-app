@@ -12,6 +12,13 @@ import { ConfigError, InputError, describeApiError, classifyUpstreamError } from
 
 const router = Router();
 
+/** Платформа клиента из X-Platform (композит фронта): белый список, мусор → null. */
+function requestPlatform(req) {
+  const v = req.get("X-Platform");
+  return ["ios", "android", "web"].includes(v) ? v : null;
+}
+
+
 /**
  * Общее ядро solve-пути для обычного и потокового маршрутов — расходиться
  * им нельзя (кэш, верификация, телеметрия и тексты ошибок одни на двоих).
@@ -20,7 +27,7 @@ const router = Router();
  * onStep(step, index) — шаги по мере генерации (только не-кэш, не-мульти путь);
  * onRecognized(recognizedText, recognition) — итог vision до начала решения.
  */
-async function runSolvePipeline({ body, source, startedAt, transport, appVersion, userHash, startParam, onStep, onRecognized }) {
+async function runSolvePipeline({ body, source, startedAt, transport, appVersion, platform, userHash, startParam, onStep, onRecognized }) {
   const { imagesBase64, text, subject, quarter, textEdited } = body;
   // Откуда текст: 'typed' — ученик написал сам (поле на экране съёмки),
   // 'edited' — правка распознанного. Белый список; мусор от кривого клиента → null.
@@ -83,7 +90,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
         inputTokens: visionUsage?.input_tokens ?? null,
         outputTokens: visionUsage?.output_tokens ?? null,
         costUsd: usageCost(visionUsage),
-        durationMs: Date.now() - startedAt, transport, appVersion, userHash, startParam,
+        durationMs: Date.now() - startedAt, transport, appVersion, platform, userHash, startParam,
         contentType: recognition?.contentType ?? null,
       });
       return {
@@ -106,7 +113,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
         inputTokens: visionUsage?.input_tokens ?? null,
         outputTokens: visionUsage?.output_tokens ?? null,
         costUsd: usageCost(visionUsage),
-        durationMs: Date.now() - startedAt, transport, appVersion, userHash, startParam,
+        durationMs: Date.now() - startedAt, transport, appVersion, platform, userHash, startParam,
         contentType: recognition?.contentType ?? null,
       });
       return {
@@ -127,7 +134,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
         inputTokens: visionUsage?.input_tokens ?? null,
         outputTokens: visionUsage?.output_tokens ?? null,
         costUsd: usageCost(visionUsage),
-        durationMs: Date.now() - startedAt, transport, appVersion, userHash, startParam,
+        durationMs: Date.now() - startedAt, transport, appVersion, platform, userHash, startParam,
         contentType: recognition?.contentType ?? null,
       });
       return { code: 200, body: { source: "recognized", multipleTasks: true, recognizedText, recognition } };
@@ -155,7 +162,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
       outputTokens: visionUsage?.output_tokens ?? null,
       durationMs: Date.now() - startedAt,
       textSource: imagesBase64?.length ? null : textSource,
-      transport, appVersion, userHash, startParam,
+      transport, appVersion, platform, userHash, startParam,
       contentType: recognition?.contentType ?? null,
     });
     // Записи до слияния visual+drawing (31.08.2026) хранят старые поля —
@@ -224,7 +231,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     durationMs: Date.now() - startedAt,
     textEdited: imagesBase64?.length ? null : (textEdited === true ? true : null),
     textSource: imagesBase64?.length ? null : textSource,
-    transport, appVersion, userHash, startParam,
+    transport, appVersion, platform, userHash, startParam,
     contentType: recognition?.contentType ?? null,
     cacheHit: false,
     inputTokens: totalUsage.input_tokens + totalUsage.cache_read_input_tokens + totalUsage.cache_creation_input_tokens,
@@ -246,7 +253,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
 }
 
 /** Общая обработка ошибок ядра: телеметрия + человеческий текст. */
-function errorResponse(err, { source, startedAt, transport, appVersion, userHash = null, startParam = null, rawUserId = null, grade = null, subject = null }) {
+function errorResponse(err, { source, startedAt, transport, appVersion, platform = null, userHash = null, startParam = null, rawUserId = null, grade = null, subject = null }) {
   console.error(err);
   if (err instanceof InputError) {
     return { code: 400, body: { error: describeApiError(err) } };
@@ -260,7 +267,7 @@ function errorResponse(err, { source, startedAt, transport, appVersion, userHash
     // stopReason — причина остановки модели при parse-сбоях solver.
     grade, subject,
     stopReason: err.stopReason ?? null,
-    transport, appVersion, userHash, startParam,
+    transport, appVersion, platform, userHash, startParam,
   });
   // Немедленный алерт админам; живой пользователь запоминается для /починили.
   reportError({ kind, reason: err.message, route: "solve", source, userId: rawUserId });
@@ -290,11 +297,12 @@ router.post("/", async (req, res) => {
   const appVersion = req.get("X-App-Version") ?? null;
   const userHash = hashUser(req.max?.userId);
   const startParam = req.max?.params?.start_param ?? null;
+  const platform = requestPlatform(req);
   try {
-    const { code, body } = await runSolvePipeline({ body: req.body, source, startedAt, transport, appVersion, userHash, startParam });
+    const { code, body } = await runSolvePipeline({ body: req.body, source, startedAt, transport, appVersion, platform, userHash, startParam });
     res.status(code).json(body);
   } catch (err) {
-    const { code, body } = errorResponse(err, { source, startedAt, transport, appVersion, userHash, startParam, rawUserId: req.max?.userId ?? null, grade: Number(req.body?.grade) || null, subject: req.body?.subject ?? null });
+    const { code, body } = errorResponse(err, { source, startedAt, transport, appVersion, platform, userHash, startParam, rawUserId: req.max?.userId ?? null, grade: Number(req.body?.grade) || null, subject: req.body?.subject ?? null });
     res.status(code).json(body);
   }
 });
@@ -326,13 +334,13 @@ router.post("/stream", async (req, res) => {
   try {
     const { code, body } = await runSolvePipeline({
       body: req.body, source, startedAt, transport: "stream", appVersion: req.get("X-App-Version") ?? null,
-      userHash, startParam,
+      platform: requestPlatform(req), userHash, startParam,
       onRecognized: (recognizedText, recognition) => send({ type: "recognized", recognizedText, recognition }),
       onStep: (step, index) => send({ type: "step", index, step }),
     });
     send({ type: "final", code, body });
   } catch (err) {
-    const { code, body } = errorResponse(err, { source, startedAt, transport: "stream", appVersion: req.get("X-App-Version") ?? null, userHash, startParam, rawUserId: req.max?.userId ?? null, grade: Number(req.body?.grade) || null, subject: req.body?.subject ?? null });
+    const { code, body } = errorResponse(err, { source, startedAt, transport: "stream", appVersion: req.get("X-App-Version") ?? null, platform: requestPlatform(req), userHash, startParam, rawUserId: req.max?.userId ?? null, grade: Number(req.body?.grade) || null, subject: req.body?.subject ?? null });
     send({ type: "error", code, body });
   } finally {
     if (!closed) res.end();

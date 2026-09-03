@@ -205,6 +205,10 @@ ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS text_source text;
 -- «5 обрывов JSON подряд»): без неё класс сбоя (max_tokens/refusal/…) был
 -- невидим в разборе. Заполняется только у ошибок.
 ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS stop_reason text;
+-- Платформа клиента ios/android/web (03.09.2026, кейс RMX3851): доли платформ
+-- и «тихо лежащий сегмент» были невидимы. Композит на фронте: UA "wv" →
+-- android-приложение (Bridge platform ненадёжен — скакал ios/web на iPhone).
+ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS platform text;
 
 CREATE INDEX IF NOT EXISTS verify_events_route_source_idx
   ON verify_events (route, source, created_at DESC);

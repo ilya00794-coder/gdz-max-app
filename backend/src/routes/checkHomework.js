@@ -61,6 +61,7 @@ export function isMultiTaskAnswer(answer) {
 router.post("/", async (req, res) => {
   const startedAt = Date.now();
   const source = requestSource(req);
+  const platform = ["ios", "android", "web"].includes(req.get("X-Platform")) ? req.get("X-Platform") : null;
   const appVersion = req.get("X-App-Version") ?? null;
   const userHash = hashUser(req.max?.userId);
   const startParam = req.max?.params?.start_param ?? null;
@@ -112,7 +113,7 @@ router.post("/", async (req, res) => {
         inputTokens: recognized.usage?.input_tokens ?? null,
         outputTokens: recognized.usage?.output_tokens ?? null,
         costUsd: usageCost(recognized.usage),
-        durationMs: Date.now() - startedAt, appVersion, userHash, startParam,
+        durationMs: Date.now() - startedAt, appVersion, platform, userHash, startParam,
       });
       delete recognized.usage;
       return res.status(422).json({
@@ -126,7 +127,7 @@ router.post("/", async (req, res) => {
     // Дальше придёт фрагментный запрос с workText выбранной задачи.
     if (Array.isArray(recognized.tasks) && recognized.tasks.length > 1) {
       recordVerifyEvent({
-        route: "check", source, appVersion, grade, subject,
+        route: "check", source, appVersion, platform, grade, subject,
         multiTask: true, reason: "multiple_tasks_choice",
         durationMs: Date.now() - startedAt,
         userHash, startParam,
@@ -196,7 +197,7 @@ router.post("/", async (req, res) => {
     stage = "verify";
     const isMulti = Boolean(comparison.studentFinalAnswer && isMultiTaskAnswer(comparison.studentFinalAnswer));
     recordVerifyEvent({
-      route: "check", source, appVersion, grade, subject,
+      route: "check", source, appVersion, platform, grade, subject,
       verified: answerCheck.verified, method: answerCheck.method,
       reason: answerCheck.details?.reason ?? null,
       multiTask: isMulti,
@@ -257,11 +258,11 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: describeApiError(err) });
     }
     if (err instanceof ConfigError) {
-      recordVerifyEvent({ route: "check", source, grade, subject, durationMs: Date.now() - startedAt, errorKind: "config", reason: String(err.message).slice(0, 200), userHash, startParam });
+      recordVerifyEvent({ route: "check", source, grade, subject, durationMs: Date.now() - startedAt, errorKind: "config", reason: String(err.message).slice(0, 200), platform, userHash, startParam });
       reportError({ kind: "config", reason: err.message, route: "check", source, userId: req.max?.userId ?? null });
       return res.status(503).json({ error: describeApiError(err) });
     }
-    recordVerifyEvent({ route: "check", source, grade, subject, durationMs: Date.now() - startedAt, errorKind: stage, reason: String(err.message).slice(0, 200), userHash, startParam });
+    recordVerifyEvent({ route: "check", source, grade, subject, durationMs: Date.now() - startedAt, errorKind: stage, reason: String(err.message).slice(0, 200), platform, userHash, startParam });
     reportError({ kind: stage, reason: err.message, route: "check", source, userId: req.max?.userId ?? null });
     res.status(500).json({
       error: "Внутренняя ошибка при проверке домашней работы",

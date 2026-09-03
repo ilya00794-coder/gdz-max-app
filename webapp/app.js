@@ -177,6 +177,18 @@ if (window.visualViewport) {
   applyVvh();
 }
 
+// ---------- платформа для телеметрии (03.09, кейс RMX3851) ----------
+// Композит, потому что Bridge platform НЕНАДЁЖЕН (факт зонда: на iPhone в
+// приложении MAX скакал между "ios" и "web"). UA-маркер "wv" = Android
+// WebView (приложение) — приоритетнее. Ровно три значения, ничего лишнего.
+function platformTag() {
+  if (/; wv\)/.test(navigator.userAgent)) return "android"; // литеральный маркер Android WebView
+  const p = window.WebApp?.platform;
+  if (p === "ios" || p === "android") return p;
+  return "web";
+}
+const PLATFORM = platformTag();
+
 // ---------- навигация между экранами ----------
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach((el) => {
@@ -233,6 +245,7 @@ async function getJson(path, timeoutMs) {
         "ngrok-skip-browser-warning": "true",
         ...(max.initData ? { "X-Max-Init-Data": max.initData } : {}),
         ...(window.APP_VERSION ? { "X-App-Version": window.APP_VERSION } : {}),
+        "X-Platform": PLATFORM,
       },
       signal: controller.signal,
     });
@@ -801,6 +814,7 @@ async function readNdjson(path, payload, timeoutMs, onEvent) {
         "ngrok-skip-browser-warning": "true",
         ...(max.initData ? { "X-Max-Init-Data": max.initData } : {}),
         ...(window.APP_VERSION ? { "X-App-Version": window.APP_VERSION } : {}),
+        "X-Platform": PLATFORM,
       },
       body: JSON.stringify(payload),
       signal: controller.signal,
@@ -1696,6 +1710,7 @@ async function postJson(path, payload, timeoutMs) {
         // Подписанная строка запуска: бэкенд проверяет её и понимает, кто пришёл.
         ...(max.initData ? { "X-Max-Init-Data": max.initData } : {}),
         ...(window.APP_VERSION ? { "X-App-Version": window.APP_VERSION } : {}),
+        "X-Platform": PLATFORM,
       },
       body: JSON.stringify(payload),
       signal: controller.signal,

@@ -67,7 +67,7 @@ export function recordVerifyEvent(event) {
     textEdited = null, textSource = null, transport = null, appVersion = null,
     inputTokens = null, outputTokens = null, costUsd = null,
     cacheHit = null, userHash = null, startParam = null,
-    contentType = null, stopReason = null,
+    contentType = null, stopReason = null, platform = null,
   } = event;
   getPool()
     .query(
@@ -76,16 +76,16 @@ export function recordVerifyEvent(event) {
           answer_kind, multi_task, invariant_violation, parse_failure_kind,
           duration_ms, error_kind, text_edited, text_source, transport, app_version,
           input_tokens, output_tokens, cost_usd, cache_hit, user_hash, start_param,
-          content_type, stop_reason)
+          content_type, stop_reason, platform)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-               $17,$18,$19,$20,$21,$22,$23,$24,$25)`,
+               $17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
       [route, source, grade, subject, verified, method,
        reason ? String(reason).slice(0, 300) : null,
        answerKind, multiTask, invariantViolation, parseFailureKind,
        durationMs, errorKind, textEdited, textSource, transport, appVersion ? String(appVersion).slice(0, 60) : null,
        inputTokens, outputTokens, costUsd, cacheHit, userHash,
        startParam ? String(startParam).slice(0, 60) : null,
-       contentType, stopReason ? String(stopReason).slice(0, 40) : null]
+       contentType, stopReason ? String(stopReason).slice(0, 40) : null, platform]
     )
     .then(() => { consecutiveWriteFails = 0; })
     .catch((err) => {
