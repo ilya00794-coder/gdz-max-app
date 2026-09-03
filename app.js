@@ -738,6 +738,68 @@ function submitTypedTask() {
 
 btnComposerSend.addEventListener("click", () => { submitTypedTask(); });
 
+// ---------- голосовой ввод (03.09): MediaRecorder → /api/transcribe → поле ----------
+// Путь выбран зондом: SpeechRecognition в вебвью MAX мёртв (service-not-allowed),
+// запись работает (audio/mp4). Расшифровка — whisper.cpp на бэке. Текст падает
+// В ПОЛЕ композера (не авто-решение): ученик видит, правит, отправляет сам.
+// Кнопка появляется ТОЛЬКО при живом API (фича-детект) — в средах без записи
+// её нет, дырки в вёрстке тоже (flex-слот).
+const btnMic = document.getElementById("btn-composer-mic");
+let voiceRec = null; // активная запись: { rec, stream, timer }
+
+const VOICE_OK = Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+if (VOICE_OK) {
+  btnMic.hidden = false;
+  composerPh.textContent = "Опиши задачу словами или голосом";
+  btnMic.addEventListener("click", toggleVoice);
+}
+
+async function toggleVoice() {
+  if (voiceRec) { voiceRec.rec.stop(); return; } // второй тап — стоп
+  hideCaptureError();
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    showCaptureError("Нет доступа к микрофону — разреши его в настройках или напиши текстом.");
+    return;
+  }
+  const mime = ["audio/mp4", "audio/webm"].find((m) => MediaRecorder.isTypeSupported?.(m));
+  const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+  const chunks = [];
+  rec.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
+  rec.onstop = async () => {
+    clearTimeout(voiceRec?.timer);
+    voiceRec = null;
+    stream.getTracks().forEach((t) => t.stop());
+    btnMic.classList.remove("recording");
+    const blob = new Blob(chunks, { type: rec.mimeType || mime || "audio/mp4" });
+    if (blob.size < 1500) return; // случайный тап: полсекунды тишины не шлём
+    btnMic.disabled = true;
+    btnMic.classList.add("busy");
+    try {
+      const dataUrl = await fileToDataUrl(blob);
+      const res = await postJson("/api/transcribe", { audioBase64: dataUrl }, 30000);
+      if (res.text) {
+        taskTextInput.value = taskTextInput.value.trim()
+          ? taskTextInput.value.trim() + " " + res.text
+          : res.text;
+        // Один вход для подсказки/плейсхолдера/кнопки — как при ручном вводе.
+        taskTextInput.dispatchEvent(new Event("input"));
+      }
+    } catch (err) {
+      showCaptureError(err.message);
+    } finally {
+      btnMic.disabled = false;
+      btnMic.classList.remove("busy");
+    }
+  };
+  rec.start();
+  // Потолок записи 60 с: школьная задача короче, а бэкенд-лимит — 10 МБ.
+  voiceRec = { rec, stream, timer: setTimeout(() => rec.stop(), 60_000) };
+  btnMic.classList.add("recording");
+}
+
 /**
  * Признаки НЕСКОЛЬКИХ заданий в тексте: ≥2 буквенных пунктов («а) … б) …»)
  * или ≥2 строк, начинающихся с номера («1) …», «№2 …»). Только мягкая
