@@ -123,7 +123,36 @@ const state = {
   // без повторной генерации (решение Ильи).
   sheetTasks: null,
   taskState: new Map(), // index → { status: "streaming"|"done"|"error", solution }
+  // Защита от «удара в стену» (03.09, инцидент 5 одинаковых сбоев): серия
+  // solver-ошибок ПОДРЯД по одному и тому же условию (ключ — хэш текста).
+  failStreak: null, // { key, count }
 };
+
+/** Хэш условия для failStreak (djb2) — только чтобы отличать «та же задача». */
+function condKey(text) {
+  let h = 5381;
+  const s = String(text || "");
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return h.toString(16);
+}
+
+/** Чистый шаг серии: тот же ключ — растим счётчик, новый — серия с единицы. */
+function bumpFailStreak(streak, key) {
+  return streak && streak.key === key ? { key, count: streak.count + 1 } : { key, count: 1 };
+}
+
+/**
+ * Сообщение при сбое solver: со ВТОРОЙ одинаковой ошибки подряд по той же
+ * задаче (решение Ильи: второй одинаковый удар — уже стена) вместо
+ * технического текста — действенный совет; композер рядом.
+ */
+function solverFailMessage(conditionText, fallbackMsg) {
+  state.failStreak = bumpFailStreak(state.failStreak, condKey(conditionText));
+  if (state.failStreak.count >= 2) {
+    return "Эта задача у нас пока не получается — попробуй сфотографировать иначе или опиши словами.";
+  }
+  return fallbackMsg;
+}
 
 // ---------- клавиатура на iOS (WebKit): честная высота через visualViewport ----------
 // WebKit игнорирует interactive-widget (это Chromium-фича) и не сжимает
@@ -437,6 +466,7 @@ function startNewTask() {
   state.check = null;
   state.sheetTasks = null;
   state.taskState = new Map();
+  state.failStreak = null;
   recognizedTextEl.value = "";
   taskTextInput.value = "";
   multiTaskHint.hidden = true;
@@ -929,12 +959,16 @@ function renderSolutionStreaming(st) {
     st.onDone = null;
     await waitTypeQueue(); // допечатать начатое; ускорение делает это <1 с
     if (fin && fin.code === 200 && !fin.body.multipleTasks) {
+      state.failStreak = null; // успех рвёт серию
       state.solution = fin.body;
       completeStreamedSolution(fin.body);
     } else {
-      const msg = fin
+      let msg = fin
         ? humanizeError(fin.code, { serverMessage: fin.body?.error })
         : (st.error?.message ?? "Что-то пошло не так на нашей стороне. Попробуй позже.");
+      // Серия — только по техническим сбоям (5xx/двойной обрыв): у 4xx-отказов
+      // совет уже в самом тексте.
+      if (!fin || fin.code >= 500) msg = solverFailMessage(state.recognizedText, msg);
       answerBlock.innerHTML = `<p class="answer-pending">${escapeHtml(msg)}</p>`;
     }
   };
@@ -1296,16 +1330,23 @@ function renderTaskStreamInto(card, index, st) {
     st.onDone = null;
     await waitTypeQueue();
     if (fin && fin.code === 200 && !fin.body.multipleTasks) {
+      state.failStreak = null; // успех рвёт серию
       state.taskState.set(index, { status: "done", solution: fin.body });
       renderTaskDone(card, index, fin.body);
     } else {
       // error-статус: повторный тап по шапке = новая попытка (см. toggleTask).
       state.taskState.set(index, { status: "error", solution: null });
-      const msg = fin
+      let msg = fin
         ? humanizeError(fin.code, { serverMessage: fin.body?.error })
         : (st.error?.message ?? "Что-то пошло не так на нашей стороне. Попробуй позже.");
+      let wall = false;
+      if (!fin || fin.code >= 500) {
+        msg = solverFailMessage(state.sheetTasks?.[index]?.text ?? "", msg);
+        wall = state.failStreak.count >= 2;
+      }
+      // При «стене» не зовём тапнуть ещё раз — совет уже другой.
       acc.querySelector(".task-answer").innerHTML =
-        `<p class="answer-pending">${escapeHtml(msg)} Нажми на задачу ещё раз — попробуем снова.</p>`;
+        `<p class="answer-pending">${escapeHtml(msg)}${wall ? "" : " Нажми на задачу ещё раз — попробуем снова."}</p>`;
     }
   };
   if (st.final || st.error) st.onDone(st.final); // финал успел раньше подписки
