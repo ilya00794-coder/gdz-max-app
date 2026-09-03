@@ -371,6 +371,15 @@ function updatePhotoScrollHints() {
 }
 photoViewport.addEventListener("scroll", updatePhotoScrollHints);
 
+/** Дефолтная рамка: ~80% ВИДИМОЙ части окна превью — все четыре ручки в
+ * кадре сразу (раньше 80% всего фото уводили нижние ручки за окно на
+ * длинных снимках). Координаты — пиксели отображаемого изображения.
+ * Короткое фото: visH = h, формула вырождается в прежние 80% изображения. */
+function defaultCropRect(w, h, viewportH) {
+  const visH = Math.min(viewportH, h);
+  return { x: w * 0.1, y: visH * 0.1, w: w * 0.8, h: visH * 0.8 };
+}
+
 function showPhoto() {
   captureEmpty.hidden = true;
   capturePhoto.hidden = false;
@@ -383,9 +392,13 @@ function showPhoto() {
     const n = state.photo?.cropNorm;
     // Рамку храним в долях, а не в пикселях: размер картинки на экране
     // зависит от устройства и ориентации.
+    // Новый снимок показывается СНАЧАЛА (решение Ильи 03.09): scrollTop
+    // переживал смену фото, и рамка вставала бы по случайному месту.
+    // Сброс — ДО расчёта рамки.
+    photoViewport.scrollTop = 0;
     cropRect = n
       ? { x: n.x * w, y: n.y * h, w: n.w * w, h: n.h * h }
-      : { x: w * 0.1, y: h * 0.1, w: w * 0.8, h: h * 0.8 };
+      : defaultCropRect(w, h, photoViewport.clientHeight);
     drawCropBox();
     // Кромки-градиенты — после раскладки: scrollHeight известен только теперь.
     requestAnimationFrame(updatePhotoScrollHints);
