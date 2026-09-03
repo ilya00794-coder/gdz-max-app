@@ -152,9 +152,39 @@ function showMicProbe() {
     `<p id="mic-probe-live" style="margin:8px 0 0;color:#185fa5"></p>` +
     `<div style="display:flex;gap:8px;margin-top:10px">` +
     `<button id="mic-probe-run" style="flex:1;padding:9px;border:none;border-radius:9px;background:#185fa5;color:#fff">Проба записи 2 с</button>` +
+    `<button id="mic-probe-sr" style="flex:1;padding:9px;border:none;border-radius:9px;background:#0f6e56;color:#fff">Проба распознавания</button>` +
     `<button id="mic-probe-close" style="padding:9px 12px;border:1px solid #ccc;border-radius:9px;background:#fff">✕</button></div>`;
   panel.querySelector("#mic-probe-close").addEventListener("click", () => panel.remove());
   panel.querySelector("#mic-probe-run").addEventListener("click", runMicProbe);
+  panel.querySelector("#mic-probe-sr").addEventListener("click", runSpeechProbe);
+}
+
+/** Дозонд (03.09): конструктор SpeechRecognition в WKWebView часто ЕСТЬ, но
+ * падает на старте (service-not-allowed). Если реально работает — голос
+ * строим на нём: распознавание на устройстве, без записи и без ASR на бэке. */
+function runSpeechProbe() {
+  const out = document.getElementById("mic-probe-live");
+  const say = (t) => { out.textContent = t; };
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { say("SpeechRecognition отсутствует"); return; }
+  let got = false;
+  try {
+    const rec = new SR();
+    rec.lang = "ru-RU";
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    rec.onresult = (e) => {
+      got = true;
+      const t = e.results?.[0]?.[0];
+      say(`✅ РАСПОЗНАЛ: «${t?.transcript ?? "?"}» (уверенность ${t?.confidence?.toFixed(2) ?? "?"})`);
+    };
+    rec.onerror = (e) => { if (!got) say(`❌ SR-ошибка: ${e.error}`); };
+    rec.onend = () => { if (!got && !out.textContent.startsWith("❌")) say("SR завершился без результата (молчание?)"); };
+    rec.start();
+    say("слушаю — скажи фразу по-русски…");
+  } catch (err) {
+    say(`❌ SR не стартовал: ${err.name} — ${err.message}`);
+  }
 }
 
 async function runMicProbe() {
