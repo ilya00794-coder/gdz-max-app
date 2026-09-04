@@ -5,7 +5,7 @@
 set -e
 cd "$(dirname "$0")/.."
 UID_N=$(id -u)
-for name in com.gdz.backend com.gdz.tunnel; do
+for name in com.gdz.backend com.gdz.tunnel com.gdz.samples-gc; do
   launchctl bootout "gui/$UID_N/$name" 2>/dev/null || true
   cp "infra/launchd/$name.plist" "$HOME/Library/LaunchAgents/$name.plist"
   launchctl bootstrap "gui/$UID_N" "$HOME/Library/LaunchAgents/$name.plist"

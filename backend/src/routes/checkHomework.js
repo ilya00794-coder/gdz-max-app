@@ -9,6 +9,7 @@ import { reportError } from "../services/alerts.js";
 import { requestSource } from "../middleware/maxInitData.js";
 import { ConfigError, InputError, describeApiError } from "../services/anthropicClient.js";
 import { detectMisread } from "../services/misread.js";
+import { collectSample } from "../services/sampleCollector.js";
 
 const router = Router();
 
@@ -116,6 +117,7 @@ router.post("/", async (req, res) => {
         durationMs: Date.now() - startedAt, appVersion, platform, userHash, startParam,
       });
       delete recognized.usage;
+      collectSample({ imagesBase64, recognizedText: recognized.recognizedText ?? "", meta: { route: "check", grade, subject, verified: null, method: null, reason: "unreadable_work", answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(recognized.usage) } });
       return res.status(422).json({
         error: "Не удалось разобрать написанное в тетради — пересними ближе и при лучшем свете",
         recognition: recognized,
@@ -228,6 +230,7 @@ router.post("/", async (req, res) => {
       });
     }
 
+    collectSample({ imagesBase64, recognizedText: recognized.recognizedText, meta: { route: "check", grade, subject, verified: answerCheck.verified, method: answerCheck.method, reason: answerCheck.details?.reason ?? null, answer_kind: null, parse_failure_kind: isMulti ? "multi_task" : (!comparison.studentFinalAnswer ? "no_answer" : answerCheck.details?.code ?? null), cost_usd: usageCost(totalUsage) } });
     res.json({
       recognizedStudentWork: recognized.recognizedText,
       recognition: recognized,

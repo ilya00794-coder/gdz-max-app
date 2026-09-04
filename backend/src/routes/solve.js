@@ -8,6 +8,7 @@ import { reportError } from "../services/alerts.js";
 import { isSubjectAllowedForGrade, getSubjectsForGrade } from "../services/subjects.js";
 import { recordVerifyEvent, hashUser, addUsage, usageCost } from "../services/telemetry.js";
 import { requestSource } from "../middleware/maxInitData.js";
+import { collectSample } from "../services/sampleCollector.js";
 import { ConfigError, InputError, describeApiError, classifyUpstreamError } from "../services/anthropicClient.js";
 
 const router = Router();
@@ -93,6 +94,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
         durationMs: Date.now() - startedAt, transport, appVersion, platform, userHash, startParam,
         contentType: recognition?.contentType ?? null,
       });
+      collectSample({ imagesBase64, recognizedText: "", meta: { route: "solve", grade, subject, verified: null, method: null, reason: "no_task_found", answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(visionUsage) } });
       return {
         code: 422,
         body: {
@@ -116,6 +118,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
         durationMs: Date.now() - startedAt, transport, appVersion, platform, userHash, startParam,
         contentType: recognition?.contentType ?? null,
       });
+      collectSample({ imagesBase64, recognizedText, meta: { route: "solve", grade, subject, verified: null, method: null, reason: "low_confidence", answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(visionUsage) } });
       return {
         code: 422,
         body: { error: "Не удалось разобрать текст на фото — пересними ближе и при лучшем свете", recognition },
@@ -137,6 +140,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
         durationMs: Date.now() - startedAt, transport, appVersion, platform, userHash, startParam,
         contentType: recognition?.contentType ?? null,
       });
+      collectSample({ imagesBase64, recognizedText, meta: { route: "solve", grade, subject, verified: null, method: null, reason: "multiple_tasks_choice", answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(visionUsage) } });
       return { code: 200, body: { source: "recognized", multipleTasks: true, recognizedText, recognition } };
     }
   }
@@ -251,6 +255,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     }
   }
 
+  collectSample({ imagesBase64, recognizedText, meta: { route: "solve", grade, subject, verified: verification.verified, method: verification.method, reason: verification.details?.reason ?? null, answer_kind: solution.answerValues?.kind ?? null, parse_failure_kind: null, cost_usd: usageCost(totalUsage) } });
   return { code: 200, body: { ...result, source: "generated", recognizedText, recognition, cacheKey } };
 }
 

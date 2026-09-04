@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  GC образцов диагностики (04.09.2026): удаляет файлы старше 48 часов из
+  /Users/ilya/gdz-samples. -maxdepth 1 — в подкаталоги не ходит (решение
+  Ильи); путь захардкожен, без переменных и wildcard'ов. mkdir -p в обёртке —
+  чтобы отсутствие каталога не сыпало ошибку каждый час (выбор: обёртка,
+  не бэкенд — GC работает независимо от него). RunAtLoad — иначе после
+  перезагрузки Mac интервал стартует заново и первые файлы живут дольше 48 ч.
+  Лог — чтобы GC не мог перестать работать МОЛЧА.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.gdz.samples-gc</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>/bin/mkdir -p /Users/ilya/gdz-samples &amp;&amp; /usr/bin/find /Users/ilya/gdz-samples -maxdepth 1 -type f -mmin +2880 -delete</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>3600</integer>
+  <key>StandardOutPath</key><string>/Users/ilya/gdz-samples-gc.log</string>
+  <key>StandardErrorPath</key><string>/Users/ilya/gdz-samples-gc.log</string>
+</dict>
+</plist>
