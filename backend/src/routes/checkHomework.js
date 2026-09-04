@@ -120,6 +120,7 @@ router.post("/", async (req, res) => {
       collectSample({ imagesBase64, recognizedText: recognized.recognizedText ?? "", meta: { route: "check", grade, subject, verified: null, method: null, reason: "unreadable_work", answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(recognized.usage) } });
       return res.status(422).json({
         error: "Не удалось разобрать написанное в тетради — пересними ближе и при лучшем свете",
+        reason: "unreadable_work",
         recognition: recognized,
       });
     }

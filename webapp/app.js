@@ -636,17 +636,48 @@ function setButtonBusy(btn, busy, busyLabel) {
 }
 
 /** Сообщение об ошибке прямо на экране съёмки — чтобы можно было переснять, не уходя дальше. */
-function showCaptureError(text) {
+/** Полный возврат к съёмке БЕЗ перезагрузки (05.09, дубли в образцах:
+ * один разворот снимали по 2-3 раза через перезапуск). Сброс — существующим
+ * startNewTask (фото, тексты, решение, стрим — старый поток отсекается
+ * гейтом solveStream!==st); затем сразу системный выбор камеры/галереи.
+ * Гард 600 мс: двойной тап не даёт второго события. */
+let retakeBusy = false;
+function retake(tag) {
+  if (retakeBusy) return;
+  retakeBusy = true;
+  setTimeout(() => { retakeBusy = false; }, 600);
+  trackUi("retake", tag || "unknown");
+  startNewTask();
+  showScreen("screen-capture");
+  fileInput.click(); // жест пользователя — камера открывается сразу
+}
+
+/** retakeTag: показывает кнопку «Переснять» в плашке (detail = reason отказа).
+ * Без тега — прежняя плашка без кнопки (пустое поле, микрофон и т.п.). */
+function showCaptureError(text, { retakeTag } = {}) {
   let el = document.getElementById("capture-error");
   if (!el) {
-    el = document.createElement("p");
+    el = document.createElement("div");
     el.id = "capture-error";
     el.style.cssText =
       "margin:12px 0 0;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.4;" +
       "background:rgba(220,38,38,.12);color:#b91c1c;";
     document.querySelector(".capture-actions")?.insertAdjacentElement("beforebegin", el);
   }
-  el.textContent = text;
+  el.innerHTML = "";
+  const span = document.createElement("span");
+  span.textContent = text;
+  el.appendChild(span);
+  if (retakeTag) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "📷 Переснять";
+    btn.style.cssText =
+      "display:block;margin-top:8px;padding:8px 14px;border:none;border-radius:9px;" +
+      "background:#b91c1c;color:#fff;font:inherit;font-size:13px;cursor:pointer;";
+    btn.addEventListener("click", () => retake(retakeTag));
+    el.appendChild(btn);
+  }
   el.hidden = false;
 }
 
@@ -1069,7 +1100,8 @@ async function runRecognition(mode, payload, allowPrompt = true) {
   } catch (err) {
     if (err.notSubscribed) { showSubscribeScreen(); return; }
     // 422 — «не разобрали фото» или «печатного условия не найдено»: остаёмся на съёмке.
-    showCaptureError(err.message);
+    // Кнопка «Переснять» — detail несёт reason отказа (бэкенд шлёт его в body).
+    showCaptureError(err.message, { retakeTag: err.body?.reason ?? `http_${err.status ?? "x"}` });
   } finally {
     stopCheckStages();
     setButtonBusy(btnSolve, false);
@@ -1224,7 +1256,7 @@ async function checkFragment(task) {
     renderCheck(result);
     showScreen("screen-check");
   } catch (err) {
-    showCaptureError(err.message);
+    showCaptureError(err.message, { retakeTag: err.body?.reason ?? `http_${err.status ?? "x"}` });
   } finally {
     stopCheckStages();
     setButtonBusy(btnSolve, false);
@@ -2018,6 +2050,7 @@ function renderSolution(solution) {
 }
 
 btnNewTask.addEventListener("click", () => {
+  trackUi("retake", "solution"); // существующая кнопка результата = retake (решение Ильи 05.09)
   startNewTask();
   showScreen("screen-capture");
 });

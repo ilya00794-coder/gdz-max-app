@@ -102,6 +102,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
             "Не нашли на фото условия задачи. Сфотографируй условие целиком — " +
             "из учебника, с карточки или с доски. А если это уже решённая работа — " +
             "выбери на главном экране «Проверить домашку».",
+          reason: "no_task_found",
           recognition,
         },
       };
@@ -121,7 +122,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
       collectSample({ imagesBase64, recognizedText, meta: { route: "solve", grade, subject, verified: null, method: null, reason: "low_confidence", answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(visionUsage) } });
       return {
         code: 422,
-        body: { error: "Не удалось разобрать текст на фото — пересними ближе и при лучшем свете", recognition },
+        body: { error: "Не удалось разобрать текст на фото — пересними ближе и при лучшем свете", reason: "low_confidence", recognition },
       };
     }
 
