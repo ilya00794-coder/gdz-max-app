@@ -211,6 +211,11 @@ html, body {
 
 .btn-report { color: var(--l-danger); }
 
+/* Три кнопки под решением: подписи не рвём — не влезающая кнопка переносится
+   целиком на вторую строку (узкие экраны). Скоуп только на экран решения. */
+#screen-solution .sheet-actions { flex-wrap: wrap; }
+#screen-solution .sheet-actions .btn-light { white-space: nowrap; }
+
 
 /* =========================================================
    Экран выбора класса и предмета — светлый стиль A
