@@ -98,6 +98,40 @@ async function initMaxBridge() {
   updateSetupCta();
   setupShareButton(); // видимость «Скинуть другу» решается один раз, когда режим известен
   restoreLastGrade(); // последний класс — сразу к предметам, без лишнего тапа
+  renderAvatar();     // кружок профиля в шапке — только внутри MAX
+}
+
+// ---------- аватар в шапке (06.09) ----------
+// Фото из initDataUnsafe.user.photo_url. ПРИВАТНОСТЬ: photo_url живёт ТОЛЬКО
+// в DOM этого устройства — не отправляется в события/на бэкенд и не логируется.
+// Фолбэк двухступенчатый: пустой photo_url → инициалы; onerror (протухшая
+// CDN-ссылка) → те же инициалы. Битая картинка не показывается никогда.
+
+/** Инициалы из имени: «Илья Петров» → «ИП», пустое имя → "". Чистая, для тестов. */
+function initialsOf(user) {
+  const parts = [user?.first_name, user?.last_name]
+    .map((s) => String(s ?? "").trim())
+    .filter(Boolean);
+  return parts.slice(0, 2).map((s) => s[0].toUpperCase()).join("");
+}
+
+function renderAvatar() {
+  const el = document.getElementById("user-avatar");
+  if (!el || !max.user) return; // вне MAX (превью) кружка нет — шапка прежняя
+  const initials = initialsOf(max.user);
+  const showInitials = () => {
+    if (!initials) { el.hidden = true; return; } // ни фото, ни имени — без кружка
+    el.textContent = initials;
+    el.hidden = false;
+  };
+  const url = typeof max.user.photo_url === "string" ? max.user.photo_url.trim() : "";
+  if (!url) { showInitials(); return; }
+  const img = document.createElement("img");
+  img.alt = ""; // декоративный: имя пользователя экрану не нужно
+  img.onload = () => { el.textContent = ""; el.appendChild(img); el.hidden = false; };
+  img.onerror = showInitials;
+  img.src = url;
+  showInitials(); // инициалы сразу; фото заменит их, когда (и если) догрузится
 }
 
 document.addEventListener("DOMContentLoaded", initMaxBridge);

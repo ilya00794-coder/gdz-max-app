@@ -244,6 +244,26 @@ html, body {
 
 .brand-logo { height: 22px; width: auto; display: block; }
 
+/* Кружок профиля в шапке настройки: фото из MAX либо инициалы-фолбэк.
+   margin-left: auto — прижат к правому краю, напротив лого. */
+.avatar {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--l-accent-soft);
+  color: var(--l-accent);
+  font-family: var(--font-system);
+  font-size: 13px;
+  font-weight: 600;
+  flex: none;
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
 .setup {
   flex: 1;
   padding: 6px 20px 28px;
