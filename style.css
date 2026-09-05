@@ -135,6 +135,8 @@ html, body {
 .step-text { margin: 0; font-size: 14px; line-height: 1.6; color: var(--l-text-2); white-space: pre-line; overflow-x: auto; }
 /* Длинная формула KaTeX не переносится — пусть шаг скроллится вбок, а не режет её краем. */
 .answer-value { overflow-x: auto; }
+/* Ответ из нескольких строк (перечисление/перенос по ';'): столбик с зазором. */
+.answer-value + .answer-value { margin-top: 6px; }
 /* Моноширинный блок: запись столбиком/уголком из ```-ограждений солвера. */
 .step-pre { display: block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.45; white-space: pre; overflow-x: auto; background: var(--l-bg-soft, #F4F3EC); border-radius: 8px; padding: 8px 10px; margin: 6px 0; }
 .step-text .katex { color: var(--l-accent); }

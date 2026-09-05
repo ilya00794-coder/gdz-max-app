@@ -2026,11 +2026,96 @@ function renderGraphCard(graph) {
   renderMath(graphCard); // comment может содержать $...$
 }
 
+// ---------- разбор ответа на строки (05.09, читаемость) ----------
+// finalAnswer — одна строка без структуры (подпунктов в схеме нет), поэтому
+// раскладка — текстовая эвристика, СУЖЕННАЯ: сомнение = не трогать.
+
+/**
+ * Режет строку по ';' только на нулевой глубине скобок.
+ * Кривой баланс (незакрытая/лишняя скобка — модель оборвала) → null:
+ * решение «не трогать» принимает вызывающий. В минус глубина не уходит.
+ */
+function splitTopLevel(text) {
+  const parts = [];
+  let depth = 0, cur = "";
+  for (const ch of text) {
+    if ("([{".includes(ch)) depth += 1;
+    else if (")]}".includes(ch)) {
+      // ')' на нулевой глубине — легальна только как хвост метки пункта
+      // («а)», «12)») в начале куска: сама метка — скобка без пары.
+      if (depth === 0) {
+        if (ch !== ")" || !/^\s*([а-я]|\d{1,2})$/i.test(cur)) return null; // кривой баланс
+      } else depth -= 1;
+    }
+    if (ch === ";" && depth === 0) { parts.push(cur); cur = ""; }
+    else cur += ch;
+  }
+  if (depth !== 0) return null; // незакрытая скобка — баланс кривой
+  parts.push(cur);
+  return parts.map((p) => p.trim()).filter(Boolean);
+}
+
+/** Метка пункта в начале куска: буква а-з или 1-2 цифры со скобкой. */
+const LABELS = "абвгдежз";
+function labelOf(chunk) {
+  const m = /^([а-з]|\d{1,2})\)/.exec(chunk);
+  return m ? m[1] : null;
+}
+
+/** Следующая ожидаемая метка последовательности или null, если конец/не серия. */
+function nextLabel(label) {
+  if (/^\d+$/.test(label)) return String(Number(label) + 1);
+  const i = LABELS.indexOf(label);
+  return i >= 0 && i + 1 < LABELS.length ? LABELS[i + 1] : null;
+}
+
+/**
+ * Раскладка finalAnswer на строки для экрана:
+ * 1) перечисление подпунктов — только если ПЕРВЫЙ кусок начинается с метки
+ *    (а)/1)) и дальше метки идут строго последовательно, каждая сразу после ';'.
+ *    Минимум две метки. Иначе (метки кривые/одна) — строка целиком, не трогаем.
+ * 2) без меток: ≥2 ';' на нулевой глубине → перенос по ';' (порог решён по
+ *    516 реальным ответам: один ';' — «x = 5; x = 11» — остаётся строкой).
+ * 3) '$' в строке (2% ответов, KaTeX) и кривые скобки — не трогаем вовсе.
+ */
+function answerParts(finalAnswer) {
+  const text = String(finalAnswer ?? "").trim();
+  if (!text || text.includes("$")) return [text];
+  const chunks = splitTopLevel(text);
+  if (!chunks || chunks.length < 2) return [text];
+
+  if (labelOf(chunks[0])) {
+    // Кандидат в перечисление: группируем куски по последовательным меткам.
+    const groups = [];
+    let expected = labelOf(chunks[0]);
+    for (const chunk of chunks) {
+      const l = labelOf(chunk);
+      if (l && l === expected) {
+        groups.push(chunk);
+        expected = nextLabel(l);
+      } else if (l && l !== expected) {
+        return [text]; // метка вне последовательности — паттерн не строгий
+      } else if (groups.length) {
+        groups[groups.length - 1] += "; " + chunk; // внутренние ';' пункта
+      }
+    }
+    return groups.length >= 2 ? groups : [text];
+  }
+
+  // Без меток: перенос по ';' при двух и более разделителях.
+  if (chunks.length >= 3) return chunks.map((c, i) => (i < chunks.length - 1 ? c + ";" : c));
+  return [text];
+}
+// ---------- END разбор ответа ----------
+
 /** Разметка блока ответа вместе со строкой верификации. */
 function answerMarkup(solution) {
+  const lines = answerParts(solution.finalAnswer)
+    .map((p) => `<p class="answer-value">${escapeHtml(p)}</p>`)
+    .join("");
   return `
     <p class="answer-label">Ответ</p>
-    <p class="answer-value">${escapeHtml(solution.finalAnswer)}</p>
+    ${lines}
     ${verificationRow(solution.verification)}
   `;
 }
