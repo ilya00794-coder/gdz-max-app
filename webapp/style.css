@@ -211,10 +211,22 @@ html, body {
 
 .btn-report { color: var(--l-danger); }
 
-/* Три кнопки под решением: подписи не рвём — не влезающая кнопка переносится
-   целиком на вторую строку (узкие экраны). Скоуп только на экран решения. */
+/* Кнопки под решением: синяя «Скинуть другу» во всю ширину сверху,
+   под ней ряд из двух btn-light. Подписи не рвём. Скоуп только на экран решения. */
 #screen-solution .sheet-actions { flex-wrap: wrap; }
 #screen-solution .sheet-actions .btn-light { white-space: nowrap; }
+#screen-solution .sheet-actions .cta {
+  flex-basis: 100%;
+  padding: 13px 16px;
+  border: none;
+  border-radius: 10px;
+  background: var(--l-accent);
+  color: #fff;
+  font-family: var(--font-system);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+}
 
 
 /* =========================================================
