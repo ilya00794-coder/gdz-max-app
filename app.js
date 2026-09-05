@@ -95,6 +95,7 @@ async function initMaxBridge() {
   }
 
   updateSetupCta();
+  setupShareButton(); // видимость «Скинуть другу» решается один раз, когда режим известен
 }
 
 document.addEventListener("DOMContentLoaded", initMaxBridge);
@@ -2053,6 +2054,28 @@ btnNewTask.addEventListener("click", () => {
   trackUi("retake", "solution"); // существующая кнопка результата = retake (решение Ильи 05.09)
   startNewTask();
   showScreen("screen-capture");
+});
+
+// ---------- «Скинуть другу» (05.09) ----------
+// Ссылка ведёт на канал: метку перехода к ней прицепить нельзя (переход
+// целиком на стороне MAX), поэтому меряем ЖЕЛАНИЕ поделиться — клик.
+// Событие пишется ДО исхода шеринга: отмена на экране MAX тоже считается.
+const SHARE_TEXT = "Сфоткал задачу — получил решение по шагам. Держи:";
+
+/** Тройной страж: внутри MAX + не веб-версия + метод реально существует
+ * (в веб-версии MAX shareMaxContent не работает; фолбэка нет — прячем). */
+function setupShareButton() {
+  const canShare =
+    max.mode === "max" && PLATFORM !== "web" &&
+    typeof window.WebApp?.shareMaxContent === "function";
+  document.getElementById("btn-share").hidden = !canShare;
+}
+
+document.getElementById("btn-share").addEventListener("click", () => {
+  const detail = state.grade && state.subject ? `${state.grade}·${state.subject}` : "solution";
+  trackUi("share", detail);
+  window.WebApp.shareMaxContent({ text: SHARE_TEXT, link: CHANNEL_URL })
+    .catch((err) => console.warn("shareMaxContent:", err));
 });
 
 // ---------- сообщение об ошибке в ответе / проверке ----------
