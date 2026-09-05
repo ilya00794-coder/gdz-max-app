@@ -8,7 +8,10 @@ import { hashUser } from "../services/telemetry.js";
 
 // voice_* (03.09): отказы getUserMedia с err.name и успешные записи —
 // знаменатель для доли отказов. Класс был невидим, узнавали от людей.
-const KINDS = new Set(["mode_solve", "mode_check", "voice_ok", "voice_fail", "retake"]);
+// share (05.09): нажатие «Скинуть другу» под решением. Меряем ЖЕЛАНИЕ
+// поделиться (клик), не доходимость друга — осознанно. Знаменатель —
+// показы решения из verify_events, отдельного события показа нет.
+const KINDS = new Set(["mode_solve", "mode_check", "voice_ok", "voice_fail", "retake", "share"]);
 const router = Router();
 
 router.post("/", (req, res) => {
