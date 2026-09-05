@@ -97,6 +97,7 @@ async function initMaxBridge() {
   PLATFORM = platformTag(); // Bridge прогрет (initData дождались) — пересчёт раз на сессию
   updateSetupCta();
   setupShareButton(); // видимость «Скинуть другу» решается один раз, когда режим известен
+  restoreLastGrade(); // последний класс — сразу к предметам, без лишнего тапа
 }
 
 document.addEventListener("DOMContentLoaded", initMaxBridge);
@@ -225,10 +226,36 @@ const btnModeCheck = document.getElementById("btn-mode-check");
 
 renderChips(gradeRow, GRADES.map((g) => `${g} класс`), (label, btn) => {
   state.grade = GRADES[[...gradeRow.children].indexOf(btn)];
+  rememberGrade(state.grade);
   selectChip(gradeRow, btn);
   loadSubjects(state.grade);
   updateSetupCta();
 });
+
+// ---------- запоминание последнего класса (05.09) ----------
+// Один слой — localStorage (есть и в приложениях, и в веб-MAX); надёжность
+// в webview MAX не гарантирована, поэтому всё fail-open: хранилища нет или
+// значение битое → прежнее поведение, ученик выбирает класс сам.
+const LAST_GRADE_KEY = "gdz:lastGrade";
+
+/** Строго класс из GRADES, иначе null (NaN, 0, 13, мусор — отсекаются). */
+function parseSavedGrade(raw) {
+  const n = Number(raw);
+  return GRADES.includes(n) ? n : null;
+}
+
+function rememberGrade(grade) {
+  try { localStorage.setItem(LAST_GRADE_KEY, String(grade)); } catch { /* fail-open */ }
+}
+
+/** Вызывается из initMaxBridge: loadSubjects уйдёт уже с initData в заголовке. */
+function restoreLastGrade() {
+  try {
+    const n = parseSavedGrade(localStorage.getItem(LAST_GRADE_KEY));
+    if (n === null || state.grade !== null) return; // битое значение / класс уже выбран
+    gradeRow.children[GRADES.indexOf(n)]?.click(); // тот же путь, что живой тап по чипу
+  } catch { /* fail-open */ }
+}
 
 // ---------- предметы: список зависит от класса и приходит с бэкенда ----------
 
