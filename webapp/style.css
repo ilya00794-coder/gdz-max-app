@@ -244,6 +244,38 @@ html, body {
 
 .brand-logo { height: 22px; width: auto; display: block; }
 
+/* ===== Конкурс (06.09) ===== */
+/* Зелёная CTA конкурса: существующий токен --l-success из палитры,
+   специфичность равная #screen-setup .cta — правило ниже, выигрывает каскадом. */
+#screen-setup .cta-success { background: var(--l-success); }
+#screen-contest .setup-lead { font-size: 15px; line-height: 1.45; margin-top: 10px; }
+#screen-contest .cta {
+  width: 100%;
+  padding: 13px 16px;
+  border: none;
+  border-radius: 10px;
+  background: var(--l-success);
+  color: #fff;
+  font-family: var(--font-system);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+}
+#screen-contest .cta:disabled { opacity: 0.55; }
+.contest-form { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+.contest-input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 0.5px solid var(--l-line);
+  border-radius: 10px;
+  background: var(--l-bg);
+  color: var(--l-text);
+  font-family: var(--font-system);
+  font-size: 15px;
+}
+.contest-error { margin: 0; font-size: 14px; color: var(--l-danger); }
+.contest-done { margin-top: 16px; font-size: 16px; font-weight: 500; color: var(--l-success); }
+
 /* Кружок профиля в шапке настройки: фото из MAX либо инициалы-фолбэк.
    margin-left: auto — прижат к правому краю, напротив лого. */
 .avatar {

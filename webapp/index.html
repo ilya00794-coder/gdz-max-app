@@ -51,6 +51,9 @@
         </div>
 
         <div class="setup-actions">
+          <!-- Скрыта по умолчанию: показывается по GET /api/contest/status
+               (флаг конкурса живёт на бэке, во фронт не вшит). -->
+          <button class="cta cta-success" id="btn-contest" hidden>🏆 Выиграть iPhone 17e</button>
           <button class="cta" id="btn-mode-solve" disabled>Решить задачу</button>
           <button class="cta cta-secondary" id="btn-mode-check" disabled>Проверить домашку</button>
         </div>
@@ -249,6 +252,30 @@
           </svg>
           Ошибка в проверке
         </button>
+      </div>
+    </section>
+
+    <!-- Экран конкурса (06.09): условия + форма заявки. Пишет в тот же
+         список, что бот (POST /api/contest/entry). -->
+    <section class="screen screen-light" id="screen-contest" data-active="false">
+      <header class="brand-topbar brand-topbar--back">
+        <button class="sheet-back" id="btn-contest-back" aria-label="Назад">←</button>
+        <img class="brand-logo" src="assets/logo-header.svg" alt="домашка в max" />
+      </header>
+      <div class="setup">
+        <h1 class="setup-title">🏆 Выиграй новый iPhone 17e</h1>
+        <p class="setup-lead">Сними короткое видео, как пользуешься приложением «домашка•max» — Reels, Shorts, TikTok, VK Видео или другой формат.</p>
+        <p class="setup-lead">Вставь ссылку на видео ниже.</p>
+        <p class="setup-lead">Заявки принимаем до 30 сентября. Итоги объявим в нашем канале 10 октября — подпишись, чтобы не пропустить.</p>
+        <div class="contest-form" id="contest-form">
+          <input class="contest-input" id="contest-url" type="url" inputmode="url"
+                 placeholder="Ссылка на видео" />
+          <input class="contest-input" id="contest-contact" type="text" maxlength="200"
+                 placeholder="Как тебя найти в канале? (имя или ник)" />
+          <p class="contest-error" id="contest-error" hidden></p>
+          <button class="cta" id="btn-contest-send" type="button">Отправить</button>
+        </div>
+        <p class="contest-done" id="contest-done" hidden>Заявка принята! Победителя объявим 10 октября 🎉</p>
       </div>
     </section>
 

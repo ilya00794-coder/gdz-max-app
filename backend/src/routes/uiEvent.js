@@ -11,7 +11,9 @@ import { hashUser } from "../services/telemetry.js";
 // share (05.09): нажатие «Скинуть другу» под решением. Меряем ЖЕЛАНИЕ
 // поделиться (клик), не доходимость друга — осознанно. Знаменатель —
 // показы решения из verify_events, отдельного события показа нет.
-const KINDS = new Set(["mode_solve", "mode_check", "voice_ok", "voice_fail", "retake", "share"]);
+// contest (06.09): открытие экрана условий конкурса — воронка
+// «открыл → отправил» (отправки считает сама contest_entries).
+const KINDS = new Set(["mode_solve", "mode_check", "voice_ok", "voice_fail", "retake", "share", "contest"]);
 const router = Router();
 
 router.post("/", (req, res) => {

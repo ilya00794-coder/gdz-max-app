@@ -99,7 +99,47 @@ async function initMaxBridge() {
   setupShareButton(); // видимость «Скинуть другу» решается один раз, когда режим известен
   restoreLastGrade(); // последний класс — сразу к предметам, без лишнего тапа
   renderAvatar();     // кружок профиля в шапке — только внутри MAX
+  setupContestButton(); // кнопка конкурса — по статусу с бэка, fire-and-forget
 }
+
+// ---------- конкурс (06.09): кнопка, экран условий, отправка заявки ----------
+// Флаг конкурса живёт на бэке (CONTEST_MODE): кнопка появляется только при
+// active:true из /api/contest/status. Бэк недоступен → кнопки просто нет.
+function setupContestButton() {
+  getJson("/api/contest/status", 8000)
+    .then((s) => { if (s?.active === true) document.getElementById("btn-contest").hidden = false; })
+    .catch(() => {});
+}
+
+document.getElementById("btn-contest").addEventListener("click", () => {
+  trackUi("contest"); // воронка «открыл экран → отправил» (отправки считает contest_entries)
+  showScreen("screen-contest");
+});
+document.getElementById("btn-contest-back").addEventListener("click", () => showScreen("screen-setup"));
+
+document.getElementById("btn-contest-send").addEventListener("click", async () => {
+  const errEl = document.getElementById("contest-error");
+  const url = document.getElementById("contest-url").value.trim();
+  // Валидация ДО запроса: та же грамматика ссылки, что на бэке (http/https).
+  if (!/https?:\/\/\S+/i.test(url)) {
+    errEl.textContent = "Вставь полную ссылку на видео — она начинается с https://";
+    errEl.hidden = false;
+    return;
+  }
+  const btn = document.getElementById("btn-contest-send");
+  btn.disabled = true; // защита от даблклика — единственный дедуп (правило бота)
+  errEl.hidden = true;
+  try {
+    const contact = document.getElementById("contest-contact").value.trim();
+    await postJson("/api/contest/entry", { url, ...(contact ? { contact } : {}) }, 15000);
+    document.getElementById("contest-form").hidden = true;
+    document.getElementById("contest-done").hidden = false;
+  } catch (err) {
+    errEl.textContent = err.body?.error ?? err.message;
+    errEl.hidden = false;
+    btn.disabled = false;
+  }
+});
 
 // ---------- аватар в шапке (06.09) ----------
 // Фото из initDataUnsafe.user.photo_url. ПРИВАТНОСТЬ: photo_url живёт ТОЛЬКО
