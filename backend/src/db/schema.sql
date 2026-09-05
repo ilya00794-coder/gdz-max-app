@@ -267,3 +267,7 @@ CREATE TABLE IF NOT EXISTS contest_entries (
   url        text        NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+-- contact (06.09): необязательное «как тебя найти в канале» из формы
+-- в приложении. Бот его не шлёт — nullable, ботовский INSERT не задет.
+-- Ретенции у таблицы НЕТ — чистка после объявления победителя (бэклог, 10.10).
+ALTER TABLE contest_entries ADD COLUMN IF NOT EXISTS contact text;

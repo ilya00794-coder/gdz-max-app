@@ -6,6 +6,7 @@ import feedbackRouter from "./src/routes/feedback.js";
 import subjectsRouter from "./src/routes/subjects.js";
 import transcribeRouter from "./src/routes/transcribe.js";
 import uiEventRouter from "./src/routes/uiEvent.js";
+import contestRouter from "./src/routes/contestEntry.js";
 import { assertDatabaseReady, DATABASE_URL } from "./src/services/cache.js";
 import { maxInitData, INIT_DATA_HEADER } from "./src/middleware/maxInitData.js";
 import { subscriptionGate, assertGatingReady, checkSubscription } from "./src/subscription.js";
@@ -56,6 +57,7 @@ app.use("/api/check-homework", checkHomeworkRouter);
 app.use("/api/feedback", feedbackRouter);
 app.use("/api/transcribe", transcribeRouter); // голос → текст (whisper.cpp локально)
 app.use("/api/ui-event", uiEventRouter); // события интерфейса (выбор режима)
+app.use("/api/contest", contestRouter); // конкурс: статус + заявка из приложения (общий список с ботом)
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 

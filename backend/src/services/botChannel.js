@@ -67,8 +67,10 @@ const GREETING_TEXT =
   "домашку по фото тетради. Жми кнопку 👇";
 // Конкурс роликов: любое http/https в сообщении не-админа = заявка.
 // CONTEST_MODE выключен по умолчанию — вне конкурса поведение прежнее.
-const CONTEST_MODE = ["1", "true", "on", "yes"].includes(String(process.env.CONTEST_MODE || "").toLowerCase());
-const URL_RE = /https?:\/\/\S+/i;
+// export обоих (06.09): форма заявки в приложении (routes/contestEntry.js)
+// живёт тем же флагом и той же валидацией ссылки — поведение путей едино.
+export const CONTEST_MODE = ["1", "true", "on", "yes"].includes(String(process.env.CONTEST_MODE || "").toLowerCase());
+export const URL_RE = /https?:\/\/\S+/i;
 // Слова конкурса — короткий закрытый список (решение Ильи 02.09): сообщение
 // про конкурс БЕЗ ссылки → просим полную ссылку на ролик, а не описание.
 const CONTEST_WORDS_RE = /конкурс|ролик|тикток|видео|участ/i;
@@ -149,11 +151,13 @@ export async function resolveBotUsername() {
   return botUsername;
 }
 
-/** Заявка на конкурс: только user_id, ссылка, время (см. schema.sql). */
-async function saveContestEntry(userId, url) {
+/** Заявка на конкурс: user_id, ссылка, необязательный contact (см. schema.sql).
+ * export — тот же путь записи для формы в приложении (routes/contestEntry.js):
+ * один список участников. Бот зовёт двухаргументно → contact NULL. */
+export async function saveContestEntry(userId, url, contact = null) {
   return getPool().query(
-    `INSERT INTO contest_entries (user_id, url) VALUES ($1, $2)`,
-    [String(userId), String(url).slice(0, 500)]
+    `INSERT INTO contest_entries (user_id, url, contact) VALUES ($1, $2, $3)`,
+    [String(userId), String(url).slice(0, 500), contact ? String(contact).slice(0, 200) : null]
   );
 }
 
