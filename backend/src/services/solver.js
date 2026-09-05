@@ -13,7 +13,8 @@ import { getAllowedMethods, getStudiedTopics, isSubjectSupported } from "./curri
 import { subjectRules } from "../data/subject-rules.js";
 import { StepStreamParser } from "./streamSteps.js";
 
-const SolutionSchema = z.object({
+// export — для юнит-канареек схемы (structured output валидируется этим же объектом).
+export const SolutionSchema = z.object({
   steps: z
     .array(
       z.object({
@@ -80,6 +81,17 @@ const SolutionSchema = z.object({
           "ТОЛЬКО для kind 'expression', когда ответ — серия корней (тригонометрия): " +
             "формы через точку с запятой, Python-запись от n: 'pi/6 + 2*pi*n; 5*pi/6 + 2*pi*n' " +
             "или школьная '(-1)**n*pi/6 + pi*n'. Интервалы сюда НЕ пишутся — null."
+        ),
+      resultExpression: z
+        .string()
+        .nullable()
+        .describe(
+          "ТОЛЬКО для kind 'expression', когда ответ — одно символьное выражение " +
+            "(разложение на множители, упрощение, доказанное тождество): ответ в строгой " +
+            "Python/SymPy-записи — '(a-2)*(a**2+2*a+4)'. Умножение — явной звёздочкой, " +
+            "степень — '**', минус — ASCII-дефис. НЕПРАВИЛЬНО: '(a−2)(a²+2a+4)' " +
+            "(юникод, неявное умножение). Интервалы (setExpression), серии " +
+            "(seriesExpression) и числовые ответы — null."
         ),
     })
     .describe("Машинная форма финального ответа для автоматической проверки. Правило выбора kind — в инструкции, раздел «Поле answerValues»."),
