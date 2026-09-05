@@ -97,11 +97,6 @@ async function initMaxBridge() {
   PLATFORM = platformTag(); // Bridge прогрет (initData дождались) — пересчёт раз на сессию
   updateSetupCta();
   setupShareButton(); // видимость «Скинуть другу» решается один раз, когда режим известен
-
-  // ВРЕМЕННО (05.09, диагностика стража share): три значения стража глазами
-  // с телефона. В БД не пишется. Снять — удалить этот блок целиком.
-  const verEl = document.getElementById("app-version");
-  if (verEl) verEl.textContent += ` · m:${max.mode} p:${PLATFORM} s:${typeof window.WebApp?.shareMaxContent}`;
 }
 
 document.addEventListener("DOMContentLoaded", initMaxBridge);
