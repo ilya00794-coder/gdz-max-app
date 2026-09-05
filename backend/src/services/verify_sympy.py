@@ -649,6 +649,43 @@ def run_set(payload):
             "solved": str(solved), "candidate": str(candidate)}
 
 
+def run_identity(payload):
+    """mode=identity (06.09): ответ-выражение против формализации.
+
+    Тождество: expand(эталон − кандидат) == 0. Эталон — formalExpression как
+    есть: обёртка factor()/simplify() эквивалентность не меняет и вычисляется
+    белым списком; обёртка, меняющая смысл (solve → список), даст не-Expr
+    и уйдёт в Rejected — fail-closed.
+
+    Форма (слабая, только при factor()-эталоне): сырой парс кандидата БЕЗ
+    автоупрощения (evaluate=False — sympify свернул бы «3*(2*x+3)» в «6*x+9»
+    и убил бы проверку) + верхний узел Mul или Pow. Ловит «ответ не в виде
+    произведения» (включая нетронутый исходник), пропускает «разложено не до
+    конца» — осознанное решение из разведки формы 06.09.
+    """
+    expression = (payload.get("expression") or "").strip()
+    candidate_text = (payload.get("candidate") or "").strip()
+
+    reference = evaluate(expression)
+    candidate = evaluate(candidate_text)
+    if not isinstance(reference, sympy.Expr) or not isinstance(candidate, sympy.Expr):
+        raise Rejected("сравнение тождества применимо только к выражениям")
+
+    identical = sympy.expand(reference - candidate) == 0
+
+    form_required = bool(re.match(r"factor\s*\(", expression))
+    form_ok = True
+    if form_required and identical:
+        # Строка кандидата уже прошла AST-белый список в evaluate() выше —
+        # здесь только смотрим форму записи, ничего не вычисляя.
+        raw = sympy.parsing.sympy_parser.parse_expr(candidate_text, evaluate=False)
+        form_ok = isinstance(raw, (sympy.Mul, sympy.Pow))
+
+    return {"ok": True, "identical": bool(identical),
+            "formRequired": form_required, "formOk": bool(form_ok),
+            "reference": str(reference), "candidate": str(candidate)}
+
+
 def main():
     try:
         payload = json.load(sys.stdin)
@@ -671,6 +708,15 @@ def main():
         except Rejected as err:
             print(json.dumps({"ok": False, "reason": str(err)}, ensure_ascii=False))
         except Exception as err:  # fail-closed: неоднозначность = unsupported
+            print(json.dumps({"ok": False, "reason": f"{type(err).__name__}: {err}"}, ensure_ascii=False))
+        return
+
+    if payload.get("mode") == "identity":
+        try:
+            print(json.dumps(run_identity(payload), ensure_ascii=False))
+        except Rejected as err:
+            print(json.dumps({"ok": False, "reason": str(err)}, ensure_ascii=False))
+        except Exception as err:  # fail-closed: любой сбой = unsupported
             print(json.dumps({"ok": False, "reason": f"{type(err).__name__}: {err}"}, ensure_ascii=False))
         return
 

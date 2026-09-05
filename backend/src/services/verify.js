@@ -19,6 +19,14 @@ const SCRIPT_PATH = path.join(HERE, "verify_sympy.py");
 const PYTHON_BIN = process.env.PYTHON_BIN || "python3";
 const TIMEOUT_MS = Number(process.env.VERIFY_TIMEOUT_MS || 5000);
 
+// Аварийный флаг сверки ответов-выражений (06.09): off = прежний unsupported.
+// Верификат ложится в кэш, поэтому у правки ядра — выключатель; чистка при
+// беде: DELETE FROM solutions_cache WHERE verification_method='sympy-identity'.
+const EXPRESSION_VERIFY = ["1", "true", "on", "yes"].includes(String(process.env.EXPRESSION_VERIFY || "").toLowerCase());
+console.log(EXPRESSION_VERIFY
+  ? "[expr-verify] сверка ответов-выражений ВКЛЮЧЕНА (off + рестарт — аварийное выключение)"
+  : "[expr-verify] сверка ответов-выражений выключена");
+
 // Вычислимость предмета живёт в subjects.json при данных учебного плана —
 // isComputableSubject из services/subjects.js единственная точка входа
 // для прода и стенда (реэкспортируется ниже ради verifyHelpers стенда).
@@ -299,6 +307,39 @@ export async function verifyAnswer({ subject, expression, candidateAnswer, answe
           };
         } catch (err) {
           return { verified: false, confidence: 0, method: "unsupported", details: { reason: `сверка серий: ${err.message}` } };
+        }
+      }
+    }
+    // Ответ-одно-выражение (разложение, упрощение, тождество) — mode=identity:
+    // тождество expand(эталон − кандидат) == 0 плюс слабая форма при
+    // factor()-эталоне (схема согласована 06.09). FAIL-CLOSED, как соседи.
+    if (EXPRESSION_VERIFY && answerValues.resultExpression && expression) {
+      const candidate = String(answerValues.resultExpression).trim();
+      const reference = String(expression).trim();
+      if (isExpressionSafe(candidate) && isExpressionSafe(reference)) {
+        try {
+          const run = await runPython({ mode: "identity", expression: reference, candidate });
+          const parsed = run.code === 0 && !run.timedOut ? JSON.parse(run.stdout || "{}") : null;
+          if (parsed?.ok === true) {
+            if (parsed.identical === true && parsed.formOk === true) {
+              return {
+                verified: true, confidence: 1, method: "sympy-identity",
+                details: { reference: parsed.reference, formRequired: parsed.formRequired },
+              };
+            }
+            return {
+              verified: false, confidence: 0, method: "sympy-identity",
+              details: parsed.identical === true
+                ? { reason: "не в разложенной форме", candidate: parsed.candidate }
+                : { reason: "тождество не подтвердилось", reference: parsed.reference, candidate: parsed.candidate },
+            };
+          }
+          return {
+            verified: false, confidence: 0, method: "unsupported",
+            details: { reason: `сверка тождества не разобрала форму: ${parsed?.reason ?? "сбой процесса"}` },
+          };
+        } catch (err) {
+          return { verified: false, confidence: 0, method: "unsupported", details: { reason: `сверка тождества: ${err.message}` } };
         }
       }
     }
