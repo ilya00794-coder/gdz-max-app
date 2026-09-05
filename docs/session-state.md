@@ -339,7 +339,10 @@
 - docs/project-handoff.md — MAX API, правила проверок доставки, правило
   версии нормализации, правило свежих наборов + правила орг-кода 2,3
   (реестр парных точек, новый фронт-модуль).
-- backend/src/services/: verify_sympy.py (mode set/series/plot), verify.js,
+- backend/src/services/: verify_sympy.py (mode set/series/plot/identity —
+  identity 06.09: тождество+форма для expression, флаг EXPRESSION_VERIFY,
+  аварийная чистка кэша DELETE по verification_method='sympy-identity'),
+  verify.js,
   cache.js (NORM_VERSION), botChannel (посты+конкурс 3 ветки+команды),
   alerts (лог успешной отправки), hourlyReport, telemetry (usage/hashUser),
   figure, subscription.
