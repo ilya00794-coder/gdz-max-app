@@ -17,6 +17,7 @@ const router = Router();
 // байт-в-байт прежнее, поля completeness просто игнорируются. Читается
 // один раз при старте — выключение требует рестарта.
 const INCOMPLETE_DETECTOR = ["1", "true", "on", "yes"].includes(String(process.env.INCOMPLETE_DETECTOR || "").toLowerCase());
+if (INCOMPLETE_DETECTOR) console.log("[incomplete] детектор неполного условия ВКЛЮЧЁН (off + рестарт — аварийное выключение)");
 
 /** Платформа клиента из X-Platform (композит фронта): белый список, мусор → null. */
 function requestPlatform(req) {
