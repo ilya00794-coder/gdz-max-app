@@ -13,6 +13,11 @@ import { ConfigError, InputError, describeApiError, classifyUpstreamError } from
 
 const router = Router();
 
+// АВАРИЙНЫЙ флаг детектора неполного условия (05.09): off = поведение
+// байт-в-байт прежнее, поля completeness просто игнорируются. Читается
+// один раз при старте — выключение требует рестарта.
+const INCOMPLETE_DETECTOR = ["1", "true", "on", "yes"].includes(String(process.env.INCOMPLETE_DETECTOR || "").toLowerCase());
+
 /** Платформа клиента из X-Platform (композит фронта): белый список, мусор → null. */
 function requestPlatform(req) {
   const v = req.get("X-Platform");
@@ -144,6 +149,35 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
       collectSample({ imagesBase64, recognizedText, meta: { route: "solve", grade, subject, verified: null, method: null, reason: "multiple_tasks_choice", answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(visionUsage) } });
       return { code: 200, body: { source: "recognized", multipleTasks: true, recognizedText, recognition } };
     }
+  }
+
+  // ДЕТЕКТОР НЕПОЛНОГО УСЛОВИЯ (05.09, боевой). Порядок в гонке классов —
+  // ЯВНОЕ РЕШЕНИЕ: no_task_found, low_confidence и развилка multi_task
+  // ВЫИГРЫВАЮТ (стоят выше) — исторические классы телеметрии не размываются,
+  // детектор ловит только то, что раньше ушло бы в solver. Solver при
+  // срабатывании НЕ вызывается — не платим. Принцип: полноту проверяем МЫ,
+  // решение с оговоркой не показывается вообще.
+  if (INCOMPLETE_DETECTOR && recognition?.completeness && recognition.completeness !== "complete") {
+    const c = recognition.completeness;
+    const reason = c === "cut_off" ? "incomplete_cut" : c === "external_ref" ? "incomplete_ref" : "incomplete_unreadable";
+    const refN = recognition.externalRef ?? "";
+    const text =
+      c === "cut_off"
+        ? "Задача видна не полностью — часть условия осталась за краем. Сфотографируй задание целиком."
+        : c === "external_ref"
+        ? `В задании есть ссылка на другое задание${refN ? ` (задание ${refN})` : ""}. Сфотографируй его тоже.`
+        : "Не получается разобрать текст. Попробуй снять ближе и без бликов.";
+    recordVerifyEvent({
+      route: "solve", source, grade, subject,
+      errorKind: "refusal", reason,
+      inputTokens: visionUsage?.input_tokens ?? null,
+      outputTokens: visionUsage?.output_tokens ?? null,
+      costUsd: usageCost(visionUsage),
+      durationMs: Date.now() - startedAt, transport, appVersion, platform, userHash, startParam,
+      contentType: recognition?.contentType ?? null,
+    });
+    collectSample({ imagesBase64, recognizedText, meta: { route: "solve", grade, subject, verified: null, method: null, reason, answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(visionUsage) } });
+    return { code: 422, body: { error: text, reason, recognition } };
   }
 
   onRecognized?.(recognizedText, recognition);
