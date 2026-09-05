@@ -94,8 +94,14 @@ async function initMaxBridge() {
     showSetupNotice("Превью вне MAX: часть возможностей недоступна.", "info");
   }
 
+  PLATFORM = platformTag(); // Bridge прогрет (initData дождались) — пересчёт раз на сессию
   updateSetupCta();
   setupShareButton(); // видимость «Скинуть другу» решается один раз, когда режим известен
+
+  // ВРЕМЕННО (05.09, диагностика стража share): три значения стража глазами
+  // с телефона. В БД не пишется. Снять — удалить этот блок целиком.
+  const verEl = document.getElementById("app-version");
+  if (verEl) verEl.textContent += ` · m:${max.mode} p:${PLATFORM} s:${typeof window.WebApp?.shareMaxContent}`;
 }
 
 document.addEventListener("DOMContentLoaded", initMaxBridge);
@@ -188,7 +194,9 @@ function platformTag() {
   if (p === "ios" || p === "android") return p;
   return "web";
 }
-const PLATFORM = platformTag();
+// let, не const: значение при парсинге — гонка с прогревом Bridge (на iOS
+// стабильно застывало "web"); окончательное — пересчёт в initMaxBridge.
+let PLATFORM = platformTag();
 
 // ---------- навигация между экранами ----------
 function showScreen(id) {
