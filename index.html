@@ -32,6 +32,9 @@
     <section class="screen screen-light" id="screen-setup" data-active="true">
       <header class="brand-topbar">
         <img class="brand-logo" src="assets/logo-header.svg" alt="домашка в max" />
+        <!-- Аватар из initDataUnsafe.user: рисуется только в MAX (см. renderAvatar).
+             Фото живёт ТОЛЬКО в этом DOM — на бэкенд/в события photo_url не уходит. -->
+        <span class="avatar" id="user-avatar" hidden></span>
       </header>
 
       <div class="setup">
