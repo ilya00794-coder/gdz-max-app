@@ -53,6 +53,12 @@ export function collectSample({ imagesBase64, recognizedText, meta }) {
       const d = new Date();
       const stamp = d.toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
       const prefix = `${stamp}_${crypto.randomBytes(3).toString("hex")}`;
+      // Подпапки <класс>/<предмет> (этап 4 роутинга, 06.09): раскладка для
+      // пакетного Opus-сравнения. GC-агент чистит с -maxdepth 3 (privacy!).
+      const gradeDir = String(meta?.grade ?? "na");
+      const subjDir = String(meta?.subject ?? "na").replace(/[\/\\]/g, "-").slice(0, 40) || "na";
+      const dir = path.join(DIR, gradeDir, subjDir);
+      mkdirSync(dir, { recursive: true });
 
       const raw = String(imagesBase64[0]);
       const m = raw.match(/^data:([a-z/+.-]+);base64,(.*)$/is);
@@ -60,9 +66,9 @@ export function collectSample({ imagesBase64, recognizedText, meta }) {
       const bytes = Buffer.from((m ? m[2] : raw).replace(/\s+/g, ""), "base64");
       const ext = EXT[mediaType] ?? "bin";
 
-      writeFileSync(path.join(DIR, `${prefix}.${ext}`), bytes);
-      writeFileSync(path.join(DIR, `${prefix}.txt`), String(recognizedText ?? ""));
-      writeFileSync(path.join(DIR, `${prefix}.json`), JSON.stringify({ ts: d.toISOString(), ...meta }, null, 2));
+      writeFileSync(path.join(dir, `${prefix}.${ext}`), bytes);
+      writeFileSync(path.join(dir, `${prefix}.txt`), String(recognizedText ?? ""));
+      writeFileSync(path.join(dir, `${prefix}.json`), JSON.stringify({ ts: d.toISOString(), ...meta }, null, 2));
     } catch (err) {
       console.warn("[samples] запись образца не удалась:", err.message);
     }
