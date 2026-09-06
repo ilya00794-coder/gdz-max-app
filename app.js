@@ -2142,7 +2142,7 @@ function renderGraphCard(graph) {
  * Кривой баланс (незакрытая/лишняя скобка — модель оборвала) → null:
  * решение «не трогать» принимает вызывающий. В минус глубина не уходит.
  */
-function splitTopLevel(text) {
+function splitTopLevel(text, sep = ";") {
   const parts = [];
   let depth = 0, cur = "";
   for (const ch of text) {
@@ -2154,7 +2154,7 @@ function splitTopLevel(text) {
         if (ch !== ")" || !/^\s*([а-я]|\d{1,2})$/i.test(cur)) return null; // кривой баланс
       } else depth -= 1;
     }
-    if (ch === ";" && depth === 0) { parts.push(cur); cur = ""; }
+    if (ch === sep && depth === 0) { parts.push(cur); cur = ""; }
     else cur += ch;
   }
   if (depth !== 0) return null; // незакрытая скобка — баланс кривой
@@ -2188,6 +2188,16 @@ function nextLabel(label) {
 function answerParts(finalAnswer) {
   const text = String(finalAnswer ?? "").trim();
   if (!text || text.includes("$")) return [text];
+  // Список «слово (разбор)» гуманитарных (06.09): части разделены запятыми
+  // на нулевой глубине, КАЖДАЯ кончается скобочной группой помет. Запятые
+  // внутри «(Т.п., 2-е скл., -ем)» под защитой глубины; десятичные «1,5»
+  // ветку не включат — числа скобкой не кончаются. Порог ≥3 — двойной страж.
+  // Стоит ДО ';'-логики: у гуманитарного списка ';' нет вовсе.
+  const byComma = splitTopLevel(text, ",");
+  if (byComma && byComma.length >= 3 && byComma.every((p) => /\)[.!]?\s*$/.test(p))) {
+    return byComma.map((c, i) => (i < byComma.length - 1 ? c + "," : c));
+  }
+
   const chunks = splitTopLevel(text);
   if (!chunks || chunks.length < 2) return [text];
 
