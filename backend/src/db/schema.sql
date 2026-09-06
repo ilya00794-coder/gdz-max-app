@@ -185,6 +185,12 @@ ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS start_param   text;
 -- solver_model (06.09): какая модель решала — обязательна ДО включения
 -- роутинга Haiku/Opus, иначе контроль качества роутинга слеп.
 ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS solver_model  text;
+-- Визуализации (06.09, этап 1в чертежей): ФАКТИЧЕСКИ показанное ребёнку —
+-- figure_kind после validateFigure (reject → null), has_graph после
+-- computeGraphPlots (сбой расчёта → false). Частота — база решений
+-- об этапах 2-3 (стереометрия/сечения).
+ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS figure_kind   text;
+ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS has_graph     boolean;
 -- Наблюдение vision о снимке (printed_task | handwritten_task |
 -- handwritten_work | unclear; null у текстовых запросов) — для октябрьского
 -- решения по кэшам: печатные условия распознаются байт-в-байт (кэшируемы),

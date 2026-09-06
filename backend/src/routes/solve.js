@@ -201,6 +201,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     recordVerifyEvent({
       route: "solve", source, grade, subject,
       cacheHit: true, costUsd: 0, keyHash, solverModel: cached.solverModel ?? null,
+      figureKind: (cached.figure ?? legacyFigure(cached))?.kind ?? null, hasGraph: Boolean(cached.graph),
       inputTokens: visionUsage?.input_tokens ?? null,
       outputTokens: visionUsage?.output_tokens ?? null,
       durationMs: Date.now() - startedAt,
@@ -271,6 +272,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     transport, appVersion, platform, userHash, startParam,
     contentType: recognition?.contentType ?? null,
     cacheHit: false, keyHash, solverModel: solution.solverModel ?? null,
+    figureKind: result.figure?.kind ?? null, hasGraph: Boolean(result.graph),
     inputTokens: totalUsage.input_tokens + totalUsage.cache_read_input_tokens + totalUsage.cache_creation_input_tokens,
     outputTokens: totalUsage.output_tokens,
     costUsd: usageCost(totalUsage),
