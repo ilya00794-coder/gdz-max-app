@@ -181,6 +181,13 @@ export function startHourlyReports() {
   setTimeout(() => {
     tick();
     setInterval(tick, 3600_000);
+    // Ретенция haiku_eval — 30 дней (этап 3 роутинга): чистка на том же
+    // часовом тике, отдельный агент не нужен. Fire-and-forget.
+    setInterval(() => {
+      getPool().query(`DELETE FROM haiku_eval WHERE created_at < now() - interval '30 days'`)
+        .catch((err) => console.warn("[haiku-eval] чистка не удалась:", err.message));
+    }, 3600_000);
+
   }, msToNextHour + 2000); // +2с от границы: события часа успевают дозаписаться
   console.log(`[report] часовые отчёты включены (окно ${REPORT_FROM_HOUR}:00–${REPORT_TO_HOUR}:00)`);
 }

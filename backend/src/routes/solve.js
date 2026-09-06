@@ -9,6 +9,7 @@ import { isSubjectAllowedForGrade, getSubjectsForGrade } from "../services/subje
 import { recordVerifyEvent, hashUser, addUsage, usageCost } from "../services/telemetry.js";
 import { requestSource } from "../middleware/maxInitData.js";
 import { collectSample } from "../services/sampleCollector.js";
+import { recordEval } from "../services/haikuEval.js";
 import { ConfigError, InputError, describeApiError, classifyUpstreamError } from "../services/anthropicClient.js";
 
 const router = Router();
@@ -207,6 +208,13 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
       transport, appVersion, platform, userHash, startParam,
       contentType: recognition?.contentType ?? null,
     });
+    // Кэш-хит идёт в сбор разбора тоже (from_cache): иначе частые задачи,
+    // осевшие в кэше, выпадали бы из выборки (правка Ильи, этап 3 роутинга).
+    if (source === "remote") {
+      recordEval({ grade, subject, recognizedText, solution: cached,
+        verified: cached.verification?.verified ?? null,
+        reason: cached.verification?.details?.reason ?? null, fromCache: true });
+    }
     // Записи до слияния visual+drawing (31.08.2026) хранят старые поля —
     // конвертируем на лету, чтобы старый кэш рендерился, а не прятал карточку.
     const figure = cached.figure ?? legacyFigure(cached);
@@ -267,6 +275,12 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     outputTokens: totalUsage.output_tokens,
     costUsd: usageCost(totalUsage),
   }); // fire-and-forget: ответ ученика не ждёт телеметрию
+
+  if (source === "remote") {
+    recordEval({ grade, subject, recognizedText, solution: result,
+      verified: verification.verified, reason: verification.details?.reason ?? null,
+      fromCache: false });
+  }
 
   // Кладём в кэш только реально верифицированные решения — не мок-заглушки.
   if (verification.verified) {

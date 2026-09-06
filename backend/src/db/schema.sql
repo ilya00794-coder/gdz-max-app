@@ -275,3 +275,25 @@ CREATE TABLE IF NOT EXISTS contest_entries (
 -- в приложении. Бот его не шлёт — nullable, ботовский INSERT не задет.
 -- Ретенции у таблицы НЕТ — чистка после объявления победителя (бэклог, 10.10).
 ALTER TABLE contest_entries ADD COLUMN IF NOT EXISTS contact text;
+
+-- Сбор ВСЕХ ответов solve для ручного разбора качества роутинга (06.09.2026):
+-- метод класса виден только в шагах — solution хранится ЦЕЛИКОМ. Пишется на
+-- каждом remote-solve, включая кэш-хиты (from_cache — иначе частые задачи,
+-- осевшие в кэше, выпадали бы из выборки). user_hash НЕ хранится (приватность:
+-- метод класса от личности не зависит). Ретенция 30 дней — почасовая чистка
+-- в hourlyReport.
+CREATE TABLE IF NOT EXISTS haiku_eval (
+  id              bigserial   PRIMARY KEY,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  grade           integer     NOT NULL CHECK (grade BETWEEN 1 AND 11),
+  subject         text        NOT NULL,
+  recognized_text text,
+  solution        jsonb,
+  final_answer    text,
+  answer_kind     text,
+  verified        boolean,
+  reason          text,
+  solver_model    text,
+  from_cache      boolean     NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS haiku_eval_created_idx ON haiku_eval (created_at DESC);
