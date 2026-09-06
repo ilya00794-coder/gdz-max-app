@@ -178,7 +178,19 @@ export const SolutionSchema = z.object({
 // Надстройка дисциплины машинных полей ТОЛЬКО для haiku-модели (9 B-случаев
 // разбора расхождений). При opus-моделях блок НЕ вставляется — system-массив
 // байт-в-байт прежний, прод и кэш-префикс не затронуты.
-const HAIKU_RULES_ACTIVE = /haiku/.test(SOLVER_MODEL);
+// ---------- роутинг моделей (06.09, этап 2) ----------
+// MODEL_ROUTING=on → solve ВЕЗДЕ Haiku (все классы 1–11, все предметы —
+// единая схема, решение Ильи 06.09). Vision/compare/misread НЕ трогаются —
+// Opus, их запросы байт-в-байт прежние. off (дефолт) = поведение прежнее.
+// Аварийное выключение: MODEL_ROUTING=off + рестарт (Haiku-решения в кэше
+// остаются: вычислимые SymPy-проверены, гуманитарные и Opus не проверял).
+const MODEL_ROUTING = ["1", "true", "on", "yes"].includes(String(process.env.MODEL_ROUTING || "").toLowerCase());
+const HAIKU_SOLVER_MODEL = "claude-haiku-4-5";
+console.log(MODEL_ROUTING
+  ? `[routing] ВКЛЮЧЁН: solve → ${HAIKU_SOLVER_MODEL} на всех классах и предметах (off + рестарт — аварийное выключение)`
+  : `[routing] выключен: solve → ${SOLVER_MODEL}`);
+/** Модель solve-вызова; per-request точка — здесь будущие фазы/исключения. */
+function pickSolverModel() { return MODEL_ROUTING ? HAIKU_SOLVER_MODEL : SOLVER_MODEL; }
 const HAIKU_OUTPUT_RULES = `ДИСЦИПЛИНА МАШИННЫХ ПОЛЕЙ (обязательные правила формата; проверь каждое
 перед отдачей ответа):
 
@@ -567,7 +579,7 @@ export async function solveTask({ recognizedText, grade, subject, quarter = 4 })
     throw e;
   }
 
-  return finalizeParsed(parsed, program, quarter, response.usage);
+  return finalizeParsed(parsed, program, quarter, response.usage, request.model);
 }
 
 /**
@@ -604,7 +616,7 @@ export async function solveTaskStream({ recognizedText, grade, subject, quarter 
   // Та же схема, что в parse-пути: невалидный финал — ошибка, а не тихая деградация.
   try {
     const parsed = SolutionSchema.parse(JSON.parse(jsonText));
-    return finalizeParsed(parsed, program, quarter, message.usage);
+    return finalizeParsed(parsed, program, quarter, message.usage, request.model);
   } catch (err) {
     // Обрыв/невалидный JSON: логируем ПРИЧИНУ остановки модели и края сырца
     // (это куски решения/схемы, не условия задачи). stopReason уезжает и в
@@ -624,14 +636,19 @@ export async function solveTaskStream({ recognizedText, grade, subject, quarter 
 function buildSolverRequest({ recognizedText, program, subject, grade }) {
   // grade выбирает блоки наглядности (началка/геометрия) — см. subject-rules.js.
   const rules = subjectRules(subject, grade);
+  const model = pickSolverModel();
+  const haiku = /haiku/.test(model);
   return {
-    model: SOLVER_MODEL,
+    model,
     max_tokens: 16000,
-    thinking: { type: "adaptive" },
+    // Шим для haiku (модель до 4.6): adaptive не поддерживает — enabled с
+    // бюджетом; effort тоже её опция-нет. Для opus запрос байт-в-байт прежний.
+    thinking: haiku ? { type: "enabled", budget_tokens: 8000 } : { type: "adaptive" },
     system: [
       { type: "text", text: SYSTEM_BASE },
-      // Дисциплина полей для haiku (офлайн-замер v2): при opus — пустой массив.
-      ...(HAIKU_RULES_ACTIVE ? [{ type: "text", text: HAIKU_OUTPUT_RULES }] : []),
+      // Дисциплина полей для haiku — по ФАКТИЧЕСКОЙ модели вызова; на
+      // гуманитарных no-op по построению (правила только про машинные поля).
+      ...(haiku ? [{ type: "text", text: HAIKU_OUTPUT_RULES }] : []),
       // Предметные правила (data/subject-rules.js) — только для предметов,
       // у которых они есть; блок стабилен, кэш-префикс не дробит.
       ...(rules ? [{ type: "text", text: rules }] : []),
@@ -641,7 +658,7 @@ function buildSolverRequest({ recognizedText, program, subject, grade }) {
     ],
     output_config: {
       format: zodOutputFormat(SolutionSchema, "solution"),
-      effort: SOLVER_EFFORT,
+      ...(haiku ? {} : { effort: SOLVER_EFFORT }),
     },
     messages: [
       {
@@ -652,12 +669,12 @@ function buildSolverRequest({ recognizedText, program, subject, grade }) {
   };
 }
 
-function finalizeParsed(parsed, program, quarter, usage = null) {
+function finalizeParsed(parsed, program, quarter, usage = null, solverModel = SOLVER_MODEL) {
   return {
     // usage суммарного ответа API — для телеметрии; роут вырезает его
     // из solution перед кэшем и отдачей клиенту.
     usage,
-    solverModel: SOLVER_MODEL, // этап 2 роутинга сделает per-request
+    solverModel, // фактическая модель вызова (роутинг, этап 2)
     steps: parsed.steps,
     finalAnswer: parsed.finalAnswer.trim(),
     formalExpression: parsed.formalExpression.trim() || null,
