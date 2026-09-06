@@ -251,19 +251,6 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     verification,
   };
 
-  // ВРЕМЕННЫЙ лог живых expression-форм (решение Ильи 31.08.2026, файл вне
-  // БД): валидация набора форм П.5 настоящим трафиком. УДАЛИТЬ 07.09.2026
-  // вместе с файлом — дата в бэклоге.
-  if (solution.answerValues?.kind === "expression") {
-    try {
-      const { appendFileSync } = await import("node:fs");
-      appendFileSync(new URL("../../expression-answers.log", import.meta.url),
-        JSON.stringify({ ts: new Date().toISOString(), source, grade, subject,
-          finalAnswer: solution.finalAnswer, setExpression: solution.answerValues.setExpression ?? null,
-          verified: verification.verified, method: verification.method }) + "\n");
-    } catch (err) { console.warn("[p5-log]", err.message); }
-  }
-
   recordVerifyEvent({
     route: "solve", source, grade, subject,
     verified: verification.verified, method: verification.method,
