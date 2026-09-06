@@ -182,6 +182,9 @@ ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS user_hash     text;
 -- Метка поста из кнопки канала (?startapp=post_YYYYMMDD) — атрибуция
 -- прихода; не персональные данные.
 ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS start_param   text;
+-- solver_model (06.09): какая модель решала — обязательна ДО включения
+-- роутинга Haiku/Opus, иначе контроль качества роутинга слеп.
+ALTER TABLE verify_events ADD COLUMN IF NOT EXISTS solver_model  text;
 -- Наблюдение vision о снимке (printed_task | handwritten_task |
 -- handwritten_work | unclear; null у текстовых запросов) — для октябрьского
 -- решения по кэшам: печатные условия распознаются байт-в-байт (кэшируемы),

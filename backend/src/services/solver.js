@@ -657,6 +657,7 @@ function finalizeParsed(parsed, program, quarter, usage = null) {
     // usage суммарного ответа API — для телеметрии; роут вырезает его
     // из solution перед кэшем и отдачей клиенту.
     usage,
+    solverModel: SOLVER_MODEL, // этап 2 роутинга сделает per-request
     steps: parsed.steps,
     finalAnswer: parsed.finalAnswer.trim(),
     formalExpression: parsed.formalExpression.trim() || null,

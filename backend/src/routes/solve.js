@@ -199,7 +199,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     // «решено задач» и экономия кэша — ответ пришёл бесплатно.
     recordVerifyEvent({
       route: "solve", source, grade, subject,
-      cacheHit: true, costUsd: 0, keyHash,
+      cacheHit: true, costUsd: 0, keyHash, solverModel: cached.solverModel ?? null,
       inputTokens: visionUsage?.input_tokens ?? null,
       outputTokens: visionUsage?.output_tokens ?? null,
       durationMs: Date.now() - startedAt,
@@ -262,7 +262,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     textSource: imagesBase64?.length ? null : textSource,
     transport, appVersion, platform, userHash, startParam,
     contentType: recognition?.contentType ?? null,
-    cacheHit: false, keyHash,
+    cacheHit: false, keyHash, solverModel: solution.solverModel ?? null,
     inputTokens: totalUsage.input_tokens + totalUsage.cache_read_input_tokens + totalUsage.cache_creation_input_tokens,
     outputTokens: totalUsage.output_tokens,
     costUsd: usageCost(totalUsage),
