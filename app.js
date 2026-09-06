@@ -1109,7 +1109,9 @@ function renderSolutionStreaming(st) {
   solutionTask.textContent = state.recognizedText || "";
   // Буфер уже пришедших шагов печатается той же очередью (с ускорением),
   // вся вёрстка и KaTeX готовы заранее — проявляются только слова.
-  typeQueue.length = 0;
+  // flushTypeQueue, НЕ length=0 (регрессия, чинено 06.09): голое обнуление
+  // бросало li аккордеона со скрытыми словами навсегда — «пустые тела шагов».
+  flushTypeQueue();
   stepsList.innerHTML = st.steps.map((step, i) => stepMarkup(step, i, true)).join("");
   renderMath(stepsList);
   for (const li of stepsList.children) enqueueTyping(li);
@@ -1448,6 +1450,10 @@ function toggleTask(card, index) {
   const ts = state.taskState.get(index);
   if (ts?.status === "done" || ts?.status === "streaming") {
     setTaskOpen(card, acc.hidden); // клиентский кэш: раскрытие без генерации
+    // Страховка (06.09): лечит DOM, брошенный регрессией «length=0» до фикса —
+    // раскрываем слова, которые очередь уже никогда не допечатает. Для живой
+    // печати безвредно: повторное снятие visibility у допечатанных — no-op.
+    for (const w of acc.querySelectorAll(".tw")) w.style.visibility = "";
     return;
   }
   if (streamBusy()) {
