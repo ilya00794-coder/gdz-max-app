@@ -55,6 +55,18 @@ const CASES = [
 ];
 
 let failed = 0;
+// Окружности (этап 1б, 06.09) — валид + дефолтная ветка каждого kind.
+CASES.push(
+  ["circle-angles:40°", () => svg.circleAnglesSvg({ inscribed: 40, labels: ["O","A","B","C"], hasValue: true })],
+  ["circle-angles:дефолт", () => svg.circleAnglesSvg({ inscribed: 40, labels: ["O","A","B","C"], hasValue: false })],
+  ["circle-chord:R4-хорда6", () => svg.circleChordSvg({ radius: 4, chord: 6, labels: ["O","A","B"], hasValue: true })],
+  ["circle-chord:дефолт", () => svg.circleChordSvg({ radius: 1, chord: 1.3, labels: ["O","A","B"], hasValue: false })],
+  ["circle-tangent:R3-d5", () => svg.circleTangentSvg({ radius: 3, distance: 5, labels: ["O","A","K"], hasValue: true })],
+  ["circle-tangent:дефолт", () => svg.circleTangentSvg({ radius: 1, distance: 1.8, labels: ["O","A","K"], hasValue: false })],
+  ["triangle-circle:вписанная", () => svg.triangleCircleSvg({ mode: "in", angles: [46,72,62], vertices: ["A","B","C"], hasValue: false })],
+  ["triangle-circle:описанная", () => svg.triangleCircleSvg({ mode: "circum", angles: [50,68,62], vertices: ["A","B","C"], hasValue: true })],
+);
+
 for (const [name, run] of CASES) {
   let out;
   try { out = run(); } catch (err) { console.log(`FAIL ${name}: исключение ${err.message}`); failed++; continue; }

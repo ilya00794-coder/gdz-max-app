@@ -575,5 +575,131 @@ function trapezoidSvg(f) {
 
 // Экспорт для Node-канарейки (в браузере module не определён — пропускается).
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { escapeHtml, graphNumber, graphYWindow, graphNiceStep, graphIntersections, graphSvg, circlesSvg, numberlineSvg, drawingSvg, figPoint, angleArc, angleText, figDeg, adjacentAnglesSvg, verticalAnglesSvg, parallelLinesSvg, tickMark, figDir, triangleSvg, quadShell, parallelogramSvg, rhombusSvg, trapezoidSvg };
+  module.exports = { escapeHtml, graphNumber, graphYWindow, graphNiceStep, graphIntersections, graphSvg, circlesSvg, numberlineSvg, drawingSvg, figPoint, angleArc, angleText, figDeg, adjacentAnglesSvg, verticalAnglesSvg, parallelLinesSvg, tickMark, figDir, triangleSvg, quadShell, parallelogramSvg, rhombusSvg, trapezoidSvg, circleAnglesSvg, circleChordSvg, circleTangentSvg, triangleCircleSvg };
+}
+
+// ---------- окружности (этап 1б, 06.09) ----------
+// Вся геометрия (расстояние до хорды, точка касания, центры окружностей)
+// вычисляется здесь детерминированно — модель называла только параметры.
+
+const CIRCLE_R = 74; // базовый радиус в px
+
+function circleBase(cx, cy, r) {
+  return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#04234f" stroke-width="1.6"/>` +
+         `<circle cx="${cx}" cy="${cy}" r="2.4" fill="#04234f"/>`;
+}
+function figLabel(x, y, text) {
+  return `<text x="${x}" y="${y}" font-size="13" fill="#04234f" font-family="system-ui" text-anchor="middle">${escapeHtml(text)}</text>`;
+}
+function figLine(x1, y1, x2, y2, dash = false) {
+  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#185fa5" stroke-width="1.6"${dash ? ' stroke-dasharray="5 4"' : ""}/>`;
+}
+
+/** Вписанный и центральный угол на общей дуге BC. */
+function circleAnglesSvg(f) {
+  const W = 240, H = 210, cx = 120, cy = 106, R = CIRCLE_R;
+  const [O, A, B, C] = f.labels;
+  const central = f.inscribed * 2;
+  const half = (central / 2) * Math.PI / 180;
+  // Дуга BC внизу, вписанная вершина A вверху.
+  const b = [cx - R * Math.sin(half), cy + R * Math.cos(half)];
+  const c = [cx + R * Math.sin(half), cy + R * Math.cos(half)];
+  const a = [cx, cy - R];
+  let out = circleBase(cx, cy, R);
+  out += figLine(a[0], a[1], b[0], b[1]) + figLine(a[0], a[1], c[0], c[1]);
+  out += figLine(cx, cy, b[0], b[1], true) + figLine(cx, cy, c[0], c[1], true);
+  out += figLabel(cx + 10, cy - 4, O) + figLabel(a[0], a[1] - 8, A);
+  out += figLabel(b[0] - 10, b[1] + 12, B) + figLabel(c[0] + 10, c[1] + 12, C);
+  if (f.hasValue) {
+    out += figLabel(a[0], a[1] + 26, `${f.inscribed}°`);
+    out += figLabel(cx, cy + 24, `${central}°`);
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" role="img">${out}</svg>`;
+}
+
+/** Окружность с хордой и перпендикуляром из центра (пунктиром). */
+function circleChordSvg(f) {
+  const W = 240, H = 200, cx = 120, cy = 100, R = CIRCLE_R;
+  const [O, A, B] = f.labels;
+  const scale = R / f.radius;
+  const halfChord = (f.chord / 2) * scale;
+  const d = Math.sqrt(Math.max(0, R * R - halfChord * halfChord)); // px до хорды
+  const y = cy + d;
+  let out = circleBase(cx, cy, R);
+  out += figLine(cx - halfChord, y, cx + halfChord, y);
+  out += figLine(cx, cy, cx, y, true); // перпендикуляр из центра
+  out += figLabel(cx + 10, cy - 4, O);
+  out += figLabel(cx - halfChord - 10, y + 5, A) + figLabel(cx + halfChord + 10, y + 5, B);
+  if (f.hasValue) out += figLabel(cx + halfChord / 2, y + 16, graphNumber(f.chord));
+  return `<svg viewBox="0 0 ${W} ${H}" role="img">${out}</svg>`;
+}
+
+/** Касательная из внешней точки: радиус в точку касания, прямой угол. */
+function circleTangentSvg(f) {
+  const W = 280, H = 200, R = CIRCLE_R * 0.85;
+  const scale = R / f.radius;
+  const D = f.distance * scale;
+  const cx = 88, cy = 100;
+  const px = cx + D, py = cy;
+  const cosA = R / D;
+  const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
+  const k = [cx + R * cosA, cy - R * sinA]; // точка касания (верхняя)
+  const [O, A, K] = f.labels;
+  let out = circleBase(cx, cy, R);
+  out += figLine(px, py, k[0], k[1]);           // касательная
+  out += figLine(cx, cy, k[0], k[1], true);     // радиус в точку касания
+  out += figLine(cx, cy, px, py, true);         // OA
+  // Прямой угол при K — маленький квадратик вдоль радиуса и касательной.
+  const ux = (cx - k[0]) / R, uy = (cy - k[1]) / R;
+  const vx = (px - k[0]), vy = (py - k[1]);
+  const vlen = Math.hypot(vx, vy), wx = vx / vlen, wy = vy / vlen;
+  const q = 8;
+  out += `<path d="M ${k[0] + ux * q} ${k[1] + uy * q} L ${k[0] + (ux + wx) * q} ${k[1] + (uy + wy) * q} L ${k[0] + wx * q} ${k[1] + wy * q}" fill="none" stroke="#185fa5" stroke-width="1.2"/>`;
+  out += figLabel(cx - 10, cy + 5, O) + figLabel(px + 10, py + 5, A) + figLabel(k[0] + 4, k[1] - 8, K);
+  if (f.hasValue) out += figLabel(cx - 8, cy - R / 2 - 4, graphNumber(f.radius));
+  return `<svg viewBox="0 0 ${W} ${H}" role="img">${out}</svg>`;
+}
+
+/** Треугольник со вписанной или описанной окружностью. */
+function triangleCircleSvg(f) {
+  const W = 260, H = 220;
+  const [alpha, beta] = [f.angles[0] * Math.PI / 180, f.angles[1] * Math.PI / 180];
+  // Основание AC, вершина B из углов (как triangleSvg).
+  const base = 150;
+  const A = [0, 0], C = [base, 0];
+  const tanA = Math.tan(alpha), tanC = Math.tan(f.angles[2] * Math.PI / 180);
+  const bx = base * tanC / (tanA + tanC);
+  const by = -bx * tanA;
+  const B = [bx, by];
+  const a = Math.hypot(B[0] - C[0], B[1] - C[1]); // BC против A
+  const b = base;                                  // AC против B
+  const c = Math.hypot(B[0] - A[0], B[1] - A[1]); // AB против C
+  let ccx, ccy, r;
+  if (f.mode === "in") {
+    ccx = (a * A[0] + b * B[0] + c * C[0]) / (a + b + c);
+    ccy = (a * A[1] + b * B[1] + c * C[1]) / (a + b + c);
+    const sHalf = (a + b + c) / 2;
+    const area = Math.abs((C[0] - A[0]) * (B[1] - A[1]) - (B[0] - A[0]) * (C[1] - A[1])) / 2;
+    r = area / sHalf;
+  } else {
+    // Циркумцентр: пересечение серединных перпендикуляров (AC горизонтальна).
+    ccx = base / 2;
+    const mid = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+    // перпендикуляр к AB через середину: (x-midx)*ABx + (y-midy)*ABy = 0
+    ccy = mid[1] - (ccx - mid[0]) * (B[0] - A[0]) / (B[1] - A[1] || 1e-9);
+    r = Math.hypot(ccx - A[0], ccy - A[1]);
+  }
+  // Смещение сцены в кадр.
+  const minX = Math.min(A[0], B[0], C[0], ccx - r), maxX = Math.max(A[0], B[0], C[0], ccx + r);
+  const minY = Math.min(A[1], B[1], C[1], ccy - r), maxY = Math.max(A[1], B[1], C[1], ccy + r);
+  const pad = 18;
+  const sc = Math.min((W - 2 * pad) / (maxX - minX), (H - 2 * pad) / (maxY - minY));
+  const tx = (p) => pad + (p[0] - minX) * sc;
+  const ty = (p) => pad + (p[1] - minY) * sc;
+  let out = `<path d="M ${tx(A)} ${ty(A)} L ${tx(B)} ${ty(B)} L ${tx(C)} ${ty(C)} Z" fill="none" stroke="#04234f" stroke-width="1.6"/>`;
+  out += `<circle cx="${pad + (ccx - minX) * sc}" cy="${pad + (ccy - minY) * sc}" r="${r * sc}" fill="none" stroke="#185fa5" stroke-width="1.6"/>`;
+  out += `<circle cx="${pad + (ccx - minX) * sc}" cy="${pad + (ccy - minY) * sc}" r="2.2" fill="#185fa5"/>`;
+  const [va, vb, vc] = f.vertices;
+  out += figLabel(tx(A) - 8, ty(A) + 14, va) + figLabel(tx(B), ty(B) - 8, vb) + figLabel(tx(C) + 8, ty(C) + 14, vc);
+  return `<svg viewBox="0 0 ${W} ${H}" role="img">${out}</svg>`;
 }

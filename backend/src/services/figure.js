@@ -395,6 +395,76 @@ export function validateFigure(figure) {
       };
     }
 
+    // ---------- окружности (этап 1б, 06.09) ----------
+    // Дефолты ВЕЗДЕ неспециальные (правило Ильи): не 90°, не 45°, не «красивые»
+    // отношения — чертёж не подсказывает свойств, которых нет в условии.
+
+    if (figure.kind === "circle-angles") {
+      // Вписанный и центральный угол на общей дуге. values [вписанный угол].
+      let inscribed = 40; // представительный: не 30/45/60, центральный 80 — не прямой
+      if (values.length) {
+        inscribed = values[0];
+        if (!Number.isInteger(inscribed) || inscribed < MIN_ANGLE || inscribed > 85) {
+          return reject(`circle-angles: вписанный угол ${inscribed} — не целое ${MIN_ANGLE}..85 (центральный ${inscribed * 2} не влезает в окружность читаемо)`);
+        }
+      }
+      const [center = "O", a = "A", b = "B", c = "C"] = labels.map((l) => String(l ?? "").trim()).filter(Boolean);
+      return { kind: "circle-angles", inscribed, labels: [center, a, b, c], hasValue: values.length > 0, comment: comment(figure) };
+    }
+
+    if (figure.kind === "circle-chord") {
+      // values [радиус, хорда] в одних единицах; пусто — представительные 1 и 1.3
+      // (хорда заведомо НЕ диаметр и НЕ равна радиусу). Расстояние до центра
+      // вычисляет шаблон: d = sqrt(R² − (c/2)²).
+      let radius = 1, chord = 1.3;
+      if (values.length) {
+        [radius, chord = radius * 1.3] = values;
+        if (!positive(radius) || !positive(chord)) return reject(`circle-chord: радиус ${radius}, хорда ${chord}`);
+        if (chord > 2 * radius) return reject(`circle-chord: хорда ${chord} длиннее диаметра ${2 * radius}`);
+        if (chord < radius / 6) return reject(`circle-chord: хорда ${chord} вырожденно мала при радиусе ${radius}`);
+      }
+      const [center = "O", a = "A", b = "B"] = labels.map((l) => String(l ?? "").trim()).filter(Boolean);
+      return { kind: "circle-chord", radius, chord, labels: [center, a, b], hasValue: values.length > 0, comment: comment(figure) };
+    }
+
+    if (figure.kind === "circle-tangent") {
+      // values [радиус, расстояние от центра до внешней точки]; пусто —
+      // представительные 1 и 1.8 (точка заведомо не на окружности, не 2R).
+      let radius = 1, distance = 1.8;
+      if (values.length) {
+        [radius, distance = radius * 1.8] = values;
+        if (!positive(radius) || !positive(distance)) return reject(`circle-tangent: радиус ${radius}, расстояние ${distance}`);
+        if (distance <= radius) return reject(`circle-tangent: точка на расстоянии ${distance} внутри/на окружности радиуса ${radius} — касательной из неё нет`);
+        if (distance > radius * MAX_RATIO) return reject(`circle-tangent: точка в ${distance / radius} радиусах — чертёж вырожден`);
+      }
+      const [center = "O", point = "A", touch = "K"] = labels.map((l) => String(l ?? "").trim()).filter(Boolean);
+      return { kind: "circle-tangent", radius, distance, labels: [center, point, touch], hasValue: values.length > 0, comment: comment(figure) };
+    }
+
+    if (figure.kind === "triangle-circle") {
+      // Треугольник со вписанной ИЛИ описанной окружностью. marks[0] —
+      // «вписанная»/«описанная»; values — три угла или пусто (46/72/62 —
+      // существующий представительный разносторонний непрямоугольный).
+      const markList = (Array.isArray(figure.marks) ? figure.marks : [])
+        .filter((m) => typeof m === "string" && m.trim()).map((m) => m.trim().toLowerCase());
+      const mode = markList.includes("описанная") ? "circum" : markList.includes("вписанная") ? "in" : null;
+      if (!mode) return reject("triangle-circle: в marks нужна «вписанная» или «описанная»");
+      let angles = DEFAULT_TRI;
+      if (values.length) {
+        if (values.length !== 3 || !values.every((v) => positive(v))) return reject(`triangle-circle: нужны три угла, получено ${JSON.stringify(values)}`);
+        const sum = values[0] + values[1] + values[2];
+        if (Math.abs(sum - 180) > 0.5) return reject(`triangle-circle: сумма углов ${sum} ≠ 180`);
+        if (values.some((v) => v < MIN_ANGLE)) return reject(`triangle-circle: угол меньше ${MIN_ANGLE}° — чертёж вырожден`);
+        angles = values;
+      }
+      let vertices = ["A", "B", "C"];
+      if (labels.length >= 3 && labels.slice(0, 3).every((l) => typeof l === "string" && l.trim() && l.trim().length <= 2)) {
+        vertices = labels.slice(0, 3).map((l) => l.trim());
+        if (new Set(vertices).size !== 3) return reject("triangle-circle: буквы вершин повторяются");
+      }
+      return { kind: "triangle-circle", mode, angles, vertices, hasValue: values.length > 0, comment: comment(figure) };
+    }
+
     return reject(`неизвестный kind «${figure.kind}»`);
   } catch (err) {
     return reject(`ошибка валидации: ${err.message}`);

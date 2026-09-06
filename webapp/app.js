@@ -2071,6 +2071,10 @@ function figureCardMarkup(figure) {
     : figure?.kind === "parallelogram" ? parallelogramSvg(figure)
     : figure?.kind === "rhombus" ? rhombusSvg(figure)
     : figure?.kind === "trapezoid" ? trapezoidSvg(figure)
+    : figure?.kind === "circle-angles" ? circleAnglesSvg(figure)
+    : figure?.kind === "circle-chord" ? circleChordSvg(figure)
+    : figure?.kind === "circle-tangent" ? circleTangentSvg(figure)
+    : figure?.kind === "triangle-circle" ? triangleCircleSvg(figure)
     : "";
   if (!svg) return "";
   const comment = figure.comment ? `<p class="graph-comment">${escapeHtml(figure.comment)}</p>` : "";
