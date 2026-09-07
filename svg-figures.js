@@ -575,7 +575,7 @@ function trapezoidSvg(f) {
 
 // Экспорт для Node-канарейки (в браузере module не определён — пропускается).
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { escapeHtml, graphNumber, graphYWindow, graphNiceStep, graphIntersections, graphSvg, circlesSvg, numberlineSvg, drawingSvg, figPoint, angleArc, angleText, figDeg, adjacentAnglesSvg, verticalAnglesSvg, parallelLinesSvg, tickMark, figDir, triangleSvg, quadShell, parallelogramSvg, rhombusSvg, trapezoidSvg, circleAnglesSvg, circleChordSvg, circleTangentSvg, triangleCircleSvg };
+  module.exports = { escapeHtml, graphNumber, graphYWindow, graphNiceStep, graphIntersections, graphSvg, circlesSvg, numberlineSvg, drawingSvg, figPoint, angleArc, angleText, figDeg, adjacentAnglesSvg, verticalAnglesSvg, parallelLinesSvg, tickMark, figDir, triangleSvg, quadShell, parallelogramSvg, rhombusSvg, trapezoidSvg, circleAnglesSvg, circleChordSvg, circleTangentSvg, triangleCircleSvg, cabinet, box3dModel, pyramidModel, prismModel, box3dSvg, pyramidSvg, prismSvg };
 }
 
 // ---------- окружности (этап 1б, 06.09) ----------
@@ -702,4 +702,102 @@ function triangleCircleSvg(f) {
   const [va, vb, vc] = f.vertices;
   out += figLabel(tx(A) - 8, ty(A) + 14, va) + figLabel(tx(B), ty(B) - 8, vb) + figLabel(tx(C) + 8, ty(C) + 14, vc);
   return `<svg viewBox="0 0 ${W} ${H}" role="img">${out}</svg>`;
+}
+
+// ---------- стереометрия (этап 2, 07.09) ----------
+// Кабинетная проекция, зашитая константами: фронтальная грань без искажений,
+// ось глубины под 45° с коэффициентом 0.35 (вправо-вверх). Невидимые рёбра —
+// ПЕРЕЧНЕМ на kind (не вычисляются): при фиксированном ракурсе они известны.
+// Модель (точки+рёбра) отделена от рендера — канарейка проверяет геометрию
+// модели, снапшот — разметку.
+
+const DEPTH_K = 0.35;
+function cabinet(x, y, z) { return [x + DEPTH_K * y, -z - DEPTH_K * y]; }
+
+/** Куб/параллелепипед: A,B фронт-низ; C,D зад-низ; A₁..D₁ — верх. */
+function box3dModel(f) {
+  const [a, d, h] = f.edges;
+  const P = {};
+  const [A, B, C, D, A1, B1, C1, D1] = f.vertices;
+  P[A] = cabinet(0, 0, 0); P[B] = cabinet(a, 0, 0); P[C] = cabinet(a, d, 0); P[D] = cabinet(0, d, 0);
+  P[A1] = cabinet(0, 0, h); P[B1] = cabinet(a, 0, h); P[C1] = cabinet(a, d, h); P[D1] = cabinet(0, d, h);
+  const hidden = new Set([`${D}-${A}`, `${C}-${D}`, `${D}-${D1}`]); // задняя-левая нижняя вершина
+  const edges = [
+    [A, B], [B, C], [C, D], [D, A],           // низ
+    [A1, B1], [B1, C1], [C1, D1], [D1, A1],   // верх
+    [A, A1], [B, B1], [C, C1], [D, D1],       // вертикали
+  ].map(([u, v]) => [u, v, hidden.has(`${u}-${v}`) || hidden.has(`${v}-${u}`)]);
+  return { pts: P, edges };
+}
+
+/** Правильная пирамида: основание фронтом, S над центром. */
+function pyramidModel(f) {
+  const P = {};
+  const s = f.side, h = f.height;
+  let baseNames, hiddenPairs;
+  if (f.baseN === 4) {
+    const [S, A, B, C, D] = f.vertices;
+    P[A] = cabinet(0, 0, 0); P[B] = cabinet(s, 0, 0); P[C] = cabinet(s, s, 0); P[D] = cabinet(0, s, 0);
+    P[S] = cabinet(s / 2, s / 2, h);
+    baseNames = [[A, B], [B, C], [C, D], [D, A]];
+    hiddenPairs = new Set([`${C}-${D}`, `${D}-${A}`]); // задние рёбра основания
+    const edges = [...baseNames, [S, A], [S, B], [S, C], [S, D]]
+      .map(([u, v]) => [u, v, hiddenPairs.has(`${u}-${v}`) || hiddenPairs.has(`${v}-${u}`)]);
+    return { pts: P, edges };
+  }
+  const [S, A, B, C] = f.vertices;
+  const th = s * Math.sqrt(3) / 2;
+  P[A] = cabinet(0, 0, 0); P[B] = cabinet(s, 0, 0); P[C] = cabinet(s / 2, th, 0);
+  P[S] = cabinet(s / 2, th / 3, h); // центр правильного треугольника
+  hiddenPairs = new Set([`${A}-${C}`, `${C}-${B}`]); // заднее основание пунктиром
+  const edges = [[A, B], [B, C], [C, A], [S, A], [S, B], [S, C]]
+    .map(([u, v]) => [u, v, hiddenPairs.has(`${u}-${v}`) || hiddenPairs.has(`${v}-${u}`)]);
+  return { pts: P, edges };
+}
+
+/** Правильная треугольная призма: C — задняя вершина основания. */
+function prismModel(f) {
+  const P = {};
+  const s = f.side, h = f.height, th = s * Math.sqrt(3) / 2;
+  const [A, B, C, A1, B1, C1] = f.vertices;
+  P[A] = cabinet(0, 0, 0); P[B] = cabinet(s, 0, 0); P[C] = cabinet(s / 2, th, 0);
+  P[A1] = cabinet(0, 0, h); P[B1] = cabinet(s, 0, h); P[C1] = cabinet(s / 2, th, h);
+  const hidden = new Set([`${A}-${C}`, `${C}-${B}`, `${C}-${C1}`]); // низ зад + задняя вертикаль
+  const edges = [[A, B], [B, C], [C, A], [A1, B1], [B1, C1], [C1, A1], [A, A1], [B, B1], [C, C1]]
+    .map(([u, v]) => [u, v, hidden.has(`${u}-${v}`) || hidden.has(`${v}-${u}`)]);
+  return { pts: P, edges };
+}
+
+/** Общий рендер каркаса: сплошные видимые, пунктир скрытых, подписи вершин. */
+function stereoSvg(model, opts = {}) {
+  const W = opts.w ?? 260, H = opts.h ?? 230, pad = 26;
+  const xs = Object.values(model.pts).map((p) => p[0]);
+  const ys = Object.values(model.pts).map((p) => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const sc = Math.min((W - 2 * pad) / (maxX - minX || 1), (H - 2 * pad) / (maxY - minY || 1));
+  const tx = (p) => pad + (p[0] - minX) * sc;
+  const ty = (p) => pad + (p[1] - minY) * sc;
+  let out = "";
+  for (const [u, v, hid] of model.edges) {
+    out += figLine(tx(model.pts[u]), ty(model.pts[u]), tx(model.pts[v]), ty(model.pts[v]), hid);
+  }
+  for (const [name, p] of Object.entries(model.pts)) {
+    out += figLabel(tx(p) + (tx(p) > W / 2 ? 10 : -10), ty(p) + (ty(p) > H / 2 ? 14 : -6), name);
+  }
+  if (opts.caption) out += figLabel(W / 2, H - 4, opts.caption);
+  return `<svg viewBox="0 0 ${W} ${H}" role="img">${out}</svg>`;
+}
+
+function box3dSvg(f) {
+  const cap = f.hasValue ? (f.shape === "cube" ? `ребро ${graphNumber(f.edges[0])}` : f.edges.map(graphNumber).join(" × ")) : "";
+  return stereoSvg(box3dModel(f), { caption: cap });
+}
+function pyramidSvg(f) {
+  const cap = f.hasValue ? `основание ${graphNumber(f.side)}, высота ${graphNumber(f.height)}` : "";
+  return stereoSvg(pyramidModel(f), { caption: cap });
+}
+function prismSvg(f) {
+  const cap = f.hasValue ? `основание ${graphNumber(f.side)}, высота ${graphNumber(f.height)}` : "";
+  return stereoSvg(prismModel(f), { caption: cap });
 }
