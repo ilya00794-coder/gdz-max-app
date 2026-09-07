@@ -51,6 +51,15 @@ ALLOWED_CALLS = {
     # формализует «Max(12, 7, 15, 9) - Min(...)», без них уходило в unsupported.
     "Max": sympy.Max,
     "Min": sympy.Min,
+    # factorint — разложение ЧИСЛА на простые (07.09, живой кейс «66 = 2·3·11»;
+    # factor для чисел бессилен — он про полиномы). Возвращает dict — развёртка
+    # в to_solution_list. len+str — «сколько цифр в числе»: len(str(79000));
+    # строковые ЛИТЕРАЛЫ остаются запрещены (Constant-проверка), str — только
+    # вызов по имени; поверхность str ограничена запретом атрибутов и пустыми
+    # builtins.
+    "factorint": sympy.factorint,
+    "len": len,
+    "str": str,
 }
 
 # Константы, разрешённые как имена. Только pi: у него нет школьного конкурента.
@@ -226,6 +235,15 @@ def to_solution_list(result):
         return [sympy.S(result)], False
 
     if isinstance(result, dict):
+        keys = list(result.keys())
+        # factorint(N) -> {простое: кратность}: разворачиваем в список простых
+        # С КРАТНОСТЯМИ (300 -> [2,2,3,5,5]). Отличаем от решения системы
+        # (там ключи — Symbol) по типу ключей; смешанных не бывает.
+        if keys and all(isinstance(k, (int, sympy.Integer)) for k in keys):
+            primes = []
+            for p, mult in sorted(result.items(), key=lambda kv: int(kv[0])):
+                primes.extend([sympy.Integer(p)] * int(mult))
+            return primes, True
         return list(result.values()), True
 
     if isinstance(result, (list, tuple, set, frozenset)):
