@@ -2075,6 +2075,9 @@ function figureCardMarkup(figure) {
     : figure?.kind === "circle-chord" ? circleChordSvg(figure)
     : figure?.kind === "circle-tangent" ? circleTangentSvg(figure)
     : figure?.kind === "triangle-circle" ? triangleCircleSvg(figure)
+    : figure?.kind === "box3d" ? box3dSvg(figure)
+    : figure?.kind === "pyramid" ? pyramidSvg(figure)
+    : figure?.kind === "prism" ? prismSvg(figure)
     : "";
   if (!svg) return "";
   const comment = figure.comment ? `<p class="graph-comment">${escapeHtml(figure.comment)}</p>` : "";

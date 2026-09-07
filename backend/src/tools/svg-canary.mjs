@@ -67,6 +67,15 @@ CASES.push(
   ["triangle-circle:описанная", () => svg.triangleCircleSvg({ mode: "circum", angles: [50,68,62], vertices: ["A","B","C"], hasValue: true })],
 );
 
+// Стереометрия (этап 2, 07.09).
+CASES.push(
+  ["cube:ребро-2", () => svg.box3dSvg({ shape: "cube", edges: [2,2,2], vertices: ["A","B","C","D","A₁","B₁","C₁","D₁"], hasValue: true })],
+  ["box:дефолт", () => svg.box3dSvg({ shape: "box", edges: [1.6,1,0.75], vertices: ["A","B","C","D","A₁","B₁","C₁","D₁"], hasValue: false })],
+  ["pyramid:четырёхугольная", () => svg.pyramidSvg({ baseN: 4, side: 2, height: 2.2, vertices: ["S","A","B","C","D"], hasValue: true })],
+  ["pyramid:тетраэдр-дефолт", () => svg.pyramidSvg({ baseN: 3, side: 1, height: 1.1, vertices: ["S","A","B","C"], hasValue: false })],
+  ["prism:дефолт", () => svg.prismSvg({ side: 1, height: 1.3, vertices: ["A","B","C","A₁","B₁","C₁"], hasValue: false })],
+);
+
 for (const [name, run] of CASES) {
   let out;
   try { out = run(); } catch (err) { console.log(`FAIL ${name}: исключение ${err.message}`); failed++; continue; }
