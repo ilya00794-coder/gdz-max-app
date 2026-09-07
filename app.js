@@ -2078,6 +2078,7 @@ function figureCardMarkup(figure) {
     : figure?.kind === "box3d" ? box3dSvg(figure)
     : figure?.kind === "pyramid" ? pyramidSvg(figure)
     : figure?.kind === "prism" ? prismSvg(figure)
+    : figure?.kind === "section" ? sectionSvg(figure)
     : "";
   if (!svg) return "";
   const comment = figure.comment ? `<p class="graph-comment">${escapeHtml(figure.comment)}</p>` : "";

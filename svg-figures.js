@@ -575,7 +575,7 @@ function trapezoidSvg(f) {
 
 // Экспорт для Node-канарейки (в браузере module не определён — пропускается).
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { escapeHtml, graphNumber, graphYWindow, graphNiceStep, graphIntersections, graphSvg, circlesSvg, numberlineSvg, drawingSvg, figPoint, angleArc, angleText, figDeg, adjacentAnglesSvg, verticalAnglesSvg, parallelLinesSvg, tickMark, figDir, triangleSvg, quadShell, parallelogramSvg, rhombusSvg, trapezoidSvg, circleAnglesSvg, circleChordSvg, circleTangentSvg, triangleCircleSvg, cabinet, box3dModel, pyramidModel, prismModel, box3dSvg, pyramidSvg, prismSvg };
+  module.exports = { escapeHtml, graphNumber, graphYWindow, graphNiceStep, graphIntersections, graphSvg, circlesSvg, numberlineSvg, drawingSvg, figPoint, angleArc, angleText, figDeg, adjacentAnglesSvg, verticalAnglesSvg, parallelLinesSvg, tickMark, figDir, triangleSvg, quadShell, parallelogramSvg, rhombusSvg, trapezoidSvg, circleAnglesSvg, circleChordSvg, circleTangentSvg, triangleCircleSvg, cabinet, box3dModel, pyramidModel, prismModel, box3dSvg, pyramidSvg, prismSvg, sectionSvg };
 }
 
 // ---------- окружности (этап 1б, 06.09) ----------
@@ -771,8 +771,9 @@ function prismModel(f) {
 /** Общий рендер каркаса: сплошные видимые, пунктир скрытых, подписи вершин. */
 function stereoSvg(model, opts = {}) {
   const W = opts.w ?? 260, H = opts.h ?? 230, pad = 26;
-  const xs = Object.values(model.pts).map((p) => p[0]);
-  const ys = Object.values(model.pts).map((p) => p[1]);
+  const sec = opts.section ?? null; // {pts: [[name, [x2d,y2d]], ...]} — уже в проекции cabinet
+  const xs = Object.values(model.pts).map((p) => p[0]).concat(sec ? sec.pts.map(([, p]) => p[0]) : []);
+  const ys = Object.values(model.pts).map((p) => p[1]).concat(sec ? sec.pts.map(([, p]) => p[1]) : []);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys), maxY = Math.max(...ys);
   const sc = Math.min((W - 2 * pad) / (maxX - minX || 1), (H - 2 * pad) / (maxY - minY || 1));
@@ -784,6 +785,15 @@ function stereoSvg(model, opts = {}) {
   }
   for (const [name, p] of Object.entries(model.pts)) {
     out += figLabel(tx(p) + (tx(p) > W / 2 ? 10 : -10), ty(p) + (ty(p) > H / 2 ? 14 : -6), name);
+  }
+  if (sec) {
+    // Секущий многоугольник: полупрозрачная заливка поверх рёбер + подписи точек.
+    const d = sec.pts.map(([, p], i) => `${i ? "L" : "M"} ${tx(p)} ${ty(p)}`).join(" ") + " Z";
+    out += `<path d="${d}" fill="#185fa5" fill-opacity="0.16" stroke="#185fa5" stroke-width="1.8"/>`;
+    for (const [name, p] of sec.pts) {
+      out += `<circle cx="${tx(p)}" cy="${ty(p)}" r="2.6" fill="#185fa5"/>`;
+      if (name) out += figLabel(tx(p) + 11, ty(p) - 5, name);
+    }
   }
   if (opts.caption) out += figLabel(W / 2, H - 4, opts.caption);
   return `<svg viewBox="0 0 ${W} ${H}" role="img">${out}</svg>`;
@@ -800,4 +810,20 @@ function pyramidSvg(f) {
 function prismSvg(f) {
   const cap = f.hasValue ? `основание ${graphNumber(f.side)}, высота ${graphNumber(f.height)}` : "";
   return stereoSvg(prismModel(f), { caption: cap });
+}
+
+/** Сечение: солид рисует модель этапа 2, полигон проецируется той же cabinet(). */
+function sectionSvg(f) {
+  const CANON = {
+    cube: () => box3dModel({ shape: "cube", edges: [1, 1, 1], vertices: ["A","B","C","D","A₁","B₁","C₁","D₁"] }),
+    tetrahedron: () => pyramidModel({ baseN: 3, side: 1, height: Math.sqrt(2 / 3), vertices: ["D","A","B","C"] }),
+    pyramid4: () => pyramidModel({ baseN: 4, side: 1, height: 1.1, vertices: ["S","A","B","C","D"] }),
+    prism3: () => prismModel({ side: 1, height: 1.2, vertices: ["A","B","C","A₁","B₁","C₁"] }),
+  };
+  const make = CANON[f.solid];
+  if (!make) return "";
+  const model = make();
+  const secPts = (f.polygon ?? []).map((q) => [q.name, cabinet(q.p[0], q.p[1], q.p[2])]);
+  if (secPts.length < 3) return "";
+  return stereoSvg(model, { section: { pts: secPts }, caption: f.comment ? "" : "" });
 }
