@@ -275,7 +275,8 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     figureKind: result.figure?.kind ?? null, hasGraph: Boolean(result.graph),
     inputTokens: totalUsage.input_tokens + totalUsage.cache_read_input_tokens + totalUsage.cache_creation_input_tokens,
     outputTokens: totalUsage.output_tokens,
-    costUsd: usageCost(totalUsage),
+    // Раздельно по фактическим моделям (fix 07.09): vision — opus, solver — кто решал.
+    costUsd: (usageCost(visionUsage) ?? 0) + (usageCost(solverUsage, solution.solverModel) ?? 0),
   }); // fire-and-forget: ответ ученика не ждёт телеметрию
 
   if (source === "remote") {
@@ -294,7 +295,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     }
   }
 
-  collectSample({ imagesBase64, recognizedText, meta: { route: "solve", grade, subject, verified: verification.verified, method: verification.method, reason: verification.details?.reason ?? null, answer_kind: solution.answerValues?.kind ?? null, parse_failure_kind: null, cost_usd: usageCost(totalUsage) } });
+  collectSample({ imagesBase64, recognizedText, meta: { route: "solve", grade, subject, verified: verification.verified, method: verification.method, reason: verification.details?.reason ?? null, answer_kind: solution.answerValues?.kind ?? null, parse_failure_kind: null, cost_usd: (usageCost(visionUsage) ?? 0) + (usageCost(solverUsage, solution.solverModel) ?? 0) } });
   return { code: 200, body: { ...result, source: "generated", recognizedText, recognition, cacheKey } };
 }
 

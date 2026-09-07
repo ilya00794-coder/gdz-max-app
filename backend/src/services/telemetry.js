@@ -30,9 +30,14 @@ export function hashUser(userId) {
   return crypto.createHmac("sha256", USER_HASH_SALT).update(String(userId)).digest("hex").slice(0, 16);
 }
 
-// Цены claude-opus-5 за 1M токенов (docs.claude.com, снято 31.08.2026):
-// input $5, output $25; кэш: запись ×1.25, чтение ×0.1 от input.
-const PRICE = { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 };
+// Цены за 1M токенов ПО МОДЕЛЯМ (fix 07.09: раньше один opus-прайс на всё —
+// haiku-токены завышались 5×, телеметрия расходилась с консолью Anthropic:
+// $21.40 у нас против $8.01 в консоли за 07.09).
+// Кэш: запись ×1.25, чтение ×0.1 от input (обе модели).
+const PRICES = {
+  "claude-opus-5":    { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
+  "claude-haiku-4-5": { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
+};
 
 /** Суммирует usage-объекты ответов API (поля могут отсутствовать). */
 export function addUsage(...usages) {
@@ -47,14 +52,16 @@ export function addUsage(...usages) {
   return t;
 }
 
-/** Стоимость запроса в долларах по прайсу выше. */
-export function usageCost(u) {
+/** Стоимость запроса; model — фактическая модель вызова. Дефолт opus:
+ * vision/compare/refusal-точки не меняются ни символом. */
+export function usageCost(u, model = "claude-opus-5") {
   if (!u) return null;
+  const p = PRICES[model] ?? PRICES["claude-opus-5"];
   return (
-    (u.input_tokens ?? 0) * PRICE.input +
-    (u.output_tokens ?? 0) * PRICE.output +
-    (u.cache_creation_input_tokens ?? 0) * PRICE.cacheWrite +
-    (u.cache_read_input_tokens ?? 0) * PRICE.cacheRead
+    (u.input_tokens ?? 0) * p.input +
+    (u.output_tokens ?? 0) * p.output +
+    (u.cache_creation_input_tokens ?? 0) * p.cacheWrite +
+    (u.cache_read_input_tokens ?? 0) * p.cacheRead
   ) / 1e6;
 }
 
