@@ -465,6 +465,83 @@ export function validateFigure(figure) {
       return { kind: "triangle-circle", mode, angles, vertices, hasValue: values.length > 0, comment: comment(figure) };
     }
 
+    // ---------- стереометрия без сечений (этап 2, 07.09) ----------
+    // Ракурс зашит в шаблон (кабинетная проекция), невидимые рёбра — перечнем
+    // на kind. Валидатор ловит кривые параметры; форма проекции — канарейка.
+
+    if (figure.kind === "cube" || figure.kind === "box") {
+      const need = 8;
+      let vertices = ["A", "B", "C", "D", "A₁", "B₁", "C₁", "D₁"];
+      const given = labels.map((l) => String(l ?? "").trim()).filter(Boolean);
+      if (given.length) {
+        if (given.length !== need) return reject(`${figure.kind}: вершин ${given.length}, нужно ${need}`);
+        if (given.some((l) => l.length > 2)) return reject(`${figure.kind}: подпись вершины длиннее 2 символов`);
+        if (new Set(given).size !== need) return reject(`${figure.kind}: буквы вершин повторяются`);
+        vertices = given;
+      }
+      let edges; // [длина, глубина, высота]
+      if (figure.kind === "cube") {
+        let a = 1;
+        if (values.length) {
+          a = values[0];
+          if (!positive(a)) return reject(`cube: ребро ${a}`);
+        }
+        edges = [a, a, a];
+      } else {
+        edges = [1.6, 1, 0.75]; // представительный: все разные, заведомо НЕ куб
+        if (values.length) {
+          if (values.length !== 3 || !values.every(positive)) return reject(`box: нужны три ребра, получено ${JSON.stringify(values)}`);
+          edges = values;
+        }
+      }
+      if (Math.max(...edges) / Math.min(...edges) > MAX_RATIO) return reject(`${figure.kind}: отношение рёбер ${Math.max(...edges)}/${Math.min(...edges)} вырожденно`);
+      return { kind: "box3d", shape: figure.kind, edges, vertices, hasValue: values.length > 0, comment: comment(figure) };
+    }
+
+    if (figure.kind === "pyramid") {
+      const markList = (Array.isArray(figure.marks) ? figure.marks : [])
+        .filter((m) => typeof m === "string" && m.trim()).map((m) => m.trim().toLowerCase());
+      let baseN = 4;
+      for (const m of markList) {
+        if (m === "треугольная") baseN = 3;
+        else if (m === "четырёхугольная" || m === "четырехугольная") baseN = 4;
+        else return reject(`pyramid: непонятная отметка «${m}»`);
+      }
+      let side = 1, height = 1.1; // представительная: не 1:1, не «красивая»
+      if (values.length) {
+        if (values.length !== 2 || !values.every(positive)) return reject(`pyramid: нужны [сторона, высота], получено ${JSON.stringify(values)}`);
+        [side, height] = values;
+        if (Math.max(side, height) / Math.min(side, height) > MAX_RATIO) return reject(`pyramid: отношение ${side}/${height} вырожденно`);
+      }
+      const need = baseN + 1;
+      let vertices = baseN === 4 ? ["S", "A", "B", "C", "D"] : ["S", "A", "B", "C"];
+      const given = labels.map((l) => String(l ?? "").trim()).filter(Boolean);
+      if (given.length) {
+        if (given.length !== need) return reject(`pyramid: вершин ${given.length}, нужно ${need} (вершина + основание)`);
+        if (given.some((l) => l.length > 2) || new Set(given).size !== need) return reject("pyramid: подписи вершин кривые/повторяются");
+        vertices = given;
+      }
+      return { kind: "pyramid", baseN, side, height, vertices, hasValue: values.length > 0, comment: comment(figure) };
+    }
+
+    if (figure.kind === "prism") {
+      // Правильная ТРЕУГОЛЬНАЯ призма (четырёхугольная = box).
+      let side = 1, height = 1.3;
+      if (values.length) {
+        if (values.length !== 2 || !values.every(positive)) return reject(`prism: нужны [сторона основания, высота], получено ${JSON.stringify(values)}`);
+        [side, height] = values;
+        if (Math.max(side, height) / Math.min(side, height) > MAX_RATIO) return reject(`prism: отношение ${side}/${height} вырожденно`);
+      }
+      let vertices = ["A", "B", "C", "A₁", "B₁", "C₁"];
+      const given = labels.map((l) => String(l ?? "").trim()).filter(Boolean);
+      if (given.length) {
+        if (given.length !== 6) return reject(`prism: вершин ${given.length}, нужно 6`);
+        if (given.some((l) => l.length > 2) || new Set(given).size !== 6) return reject("prism: подписи вершин кривые/повторяются");
+        vertices = given;
+      }
+      return { kind: "prism", side, height, vertices, hasValue: values.length > 0, comment: comment(figure) };
+    }
+
     return reject(`неизвестный kind «${figure.kind}»`);
   } catch (err) {
     return reject(`ошибка валидации: ${err.message}`);
