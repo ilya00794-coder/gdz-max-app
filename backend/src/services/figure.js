@@ -12,6 +12,8 @@
 // (circlesSvg/numberlineSvg/drawingSvg в webapp/app.js): по именованному
 // полю на параметр, без позиционной магии.
 
+import { computeSection, EngineBugError } from "./section.js";
+
 const MAX_RATIO = 12; // тоньше — чертёж вырожденно узкий, наглядности ноль
 const MAX_LABEL = 30;
 const MAX_CIRCLES = 40;
@@ -540,6 +542,43 @@ export function validateFigure(figure) {
         vertices = given;
       }
       return { kind: "prism", side, height, vertices, hasValue: values.length > 0, comment: comment(figure) };
+    }
+
+    // ---------- сечение (этап 3, 07.09) ----------
+    // Модель называет ТОЛЬКО точки; полигон вычисляет движок section.js —
+    // фронту уходит готовый. Валидатор ловит ВХОД, движок — геометрию
+    // (коллинеарность, <3 вершин); EngineBugError = баг обхода → reject
+    // показа + громкий лог (канарейка движка ловит это отдельно).
+    if (figure.kind === "section") {
+      const SOLID_BY_MARK = { "куб": "cube", "тетраэдр": "tetrahedron",
+        "пирамида": "pyramid4", "пирамида четырёхугольная": "pyramid4",
+        "пирамида четырехугольная": "pyramid4", "призма": "prism3" };
+      const markList = (Array.isArray(figure.marks) ? figure.marks : [])
+        .filter((m) => typeof m === "string" && m.trim()).map((m) => m.trim().toLowerCase());
+      const solid = SOLID_BY_MARK[markList[0] ?? ""];
+      if (!solid) return reject(`section: marks[0] «${markList[0]}» — не куб/тетраэдр/пирамида/призма`);
+      const L = labels.map((l) => String(l ?? "").trim());
+      if (L.length !== 9) return reject(`section: labels должно быть 9 (три тройки точка-конец-конец), получено ${L.length}`);
+      if (values.length !== 6 || !values.every((v) => Number.isFinite(v))) {
+        return reject(`section: values должно быть 6 чисел (три пары отношений), получено ${JSON.stringify(values)}`);
+      }
+      const points = [0, 1, 2].map((i) => ({
+        name: L[i * 3], u: L[i * 3 + 1], v: L[i * 3 + 2],
+        ratio: [values[i * 2], values[i * 2 + 1]],
+      }));
+      if (points.some((p) => !p.name || p.name.length > 2)) return reject("section: имя точки пустое или длиннее 2 символов");
+      let sec;
+      try {
+        sec = computeSection(solid, points);
+      } catch (err) {
+        if (err instanceof EngineBugError) {
+          console.error(`[figure] БАГ ДВИЖКА СЕЧЕНИЙ: ${err.message}`);
+          return reject("section: внутренний сбой построения");
+        }
+        throw err;
+      }
+      if (!sec.ok) return reject(`section: ${sec.reason}`);
+      return { kind: "section", solid, polygon: sec.polygon, points, comment: comment(figure) };
     }
 
     return reject(`неизвестный kind «${figure.kind}»`);

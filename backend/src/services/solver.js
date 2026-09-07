@@ -129,13 +129,14 @@ export const SolutionSchema = z.object({
   // «наглядность»; валидатор services/figure.js разворачивает в форму фронта.
   figure: z
     .object({
-      kind: z.enum(["circles", "numberline", "rectangle", "square", "adjacent-angles", "vertical-angles", "parallel-lines", "triangle", "parallelogram", "rhombus", "trapezoid", "circle-angles", "circle-chord", "circle-tangent", "triangle-circle", "cube", "box", "pyramid", "prism"]).describe(
+      kind: z.enum(["circles", "numberline", "rectangle", "square", "adjacent-angles", "vertical-angles", "parallel-lines", "triangle", "parallelogram", "rhombus", "trapezoid", "circle-angles", "circle-chord", "circle-tangent", "triangle-circle", "cube", "box", "pyramid", "prism", "section"]).describe(
         "circles — кружки для счёта; numberline — числовой луч; rectangle — прямоугольник; square — квадрат; " +
           "adjacent-angles — смежные углы; vertical-angles — вертикальные углы; parallel-lines — параллельные прямые с секущей; " +
           "triangle — треугольник; parallelogram — параллелограмм; rhombus — ромб; trapezoid — трапеция; " +
           "circle-angles — вписанный и центральный угол; circle-chord — окружность с хордой; " +
           "circle-tangent — касательная из внешней точки; triangle-circle — треугольник со вписанной/описанной окружностью; " +
-          "cube — куб; box — прямоугольный параллелепипед; pyramid — правильная пирамида; prism — правильная треугольная призма."
+          "cube — куб; box — прямоугольный параллелепипед; pyramid — правильная пирамида; prism — правильная треугольная призма; " +
+          "section — сечение многогранника плоскостью через три точки на рёбрах."
       ),
       values: z.array(z.number()).describe(
         "Числа фигуры, порядок по kind: circles — [всего, зачеркнуть, размер группы] (2-й и 3-й опциональны); " +
