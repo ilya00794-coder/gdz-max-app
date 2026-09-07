@@ -76,6 +76,20 @@ CASES.push(
   ["prism:дефолт", () => svg.prismSvg({ side: 1, height: 1.3, vertices: ["A","B","C","A₁","B₁","C₁"], hasValue: false })],
 );
 
+// Сечения (этап 3, 07.09): полигоны — из живого движка (детерминированы).
+const { computeSection } = await import("../services/section.js");
+const secOf = (solid, pts) => { const r = computeSection(solid, pts); if (!r.ok) throw new Error(r.reason); return r.polygon; };
+CASES.push(
+  ["section:куб-шестиугольник", () => svg.sectionSvg({ solid: "cube", polygon: secOf("cube", [
+    { name: "K", u: "B", v: "C", ratio: [1,1] }, { name: "M", u: "C", v: "D", ratio: [1,1] }, { name: "N", u: "D", v: "D₁", ratio: [1,1] }]) })],
+  ["section:куб-треугольник", () => svg.sectionSvg({ solid: "cube", polygon: secOf("cube", [
+    { name: "K", u: "A", v: "B", ratio: [1,1] }, { name: "M", u: "A", v: "D", ratio: [1,1] }, { name: "N", u: "A", v: "A₁", ratio: [1,1] }]) })],
+  ["section:тетраэдр", () => svg.sectionSvg({ solid: "tetrahedron", polygon: secOf("tetrahedron", [
+    { name: "K", u: "D", v: "A", ratio: [1,2] }, { name: "M", u: "D", v: "B", ratio: [1,1] }, { name: "N", u: "D", v: "C", ratio: [1,1] }]) })],
+  ["section:призма", () => svg.sectionSvg({ solid: "prism3", polygon: secOf("prism3", [
+    { name: "K", u: "A", v: "A₁", ratio: [1,1] }, { name: "M", u: "B", v: "B₁", ratio: [1,2] }, { name: "N", u: "C", v: "C₁", ratio: [2,1] }]) })],
+);
+
 for (const [name, run] of CASES) {
   let out;
   try { out = run(); } catch (err) { console.log(`FAIL ${name}: исключение ${err.message}`); failed++; continue; }
