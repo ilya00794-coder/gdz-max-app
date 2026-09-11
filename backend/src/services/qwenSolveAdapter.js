@@ -54,10 +54,27 @@ export function coerceBySchema(node, spec, root = spec, depth = 0) {
     const out = { ...node };
     for (const [k, s] of Object.entries(spec.properties || {})) {
       if (k in out) out[k] = coerceBySchema(out[k], s, root, depth + 1);
+      // qwen ОПУСКАЕТ null-поля вместо явного null (вторая канарейка:
+      // setExpression отсутствует). nullable ≠ optional для zod — дополняем
+      // отсутствующий ключ null'ом ТОЛЬКО если схема null принимает.
+      else if (acceptsNull(s, root)) out[k] = null;
     }
     return out;
   }
   return node;
+}
+
+/** Принимает ли спека null (с резолвом $ref и anyOf). */
+function acceptsNull(spec, root, depth = 0) {
+  if (!spec || typeof spec !== "object" || depth > 8) return false;
+  let guard = 0;
+  while (typeof spec.$ref === "string" && guard++ < 8) {
+    spec = root?.$defs?.[spec.$ref.replace("#/$defs/", "")];
+    if (!spec) return false;
+  }
+  if (Array.isArray(spec.anyOf)) return spec.anyOf.some((s) => acceptsNull(s, root, depth + 1));
+  const types = Array.isArray(spec.type) ? spec.type : [spec.type];
+  return types.includes("null");
 }
 
 /**
