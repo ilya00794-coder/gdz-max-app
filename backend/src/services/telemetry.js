@@ -39,7 +39,12 @@ const PRICES = {
   "claude-haiku-4-5": { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
   // Qwen (DashScope intl, тир <256K, замер 11.09): кэш implicit — отдельной
   // записи нет (cache_creation в usage всегда 0), чтение ×0.1 от input.
+  // 12.09 (переезд на qwen): вся боевая линейка + фолбэки — vision qwen3-vl-flash
+  // (→ plus страховой), solve qwen-flash (→ 3.8-flash страховой).
   "qwen-flash":       { input: 0.05, output: 0.4, cacheWrite: 0.05, cacheRead: 0.005 },
+  "qwen3.8-flash":    { input: 0.15, output: 0.47, cacheWrite: 0.15, cacheRead: 0.015 },
+  "qwen3-vl-flash":   { input: 0.05, output: 0.4, cacheWrite: 0.05, cacheRead: 0.005 },
+  "qwen3-vl-plus":    { input: 0.2, output: 1.6, cacheWrite: 0.2, cacheRead: 0.02 },
 };
 
 /** Суммирует usage-объекты ответов API (поля могут отсутствовать). */
