@@ -47,6 +47,20 @@ export function coerceBySchema(node, spec, root = spec, depth = 0) {
     if (typeof v === "string") {
       try { const p = JSON.parse(v); if (Array.isArray(p)) v = p; } catch { /* не JSON — оставляем */ }
     }
+    // Объект вместо массива (канарейка №3, steps): числовые ключи {"0":…,"1":…}
+    // → значения по порядку; одиночный элемент → [элемент], но ТОЛЬКО если в нём
+    // есть все обязательные поля элемента схемы (иначе честный zod-отказ).
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      const keys = Object.keys(v);
+      if (keys.length && keys.every((k) => /^\d+$/.test(k))) {
+        v = keys.sort((a, b) => a - b).map((k) => v[k]);
+      } else {
+        let itemSpec = spec.items, g = 0;
+        while (itemSpec && typeof itemSpec.$ref === "string" && g++ < 8) itemSpec = root?.$defs?.[itemSpec.$ref.replace("#/$defs/", "")];
+        const req = itemSpec?.required ?? [];
+        if (req.length && req.every((k) => k in v)) v = [v];
+      }
+    }
     if (Array.isArray(v) && spec.items) return v.map((x) => coerceBySchema(x, spec.items, root, depth + 1));
     return v;
   }

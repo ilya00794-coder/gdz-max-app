@@ -622,13 +622,19 @@ export async function solveTask({ recognizedText, grade, subject, quarter = 4, s
   // невалидный ответ = структурный сбой = ретрай, а не тихая деградация.
   if (request.model === QWEN_SOLVER_MODEL) {
     for (let attempt = 1; attempt <= 2; attempt++) {
+      let shape = null; // форма фактического ответа — в лог сбоя (диагностика канареек)
       try {
         const resp = await qwenStructuredParse(getQwenClient(), request);
-        const parsed = SolutionSchema.parse(resp.parsed_output); // null/мимо схемы → throw
+        const po = resp.parsed_output;
+        shape = po && typeof po === "object"
+          ? `keys=[${Object.keys(po).join(",")}] steps=${Array.isArray(po.steps) ? "array" : JSON.stringify(po.steps).slice(0, 120)}`
+          : `parsed_output=${po === null ? "null" : typeof po}`;
+        const parsed = SolutionSchema.parse(po); // null/мимо схемы → throw
         return finalizeParsed(parsed, program, quarter, resp.usage, QWEN_SOLVER_MODEL);
       } catch (err) {
         console.warn(new Date().toISOString(),
-          `[qwen-solve] попытка ${attempt}/2 не удалась (${String(err.message).slice(0, 120)})`,
+          `[qwen-solve] попытка ${attempt}/2 не удалась (${String(err.message).slice(0, 200).replace(/\s+/g, " ")})`,
+          shape ? `форма: ${shape}` : "",
           attempt < 2 ? "— ретрай" : `— фолбэк на ${HAIKU_SOLVER_MODEL}`);
       }
     }
