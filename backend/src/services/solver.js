@@ -10,6 +10,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { getClient, getQwenClient, QWEN_SOLVE, InputError, SOLVER_MODEL, SOLVER_EFFORT } from "./anthropicClient.js";
 import { qwenStructuredParse } from "./qwenSolveAdapter.js";
+import { qwenStructured, normalizeQwenUsage, QWEN_NATIVE } from "./qwenClient.js";
 import { getAllowedMethods, getStudiedTopics, isSubjectSupported } from "./curriculum.js";
 import { subjectRules } from "../data/subject-rules.js";
 import { StepStreamParser } from "./streamSteps.js";
@@ -621,6 +622,12 @@ export async function solveTask({ recognizedText, grade, subject, quarter = 4, s
   // Схема валидируется zod'ом ЗДЕСЬ (Claude-путь валидирует SDK внутри parse):
   // невалидный ответ = структурный сбой = ретрай, а не тихая деградация.
   if (request.model === QWEN_SOLVER_MODEL) {
+    // --- РОДНОЙ путь (шаг 2 переезда, 12.09): compatible-mode/v1, свой рычаг
+    // QWEN_NATIVE (off|canary|on) — дети остаются на прослойке до явного слова.
+    // Фолбэк: qwen-flash ×2 → qwen3.8-flash ×1 (Haiku жив как аварийка через QWEN_SOLVE=off).
+    if (QWEN_NATIVE === "on" || (QWEN_NATIVE === "canary" && source === "canary")) {
+      return solveViaNative(request, program, quarter);
+    }
     for (let attempt = 1; attempt <= 2; attempt++) {
       let shape = null; // форма фактического ответа — в лог сбоя (диагностика канареек)
       try {
@@ -674,6 +681,44 @@ export async function solveTask({ recognizedText, grade, subject, quarter = 4, s
   }
 
   return finalizeParsed(parsed, program, quarter, response.usage, request.model);
+}
+
+/**
+ * Родной qwen-путь (шаг 2): тот же request, что строит buildSolverRequest
+ * (промпт/curriculum байт-в-байт), но вызов — compatible-mode/v1 (qwenClient).
+ * Попытки: qwen-flash ×2 → qwen3.8-flash ×1; всё мимо — ошибка наружу
+ * (Haiku-аварийка — только QWEN_SOLVE=off). zod здесь же, fail-closed.
+ * QWEN_NATIVE_CHAOS=fail-first — тестовый рубильник канарейки фолбэка:
+ * первая попытка искусственно бросает; не задан (прод) — мёртв.
+ */
+const QWEN_FALLBACK_MODEL = "qwen3.8-flash";
+async function solveViaNative(request, program, quarter) {
+  const system = (request.system ?? []).map((b) => b.text).join("\n\n");
+  const messages = [{ role: "user", content: request.messages[0].content }];
+  const schema = request.output_config.format.schema;
+  const attempts = [
+    { model: QWEN_SOLVER_MODEL }, { model: QWEN_SOLVER_MODEL }, { model: QWEN_FALLBACK_MODEL },
+  ];
+  let lastErr = null;
+  for (let i = 0; i < attempts.length; i++) {
+    const { model } = attempts[i];
+    try {
+      const chaos = process.env.QWEN_NATIVE_CHAOS; // fail-first | fail-twice; не задан (прод) — мёртв
+      if ((chaos === "fail-first" && i === 0) || (chaos === "fail-twice" && i < 2)) {
+        throw new Error(`CHAOS: искусственный сбой попытки ${i + 1} (канарейка фолбэка)`);
+      }
+      const res = await qwenStructured({ model, system, messages, schemaName: "solution", schema, maxTokens: request.max_tokens });
+      const parsed = SolutionSchema.parse(res.parsed); // null/мимо схемы → throw
+      if (res.coerced) console.warn(new Date().toISOString(), `[qwen-native] коэрция чинила ответ (${model}) — транспортная причуда`);
+      return finalizeParsed(parsed, program, quarter, normalizeQwenUsage(res.usage), model);
+    } catch (err) {
+      lastErr = err;
+      console.warn(new Date().toISOString(),
+        `[qwen-native] попытка ${i + 1}/${attempts.length} (${model}) не удалась (${String(err.message).slice(0, 160).replace(/\s+/g, " ")})`,
+        i < attempts.length - 1 ? `— дальше ${attempts[i + 1].model}` : "— попытки исчерпаны");
+    }
+  }
+  throw lastErr;
 }
 
 /**

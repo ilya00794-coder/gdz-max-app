@@ -116,8 +116,36 @@ export async function qwenStructured({ model, system, messages, schemaName, sche
   if (tc?.function?.arguments) {
     try { parsed = JSON.parse(tc.function.arguments); } catch { parsed = null; }
   }
-  if (parsed && typeof parsed === "object") parsed = coerceBySchema(parsed, schema);
-  return { parsed, usage: raw.usage ?? null, raw };
+  let coerced = false;
+  if (parsed && typeof parsed === "object") {
+    const before = JSON.stringify(parsed);
+    parsed = coerceBySchema(parsed, schema);
+    coerced = JSON.stringify(parsed) !== before; // метрика дисциплины: чинили ли транспортные причуды
+  }
+  return { parsed, usage: raw.usage ?? null, coerced, raw };
+}
+
+/**
+ * Режим родного пути (шаг 2): off — прослойка как была (дефолт);
+ * canary — родной ТОЛЬКО для X-Canary; on — родной для всех.
+ * Отдельный от QWEN_SOLVE рычаг: дети остаются на прослойке до явного слова.
+ */
+export const QWEN_NATIVE = String(process.env.QWEN_NATIVE || "off").toLowerCase();
+
+/**
+ * usage родного формата → форма Anthropic, которую ждут addUsage/usageCost.
+ * ВАЖНО: у OpenAI-формата cached_tokens ВХОДЯТ в prompt_tokens — вычитаем,
+ * иначе кэшные токены посчитались бы дважды (по полной цене и по кэш-цене).
+ */
+export function normalizeQwenUsage(u) {
+  if (!u) return null;
+  const cached = u.prompt_tokens_details?.cached_tokens ?? 0;
+  return {
+    input_tokens: Math.max(0, (u.prompt_tokens ?? 0) - cached),
+    output_tokens: u.completion_tokens ?? 0,
+    cache_read_input_tokens: cached,
+    cache_creation_input_tokens: 0,
+  };
 }
 
 /** Блок image_url из base64/data-URL — родной формат для vision-сообщений. */
