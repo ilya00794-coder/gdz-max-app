@@ -37,6 +37,9 @@ export function hashUser(userId) {
 const PRICES = {
   "claude-opus-5":    { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
   "claude-haiku-4-5": { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
+  // Qwen (DashScope intl, тир <256K, замер 11.09): кэш implicit — отдельной
+  // записи нет (cache_creation в usage всегда 0), чтение ×0.1 от input.
+  "qwen-flash":       { input: 0.05, output: 0.4, cacheWrite: 0.05, cacheRead: 0.005 },
 };
 
 /** Суммирует usage-объекты ответов API (поля могут отсутствовать). */
