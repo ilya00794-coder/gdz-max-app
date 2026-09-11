@@ -446,6 +446,36 @@ export async function verifyAnswer({ subject, expression, candidateAnswer, answe
     return { verified: false, confidence: 0, method: "unsupported", details: { reason: report.reason } };
   }
 
+  // π-fallback на строку ответа (урок qwen-замера 11.09): машинные values
+  // теряют символьную часть («36π см²» → value:"36"), а finalAnswer цел.
+  // При расхождении машинного пути дополнительно сверяем разобранную строку.
+  // Fail-closed сохраняется: verified=true только если строка SymPy-сошлась
+  // с решением формализации — ложное verified не появляется, лечится только
+  // ложный FALSE. Ветка без answerValues не затронута (там строка и так путь).
+  if (report.verified !== true && answerValues && Array.isArray(answerValues.values)) {
+    const stringCandidates = (parseCandidateAnswer(candidateAnswer) ?? [])
+      .map((c) => c.replace(/(\d)\s*π/g, "$1*pi").replace(/π/g, "pi").replace(/[°²³]/g, "").trim())
+      .filter(Boolean);
+    if (stringCandidates.length && stringCandidates.every((c) => isExpressionSafe(c))) {
+      try {
+        const rerun = await runPython({ expression: normalizedExpression, candidates: stringCandidates });
+        if (!rerun.timedOut && rerun.code === 0) {
+          const report2 = JSON.parse(rerun.stdout);
+          if (report2.ok && report2.verified === true) {
+            return {
+              verified: true, confidence: 1, method: "sympy",
+              details: {
+                invariantViolation, recoveredFromString: true,
+                solutions: report2.solutions, realSolutions: report2.realSolutions,
+                candidates: report2.candidates, missing: report2.missing, extra: report2.extra,
+              },
+            };
+          }
+        }
+      } catch { /* fallback не удался — остаёмся при вердикте машинного пути */ }
+    }
+  }
+
   return {
     verified: report.verified === true,
     // Символьная сверка детерминирована: либо множества совпали, либо нет.
