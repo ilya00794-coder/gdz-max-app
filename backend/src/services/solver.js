@@ -202,6 +202,7 @@ console.log(MODEL_ROUTING
 const QWEN_SOLVER_MODEL = "qwen-flash";
 if (QWEN_SOLVE !== "off") {
   console.log(`[qwen-solve] режим ${QWEN_SOLVE}: solve → ${QWEN_SOLVER_MODEL}${QWEN_SOLVE === "canary" ? " ТОЛЬКО для X-Canary" : ""}, ретрай ×1 → фолбэк ${HAIKU_SOLVER_MODEL}`);
+  console.log(`[qwen-native] режим ${QWEN_NATIVE}: ${QWEN_NATIVE === "off" ? "прослойка (Anthropic-протокол)" : `родной compatible-mode${QWEN_NATIVE === "canary" ? " ТОЛЬКО для X-Canary" : " для всех"}, попытки qwen-flash ×2 → qwen3.8-flash`}`);
 }
 
 /** Активен ли qwen-solve для запроса данного источника (роут выбирает parse/stream). */
