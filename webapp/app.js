@@ -1106,7 +1106,10 @@ function flushTypeQueue() {
 
 /** Живой рендер экрана решения: буфер шагов + дорисовка + финал одним блоком. */
 function renderSolutionStreaming(st) {
-  solutionTask.textContent = state.recognizedText || "";
+  // Условие с формулами: textContent оставлял \frac/\geq сырьём (баг 12.09) —
+  // экранируем и отдаём KaTeX те же делимитеры, что у шагов.
+  solutionTask.innerHTML = (state.recognizedText || "").split("\n").map((l) => inlineMarkup(escapeHtml(wrapBareLatex(l)))).join("<br>");
+  renderMath(solutionTask);
   // Буфер уже пришедших шагов печатается той же очередью (с ускорением),
   // вся вёрстка и KaTeX готовы заранее — проявляются только слова.
   // flushTypeQueue, НЕ length=0 (регрессия, чинено 06.09): голое обнуление
@@ -1646,10 +1649,21 @@ const btnEditText = document.getElementById("btn-edit-text");
  * а проверить распознавание должен именно он. Каждая строка — своим абзацем,
  * чтобы в контрольной из нескольких заданий формулы не слипались.
  */
+
+/** Голый LaTeX без $-обёрток (qwen-vision игнорирует промпт-правило «формулы
+ * в $...$», живой кейс 12.09: «\\frac{9x^3+9x+7}{3x^3+2x-1} \\geq 0») —
+ * оборачиваем строку в $...$, чтобы KaTeX её увидел. Строки с $ не трогаем;
+ * кривая смесь останется текстом (throwOnError:false), хуже не становится. */
+function wrapBareLatex(line) {
+  if (line.includes("$")) return line;
+  if (!/\\(frac|geq|leq|sqrt|cdot|times|div|neq|pm|infty|int|sum|log|sin|cos|tan|left|right)\b/.test(line)) return line;
+  return `$${line}$`;
+}
+
 function renderRecognizedView() {
   recognizedView.innerHTML = recognizedTextEl.value
     .split("\n")
-    .map((line) => `<p class="recognized-line">${escapeHtml(line)}</p>`)
+    .map((line) => `<p class="recognized-line">${escapeHtml(wrapBareLatex(line))}</p>`)
     .join("");
   // throwOnError: false внутри renderMath — кривой LaTeX останется текстом,
   // экран не упадёт, а поправить его можно через «Исправить».
@@ -2048,9 +2062,12 @@ function stepMarkup(step, i, typing = false) {
       </li>`;
 }
 
-/** Разметка списка шагов — одна на экран решения и на эталон внутри проверки. */
+/** Разметка списка шагов — одна на экран решения и на эталон внутри проверки.
+ * ВАЖНО: не steps.map(stepMarkup) — map подставляет МАССИВ третьим аргументом,
+ * typing становился truthy и все тела рисовались скрытыми словами машинки
+ * (баг «пустые тела» 12.09: qwen-parse идёт полным рендером на каждом решении). */
 function stepsMarkup(steps) {
-  return steps.map(stepMarkup).join("");
+  return steps.map((step, i) => stepMarkup(step, i)).join("");
 }
 
 
@@ -2247,7 +2264,10 @@ function answerMarkup(solution) {
 
 function renderSolution(solution) {
   // Краткое условие в шапке — чтобы было видно, что именно решаем.
-  solutionTask.textContent = state.recognizedText || "";
+  // Условие с формулами: textContent оставлял \frac/\geq сырьём (баг 12.09) —
+  // экранируем и отдаём KaTeX те же делимитеры, что у шагов.
+  solutionTask.innerHTML = (state.recognizedText || "").split("\n").map((l) => inlineMarkup(escapeHtml(wrapBareLatex(l)))).join("<br>");
+  renderMath(solutionTask);
 
   stepsList.innerHTML = stepsMarkup(solution.steps);
   renderGraphCard(solution.graph);
