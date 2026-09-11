@@ -363,6 +363,30 @@ export async function verifyAnswer({ subject, expression, candidateAnswer, answe
     };
   }
 
+  // ---- ДЕТЕКТ-ТЕЛЕМЕТРИЯ (12.09, решение Ильи): только ПОМЕТКИ, вердикты
+  // НЕ меняются. Замер частоты двух стендовых классов qwen на живом трафике;
+  // полный фикс (план готов) — только если частота окажется заметной.
+  // Класс B: приближение π протащено в формализацию (сверка самосогласована).
+  const approxPi = /3[.,]14\d*|6[.,]28/.test(normalizedExpression);
+  if (approxPi) console.log("[verify-detect] approx_pi: 3.14/6.28 в формализации");
+  // Класс any-в-all: несколько РАВНЫХ значений при kind=all и НЕсписочной
+  // формализации (гейт от живого контрпримера «81,81»-мультипункта).
+  let anyInAll = false;
+  if (answerValues?.kind === "all" && Array.isArray(answerValues.values)
+      && answerValues.values.length > 1 && !/^\s*\[/.test(normalizedExpression)) {
+    try {
+      anyInAll = (await checkAnyInvariant(answerValues.values)) === null; // null = все равны
+      if (anyInAll) console.log("[verify-detect] any_in_all: равные значения при kind=all");
+    } catch { /* детект не должен влиять на путь */ }
+  }
+  /** Пометки детекта в details итога; reason — только если он иначе пуст. */
+  const withDetect = (result) => {
+    if (!approxPi && !anyInAll) return result;
+    const details = { ...(result.details ?? {}), ...(approxPi ? { approxPi: true } : {}), ...(anyInAll ? { anyInAll: true } : {}) };
+    if (!details.reason) details.reason = approxPi ? "approx_pi" : "any_in_all";
+    return { ...result, details };
+  };
+
   let candidates;
   if (answerValues && Array.isArray(answerValues.values)) {
     // Путь по машинной форме: значения уже в SymPy-записи, единицы — метаданные.
@@ -462,21 +486,21 @@ export async function verifyAnswer({ subject, expression, candidateAnswer, answe
         if (!rerun.timedOut && rerun.code === 0) {
           const report2 = JSON.parse(rerun.stdout);
           if (report2.ok && report2.verified === true) {
-            return {
+            return withDetect({
               verified: true, confidence: 1, method: "sympy",
               details: {
                 invariantViolation, recoveredFromString: true,
                 solutions: report2.solutions, realSolutions: report2.realSolutions,
                 candidates: report2.candidates, missing: report2.missing, extra: report2.extra,
               },
-            };
+            });
           }
         }
       } catch { /* fallback не удался — остаёмся при вердикте машинного пути */ }
     }
   }
 
-  return {
+  return withDetect({
     verified: report.verified === true,
     // Символьная сверка детерминирована: либо множества совпали, либо нет.
     confidence: report.verified === true ? 1 : 0,
@@ -489,7 +513,7 @@ export async function verifyAnswer({ subject, expression, candidateAnswer, answe
       missing: report.missing,
       extra: report.extra,
     },
-  };
+  });
 }
 
 /**
