@@ -17,6 +17,50 @@ function stripCacheControl(system) {
 }
 
 /**
+ * Механическая коэрция типов ПО СХЕМЕ (канарейка 11.09 поймала оба кейса):
+ * qwen шлёт число там, где схема ждёт строку (values[].value: 100), и порой
+ * массив JSON-строкой (steps). Коэрцируем только безущербные преобразования
+ * (число→строка, валидная JSON-строка→массив) — всё остальное оставляем как
+ * есть, и zod-валидация в solveTask честно роняет (fail-closed → ретрай/фолбэк).
+ */
+export function coerceBySchema(node, spec, root = spec, depth = 0) {
+  if (node == null || !spec || typeof spec !== "object" || depth > 32) return node;
+  // zodOutputFormat выносит вложенные схемы в $defs и ссылается $ref'ами — резолвим.
+  let guard = 0;
+  while (typeof spec.$ref === "string" && guard++ < 8) {
+    const name = spec.$ref.replace("#/$defs/", "");
+    const next = root?.$defs?.[name];
+    if (!next) return node;
+    spec = next;
+  }
+  if (Array.isArray(spec.anyOf)) {
+    for (const sub of spec.anyOf) {
+      const coerced = coerceBySchema(node, sub, root, depth + 1);
+      if (coerced !== node) return coerced;
+    }
+    return node;
+  }
+  const types = Array.isArray(spec.type) ? spec.type : [spec.type];
+  if (types.includes("string") && typeof node === "number") return String(node);
+  if (types.includes("array")) {
+    let v = node;
+    if (typeof v === "string") {
+      try { const p = JSON.parse(v); if (Array.isArray(p)) v = p; } catch { /* не JSON — оставляем */ }
+    }
+    if (Array.isArray(v) && spec.items) return v.map((x) => coerceBySchema(x, spec.items, root, depth + 1));
+    return v;
+  }
+  if ((types.includes("object") || spec.properties) && typeof node === "object" && !Array.isArray(node)) {
+    const out = { ...node };
+    for (const [k, s] of Object.entries(spec.properties || {})) {
+      if (k in out) out[k] = coerceBySchema(out[k], s, root, depth + 1);
+    }
+    return out;
+  }
+  return node;
+}
+
+/**
  * Аналог client.messages.parse(args) для Qwen.
  * @param {object} client - клиент из getQwenClient()
  * @param {object} args - те же args, что продовый код передаёт в parse
@@ -55,6 +99,6 @@ export async function qwenStructuredParse(client, args) {
       out = out[topKeys[0]];
     }
   }
-  resp.parsed_output = out;
+  resp.parsed_output = out ? coerceBySchema(out, schema) : out;
   return resp;
 }
