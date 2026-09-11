@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.gdz.handwriting-gc</string>
+  <!-- Аудит рукописи (шаг 3 переезда на qwen): ретенция 7 дней, решение Ильи 12.09 -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>/bin/mkdir -p /Users/ilya/gdz-handwriting-audit &amp;&amp; /usr/bin/find /Users/ilya/gdz-handwriting-audit -maxdepth 1 -type f -mtime +7 -delete</string>
+  </array>
+  <key>StartInterval</key><integer>21600</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/ilya/gdz-handwriting-gc.log</string>
+  <key>StandardErrorPath</key><string>/Users/ilya/gdz-handwriting-gc.log</string>
+</dict>
+</plist>

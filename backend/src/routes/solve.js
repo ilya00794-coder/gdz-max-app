@@ -71,17 +71,20 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
   let taskNumber = null;
   let recognition = null;
   let visionUsage = null;
+  let visionModel = null;
   let stage = "start";
   const fail = (err) => { err.stage = stage; throw err; };
 
   if (imagesBase64?.length) {
     stage = "vision";
     try {
-      recognition = await recognizeFromPhotos({ imagesBase64, mode: "task", grade, subject });
+      recognition = await recognizeFromPhotos({ imagesBase64, mode: "task", grade, subject, source });
     } catch (err) { fail(err); }
     // usage — внутренняя экономика, клиенту в recognition не уходит.
     visionUsage = recognition.usage ?? null;
     delete recognition.usage;
+    visionModel = recognition.visionModel ?? null;
+    delete recognition.visionModel;
     recognizedText = recognition.recognizedText;
     textbook = recognition.textbook;
     taskNumber = recognition.taskNumber;
@@ -97,11 +100,11 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
         errorKind: "refusal", reason: "no_task_found",
         inputTokens: visionUsage?.input_tokens ?? null,
         outputTokens: visionUsage?.output_tokens ?? null,
-        costUsd: usageCost(visionUsage),
+        costUsd: usageCost(visionUsage, visionModel ?? undefined),
         durationMs: Date.now() - startedAt, transport, appVersion, platform, userHash, startParam,
         contentType: recognition?.contentType ?? null,
       });
-      collectSample({ imagesBase64, recognizedText: "", meta: { route: "solve", grade, subject, verified: null, method: null, reason: "no_task_found", answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(visionUsage) } });
+      collectSample({ imagesBase64, recognizedText: "", meta: { route: "solve", grade, subject, verified: null, method: null, reason: "no_task_found", answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(visionUsage, visionModel ?? undefined) } });
       return {
         code: 422,
         body: {
@@ -122,11 +125,11 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
         errorKind: "refusal", reason: "low_confidence",
         inputTokens: visionUsage?.input_tokens ?? null,
         outputTokens: visionUsage?.output_tokens ?? null,
-        costUsd: usageCost(visionUsage),
+        costUsd: usageCost(visionUsage, visionModel ?? undefined),
         durationMs: Date.now() - startedAt, transport, appVersion, platform, userHash, startParam,
         contentType: recognition?.contentType ?? null,
       });
-      collectSample({ imagesBase64, recognizedText, meta: { route: "solve", grade, subject, verified: null, method: null, reason: "low_confidence", answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(visionUsage) } });
+      collectSample({ imagesBase64, recognizedText, meta: { route: "solve", grade, subject, verified: null, method: null, reason: "low_confidence", answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(visionUsage, visionModel ?? undefined) } });
       return {
         code: 422,
         body: { error: "Не удалось разобрать текст на фото — пересними ближе и при лучшем свете", reason: "low_confidence", recognition },
@@ -144,11 +147,11 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
         multiTask: true, reason: "multiple_tasks_choice",
         inputTokens: visionUsage?.input_tokens ?? null,
         outputTokens: visionUsage?.output_tokens ?? null,
-        costUsd: usageCost(visionUsage),
+        costUsd: usageCost(visionUsage, visionModel ?? undefined),
         durationMs: Date.now() - startedAt, transport, appVersion, platform, userHash, startParam,
         contentType: recognition?.contentType ?? null,
       });
-      collectSample({ imagesBase64, recognizedText, meta: { route: "solve", grade, subject, verified: null, method: null, reason: "multiple_tasks_choice", answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(visionUsage) } });
+      collectSample({ imagesBase64, recognizedText, meta: { route: "solve", grade, subject, verified: null, method: null, reason: "multiple_tasks_choice", answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(visionUsage, visionModel ?? undefined) } });
       return { code: 200, body: { source: "recognized", multipleTasks: true, recognizedText, recognition } };
     }
   }
@@ -174,11 +177,11 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
       errorKind: "refusal", reason,
       inputTokens: visionUsage?.input_tokens ?? null,
       outputTokens: visionUsage?.output_tokens ?? null,
-      costUsd: usageCost(visionUsage),
+      costUsd: usageCost(visionUsage, visionModel ?? undefined),
       durationMs: Date.now() - startedAt, transport, appVersion, platform, userHash, startParam,
       contentType: recognition?.contentType ?? null,
     });
-    collectSample({ imagesBase64, recognizedText, meta: { route: "solve", grade, subject, verified: null, method: null, reason, answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(visionUsage) } });
+    collectSample({ imagesBase64, recognizedText, meta: { route: "solve", grade, subject, verified: null, method: null, reason, answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(visionUsage, visionModel ?? undefined) } });
     return { code: 422, body: { error: text, reason, recognition } };
   }
 
@@ -279,7 +282,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     inputTokens: totalUsage.input_tokens + totalUsage.cache_read_input_tokens + totalUsage.cache_creation_input_tokens,
     outputTokens: totalUsage.output_tokens,
     // Раздельно по фактическим моделям (fix 07.09): vision — opus, solver — кто решал.
-    costUsd: (usageCost(visionUsage) ?? 0) + (usageCost(solverUsage, solution.solverModel) ?? 0),
+    costUsd: (usageCost(visionUsage, visionModel ?? undefined) ?? 0) + (usageCost(solverUsage, solution.solverModel) ?? 0),
   }); // fire-and-forget: ответ ученика не ждёт телеметрию
 
   if (source === "remote") {
@@ -298,7 +301,7 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
     }
   }
 
-  collectSample({ imagesBase64, recognizedText, meta: { route: "solve", grade, subject, verified: verification.verified, method: verification.method, reason: verification.details?.reason ?? null, answer_kind: solution.answerValues?.kind ?? null, parse_failure_kind: null, cost_usd: (usageCost(visionUsage) ?? 0) + (usageCost(solverUsage, solution.solverModel) ?? 0) } });
+  collectSample({ imagesBase64, recognizedText, meta: { route: "solve", grade, subject, verified: verification.verified, method: verification.method, reason: verification.details?.reason ?? null, answer_kind: solution.answerValues?.kind ?? null, parse_failure_kind: null, cost_usd: (usageCost(visionUsage, visionModel ?? undefined) ?? 0) + (usageCost(solverUsage, solution.solverModel) ?? 0) } });
   return { code: 200, body: { ...result, source: "generated", recognizedText, recognition, cacheKey } };
 }
 

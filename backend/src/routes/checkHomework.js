@@ -101,6 +101,7 @@ router.post("/", async (req, res) => {
     } else {
     stage = "vision";
     recognized = await recognizeFromPhotos({
+      source,
       imagesBase64,
       mode: "studentWork",
       grade,
@@ -113,11 +114,11 @@ router.post("/", async (req, res) => {
         errorKind: "refusal", reason: "unreadable_work",
         inputTokens: recognized.usage?.input_tokens ?? null,
         outputTokens: recognized.usage?.output_tokens ?? null,
-        costUsd: usageCost(recognized.usage),
+        costUsd: usageCost(recognized.usage, recognized.visionModel ?? undefined),
         durationMs: Date.now() - startedAt, appVersion, platform, userHash, startParam,
       });
       delete recognized.usage;
-      collectSample({ imagesBase64, recognizedText: recognized.recognizedText ?? "", meta: { route: "check", grade, subject, verified: null, method: null, reason: "unreadable_work", answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(recognized.usage) } });
+      collectSample({ imagesBase64, recognizedText: recognized.recognizedText ?? "", meta: { route: "check", grade, subject, verified: null, method: null, reason: "unreadable_work", answer_kind: null, parse_failure_kind: null, cost_usd: usageCost(recognized.usage, recognized.visionModel ?? undefined) } });
       return res.status(422).json({
         error: "Не удалось разобрать написанное в тетради — пересними ближе и при лучшем свете",
         reason: "unreadable_work",
@@ -136,7 +137,7 @@ router.post("/", async (req, res) => {
         userHash, startParam,
         inputTokens: recognized.usage?.input_tokens ?? null,
         outputTokens: recognized.usage?.output_tokens ?? null,
-        costUsd: usageCost(recognized.usage),
+        costUsd: usageCost(recognized.usage, recognized.visionModel ?? undefined),
       });
       delete recognized.usage;
       return res.json({

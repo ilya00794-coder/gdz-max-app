@@ -8,6 +8,8 @@
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { getClient, InputError, VISION_MODEL, VISION_EFFORT } from "./anthropicClient.js";
+import { qwenStructured, imageBlock, normalizeQwenUsage } from "./qwenClient.js";
+import { auditHandwriting } from "./handwritingAudit.js";
 
 /** Форматы, которые принимает Claude vision. */
 const SUPPORTED_MEDIA_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
@@ -116,6 +118,47 @@ const StudentWorkRecognitionSchema = BaseRecognitionSchema.extend({
 });
 
 const SCHEMAS = { task: TaskRecognitionSchema, studentWork: StudentWorkRecognitionSchema };
+
+// ---------- родной qwen-vision (шаг 3 переезда, 12.09) ----------
+// QWEN_VISION: off — Opus как было (дефолт); canary — qwen ТОЛЬКО для
+// X-Canary; on — qwen для всех. Модели: qwen3-vl-flash ×2 → qwen3-vl-plus.
+const QWEN_VISION = String(process.env.QWEN_VISION || "off").toLowerCase();
+const QWEN_VISION_MODEL = "qwen3-vl-flash";
+const QWEN_VISION_FALLBACK = "qwen3-vl-plus";
+if (QWEN_VISION !== "off") {
+  console.log(`[qwen-vision] режим ${QWEN_VISION}: vision → ${QWEN_VISION_MODEL}${QWEN_VISION === "canary" ? " ТОЛЬКО для X-Canary" : ""}, ×2 → ${QWEN_VISION_FALLBACK}; аварийка QWEN_VISION=off (Opus)`);
+}
+
+/** Родной вызов vision: тот же промпт/схема, zod fail-closed, попытки с фолбэком.
+ * QWEN_VISION_CHAOS (fail-first|fail-twice) — тестовый рубильник канареек. */
+async function visionViaQwen({ mode, system, userContent }) {
+  const schema = zodOutputFormat(SCHEMAS[mode], "recognition").schema;
+  const attempts = [QWEN_VISION_MODEL, QWEN_VISION_MODEL, QWEN_VISION_FALLBACK];
+  let lastErr = null;
+  for (let i = 0; i < attempts.length; i++) {
+    try {
+      const chaos = process.env.QWEN_VISION_CHAOS;
+      if ((chaos === "fail-first" && i === 0) || (chaos === "fail-twice" && i < 2)) {
+        throw new Error(`CHAOS: искусственный сбой попытки ${i + 1}`);
+      }
+      const res = await qwenStructured({
+        model: attempts[i], system,
+        messages: [{ role: "user", content: userContent }],
+        schemaName: "recognition", schema, maxTokens: 16000,
+      });
+      const parsed = SCHEMAS[mode].parse(res.parsed); // null/мимо схемы → throw (ретрай)
+      if (res.coerced) console.warn(new Date().toISOString(), `[qwen-vision] коэрция чинила ответ (${attempts[i]})`);
+      return { parsed, usage: normalizeQwenUsage(res.usage), model: attempts[i] };
+    } catch (err) {
+      lastErr = err;
+      console.warn(new Date().toISOString(),
+        `[qwen-vision] попытка ${i + 1}/${attempts.length} (${attempts[i]}) не удалась (${String(err.message).slice(0, 140).replace(/\s+/g, " ")})`,
+        i < attempts.length - 1 ? `— дальше ${attempts[i + 1]}` : "— попытки исчерпаны");
+    }
+  }
+  throw lastErr;
+}
+
 
 const SYSTEM_PROMPTS = {
   // Фото с условием задачи. Разделение по РОЛИ текста, а не по способу
@@ -302,7 +345,7 @@ function sniffMediaType(buffer) {
  * @param {string} [params.subject] - предмет, помогает разобрать неоднозначные символы
  * @returns {Promise<{ recognizedText: string, textbook: string|null, taskNumber: string|null, confidence: number, issues: string[], contentType: "printed_task"|"handwritten_work"|"unclear", tasks: {variant: string|null, number: string|null, text: string}[]|null }>}
  */
-export async function recognizeFromPhotos({ imagesBase64, mode = "task", grade, subject }) {
+export async function recognizeFromPhotos({ imagesBase64, mode = "task", grade, subject, source }) {
   if (!Array.isArray(imagesBase64) || imagesBase64.length === 0) {
     throw new InputError("Не переданы изображения для распознавания");
   }
@@ -327,36 +370,63 @@ export async function recognizeFromPhotos({ imagesBase64, mode = "task", grade, 
       ? "Перенеси в текст всё, что написано на этих фотографиях."
       : "Перенеси в текст условие задачи с этих фотографий.";
 
-  const client = getClient();
+  let parsed, usage, visionModel = VISION_MODEL;
+  if (QWEN_VISION === "on" || (QWEN_VISION === "canary" && source === "canary")) {
+    // --- Родной qwen-путь (шаг 3 переезда, 12.09). Промпт/схема те же.
+    // Попытки: qwen3-vl-flash ×2 → qwen3-vl-plus ×1 (страховка от обрывов;
+    // семейные искажения цифр фолбэк НЕ ловит — их меряет аудит рукописи).
+    // Аварийка: QWEN_VISION=off → Opus (жив до шага 6).
+    ({ parsed, usage, model: visionModel } = await visionViaQwen({
+      mode,
+      system,
+      userContent: [
+        ...imageBlocks.map((b) => imageBlock(b.source.data, b.source.media_type)),
+        { type: "text", text: [context, instruction].filter(Boolean).join("\n") },
+      ],
+    }));
+  } else {
+    const client = getClient();
 
-  const response = await client.messages.parse({
-    model: VISION_MODEL,
-    max_tokens: 16000,
-    // Системный промпт стабилен для режима — кэшируем (шаг 2 оптимизации
-    // 31.08.2026): повторный вход по нему идёт со скидкой 90%.
-    system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
-    thinking: { type: "adaptive" },
-    output_config: {
-      format: zodOutputFormat(SCHEMAS[mode], "recognition"),
-      effort: VISION_EFFORT,
-    },
-    messages: [
-      {
-        role: "user",
-        content: [...imageBlocks, { type: "text", text: [context, instruction].filter(Boolean).join("\n") }],
+    const response = await client.messages.parse({
+      model: VISION_MODEL,
+      max_tokens: 16000,
+      // Системный промпт стабилен для режима — кэшируем (шаг 2 оптимизации
+      // 31.08.2026): повторный вход по нему идёт со скидкой 90%.
+      system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+      thinking: { type: "adaptive" },
+      output_config: {
+        format: zodOutputFormat(SCHEMAS[mode], "recognition"),
+        effort: VISION_EFFORT,
       },
-    ],
-  });
+      messages: [
+        {
+          role: "user",
+          content: [...imageBlocks, { type: "text", text: [context, instruction].filter(Boolean).join("\n") }],
+        },
+      ],
+    });
 
-  const parsed = response.parsed_output;
-  if (!parsed) {
-    throw new Error("Модель не вернула структурированный результат распознавания");
+    parsed = response.parsed_output;
+    usage = response.usage;
+    if (!parsed) {
+      throw new Error("Модель не вернула структурированный результат распознавания");
+    }
+  }
+
+  // Аудит рукописи (замер риска семейных ошибок, решение Ильи 12.09): только
+  // qwen-распознавания рукописных типов; фото+текст в приватную папку,
+  // fire-and-forget — сбой аудита не роняет ответ.
+  if ((QWEN_VISION === "on" || (QWEN_VISION === "canary" && source === "canary"))
+      && /^handwritten/.test(parsed.contentType ?? "")) {
+    auditHandwriting(imagesBase64, parsed.recognizedText ?? "").catch((e) =>
+      console.warn("[handwriting-audit] запись не удалась:", e.message));
   }
 
   return {
     // usage ответа API — для телеметрии стоимости; роуты вырезают его
-    // из recognition перед отдачей клиенту.
-    usage: response.usage,
+    // из recognition перед отдачей клиенту (как и visionModel).
+    usage,
+    visionModel,
     recognizedText: parsed.recognizedText.trim(),
     textbook: parsed.textbook.trim() || null,
     taskNumber: parsed.taskNumber.trim() || null,

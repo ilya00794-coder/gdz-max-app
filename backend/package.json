@@ -12,7 +12,8 @@
     "catch-chat-id": "node --env-file-if-exists=.env src/tools/catch-chat-id.js",
     "ocr-eval": "node --env-file-if-exists=.env src/tools/ocr-eval.js",
     "model-compare": "node --env-file-if-exists=.env src/tools/model-compare.js",
-    "prompt-gaps": "node --env-file-if-exists=.env src/tools/prompt-gaps.js"
+    "prompt-gaps": "node --env-file-if-exists=.env src/tools/prompt-gaps.js",
+    "handwriting-viewer": "node src/tools/handwriting-viewer.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
