@@ -44,6 +44,32 @@ export class InputError extends Error {
 }
 
 let client = null;
+let qwenClient = null;
+
+/**
+ * Режим qwen-solve (11.09, замер 110 задач: 97% single-shot / 100% с ретраем,
+ * 28× дешевле Haiku): off — выключен (дефолт); canary — qwen ТОЛЬКО для
+ * запросов с X-Canary (source="canary"); on — qwen для всех solve.
+ * Vision/compare/misread НЕ трогаются — Opus. Аварийка: off + рестарт.
+ */
+export const QWEN_SOLVE = String(process.env.QWEN_SOLVE || "off").toLowerCase();
+
+/**
+ * Клиент DashScope (Qwen) через Anthropic-совместимый endpoint. Ленивый,
+ * как getClient: сервер поднимается без ключа, падает только на qwen-вызове.
+ */
+export function getQwenClient() {
+  if (!process.env.QWEN_API_KEY) {
+    throw new ConfigError("Не задан QWEN_API_KEY — qwen-solve недоступен (QWEN_SOLVE=off выключает роутинг).");
+  }
+  if (!qwenClient) {
+    qwenClient = new Anthropic({
+      apiKey: process.env.QWEN_API_KEY,
+      baseURL: process.env.QWEN_BASE_URL || "https://dashscope-intl.aliyuncs.com/apps/anthropic",
+    });
+  }
+  return qwenClient;
+}
 
 /**
  * Ошибка конфигурации (нет ключа) — отличаем её от ошибок самого API,

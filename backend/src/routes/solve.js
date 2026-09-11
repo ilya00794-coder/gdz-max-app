@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { buildCacheKey, getCached, setCached } from "../services/cache.js";
 import { recognizeFromPhotos } from "../services/vision.js";
-import { solveTask, solveTaskStream } from "../services/solver.js";
+import { solveTask, solveTaskStream, isQwenSolveActive } from "../services/solver.js";
 import { verifyAnswer, computeGraphPlots } from "../services/verify.js";
 import { validateFigure, legacyFigure } from "../services/figure.js";
 import { reportError } from "../services/alerts.js";
@@ -225,9 +225,12 @@ async function runSolvePipeline({ body, source, startedAt, transport, appVersion
   stage = "solver";
   let solution;
   try {
-    solution = onStep
+    // qwen-solve (за флагом): tools-путь не стримит шаги — при активном qwen
+    // и стрим-запрос решается parse-путём (шаги приходят разом; компромисс,
+    // проверяемый на живом трафике). Vision выше по пайплайну не затронут.
+    solution = onStep && !isQwenSolveActive(source)
       ? await solveTaskStream({ recognizedText, grade, subject, quarter: parsedQuarter }, onStep)
-      : await solveTask({ recognizedText, grade, subject, quarter: parsedQuarter });
+      : await solveTask({ recognizedText, grade, subject, quarter: parsedQuarter, source });
   } catch (err) { fail(err); }
 
   stage = "verify";

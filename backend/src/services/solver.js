@@ -8,7 +8,8 @@
 
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { getClient, InputError, SOLVER_MODEL, SOLVER_EFFORT } from "./anthropicClient.js";
+import { getClient, getQwenClient, QWEN_SOLVE, InputError, SOLVER_MODEL, SOLVER_EFFORT } from "./anthropicClient.js";
+import { qwenStructuredParse } from "./qwenSolveAdapter.js";
 import { getAllowedMethods, getStudiedTopics, isSubjectSupported } from "./curriculum.js";
 import { subjectRules } from "../data/subject-rules.js";
 import { StepStreamParser } from "./streamSteps.js";
@@ -193,8 +194,26 @@ const HAIKU_SOLVER_MODEL = "claude-haiku-4-5";
 console.log(MODEL_ROUTING
   ? `[routing] ВКЛЮЧЁН: solve → ${HAIKU_SOLVER_MODEL} на всех классах и предметах (off + рестарт — аварийное выключение)`
   : `[routing] выключен: solve → ${SOLVER_MODEL}`);
-/** Модель solve-вызова; per-request точка — здесь будущие фазы/исключения. */
-function pickSolverModel() { return MODEL_ROUTING ? HAIKU_SOLVER_MODEL : SOLVER_MODEL; }
+// ---------- qwen-solve за флагом (11.09, замер: 97% single-shot / 100% с ретраем,
+// 28× дешевле Haiku). QWEN_SOLVE: off (дефолт) | canary (только X-Canary) | on.
+// Vision/compare/misread не трогаются. Стрим шагов через qwen невозможен
+// (tools-путь) — роут при активном qwen уходит в parse-путь (шаги разом).
+const QWEN_SOLVER_MODEL = "qwen-flash";
+if (QWEN_SOLVE !== "off") {
+  console.log(`[qwen-solve] режим ${QWEN_SOLVE}: solve → ${QWEN_SOLVER_MODEL}${QWEN_SOLVE === "canary" ? " ТОЛЬКО для X-Canary" : ""}, ретрай ×1 → фолбэк ${HAIKU_SOLVER_MODEL}`);
+}
+
+/** Активен ли qwen-solve для запроса данного источника (роут выбирает parse/stream). */
+export function isQwenSolveActive(source) {
+  return QWEN_SOLVE === "on" || (QWEN_SOLVE === "canary" && source === "canary");
+}
+
+/** Модель solve-вызова; per-request точка — здесь будущие фазы/исключения.
+ * source нужен только qwen-канарейке; allowQwen=false — стрим-путь (tools не стримятся). */
+function pickSolverModel(source, { allowQwen = true } = {}) {
+  if (allowQwen && isQwenSolveActive(source)) return QWEN_SOLVER_MODEL;
+  return MODEL_ROUTING ? HAIKU_SOLVER_MODEL : SOLVER_MODEL;
+}
 const HAIKU_OUTPUT_RULES = `ДИСЦИПЛИНА МАШИННЫХ ПОЛЕЙ (обязательные правила формата; проверь каждое
 перед отдачей ответа):
 
@@ -584,7 +603,7 @@ ${methods.map((m) => `- ${m}`).join("\n")}`;
  *   program: { supported: boolean, allowedMethodsCount: number, quarter: number }
  * }>}
  */
-export async function solveTask({ recognizedText, grade, subject, quarter = 4 }) {
+export async function solveTask({ recognizedText, grade, subject, quarter = 4, source }) {
   if (!recognizedText || !String(recognizedText).trim()) {
     throw new InputError("Пустое условие задачи — нечего решать");
   }
@@ -596,7 +615,37 @@ export async function solveTask({ recognizedText, grade, subject, quarter = 4 })
   }
 
   const program = buildProgramBlock({ grade, subject, quarter });
-  const request = buildSolverRequest({ recognizedText, program, subject, grade });
+  const request = buildSolverRequest({ recognizedText, program, subject, grade, source });
+
+  // ---- qwen-путь (за флагом): адаптер tools + ретрай ×1 + фолбэк на Haiku ----
+  // Схема валидируется zod'ом ЗДЕСЬ (Claude-путь валидирует SDK внутри parse):
+  // невалидный ответ = структурный сбой = ретрай, а не тихая деградация.
+  if (request.model === QWEN_SOLVER_MODEL) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const resp = await qwenStructuredParse(getQwenClient(), request);
+        const parsed = SolutionSchema.parse(resp.parsed_output); // null/мимо схемы → throw
+        return finalizeParsed(parsed, program, quarter, resp.usage, QWEN_SOLVER_MODEL);
+      } catch (err) {
+        console.warn(new Date().toISOString(),
+          `[qwen-solve] попытка ${attempt}/2 не удалась (${String(err.message).slice(0, 120)})`,
+          attempt < 2 ? "— ретрай" : `— фолбэк на ${HAIKU_SOLVER_MODEL}`);
+      }
+    }
+    // Оба qwen-захода мимо — решаем Haiku тем же запросом, ответ не теряется.
+    const fallback = buildSolverRequest({ recognizedText, program, subject, grade, forceModel: HAIKU_SOLVER_MODEL });
+    const response = await getClient().messages.parse(fallback).catch((err) => {
+      console.error(new Date().toISOString(), "[solver] SDK parse-сбой (qwen-фолбэк):", String(err.message).slice(0, 200));
+      throw err;
+    });
+    const parsed = response.parsed_output;
+    if (!parsed) {
+      const e = new Error("Модель не вернула структурированное решение");
+      e.stopReason = response.stop_reason ?? null;
+      throw e;
+    }
+    return finalizeParsed(parsed, program, quarter, response.usage, HAIKU_SOLVER_MODEL);
+  }
 
   const response = await getClient().messages.parse(request).catch((err) => {
     // SDK упал, разбирая ответ (обрыв JSON) — самого message тут уже нет,
@@ -638,7 +687,9 @@ export async function solveTaskStream({ recognizedText, grade, subject, quarter 
     throw new InputError(`Четверть должна быть числом от 1 до 4, получено: ${quarter}`);
   }
   const program = buildProgramBlock({ grade, subject, quarter });
-  const request = buildSolverRequest({ recognizedText, program, subject, grade });
+  // Стрим через qwen невозможен (tools-путь не отдаёт шаги) — allowQwen:false:
+  // даже если роут позовёт стрим при активном qwen, уйдём в Claude-модель, не в 404.
+  const request = buildSolverRequest({ recognizedText, program, subject, grade, allowQwen: false });
 
   const parser = new StepStreamParser();
   let emitted = 0;
@@ -671,11 +722,12 @@ export async function solveTaskStream({ recognizedText, grade, subject, quarter 
   }
 }
 
-/** Один и тот же запрос для parse- и stream-путей — расходиться им нельзя. */
-function buildSolverRequest({ recognizedText, program, subject, grade }) {
+/** Один и тот же запрос для parse- и stream-путей — расходиться им нельзя.
+ * source — для qwen-канарейки; forceModel — фолбэк qwen→Haiku тем же запросом. */
+function buildSolverRequest({ recognizedText, program, subject, grade, source, forceModel, allowQwen = true }) {
   // grade выбирает блоки наглядности (началка/геометрия) — см. subject-rules.js.
   const rules = subjectRules(subject, grade);
-  const model = pickSolverModel();
+  const model = forceModel ?? pickSolverModel(source, { allowQwen });
   const haiku = /haiku/.test(model);
   return {
     model,
