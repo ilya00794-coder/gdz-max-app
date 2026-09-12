@@ -2984,6 +2984,14 @@ const TAB_ROOTS = new Set(["screen-setup", "screen-capture", "screen-ai"]);
 
 function updateTabBar(screenId) {
   if (!tabBar) return;
+  // Клавиатура открыта (фокус в композере) — бар остаётся спрятанным:
+  // 5-минутная перерисовка возвращала его поверх поля («меню лезет», 22:55).
+  const ae = document.activeElement;
+  if (ae && (ae.id === "ai-input" || ae.id === "task-text-input")) {
+    tabBar.hidden = true;
+    document.body.classList.remove("has-tabbar");
+    return;
+  }
   const f = aiState.features;
   document.getElementById("tab-chat").hidden = !f.chat;
   document.getElementById("tab-create").hidden = !(f.image || f.video);
