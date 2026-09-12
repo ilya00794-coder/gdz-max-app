@@ -250,6 +250,44 @@ async function reuploadImage(srcUrl) {
 }
 
 /**
+ * Шаринг генерации (Илья 12.09): заливает локальный файл в MAX и отправляет
+ * пользователю В ЛС сообщением «медиа + подпись со ссылкой на канал» — фронт
+ * дальше зовёт shareMaxContent({mid, chatType:'DIALOG'}), и в чужой чат уходит
+ * САМО фото/видео (ссылка текстом переживает пересылку, кнопки — нет).
+ * Видео-аплоад бывает не готов сразу — attachment.not.ready ретраим.
+ */
+export async function sendMediaToUser(userId, filePath, caption) {
+  const fs = await import("node:fs");
+  const isVideo = filePath.endsWith(".mp4");
+  const up = await api("POST", "/uploads", { query: { type: isVideo ? "video" : "image" } });
+  if (!up.url) throw new Error("uploads не дал url");
+  const form = new FormData();
+  form.append("data", new Blob([fs.readFileSync(filePath)]), isVideo ? "video.mp4" : "photo.png");
+  const res = await fetch(up.url, { method: "POST", body: form, signal: AbortSignal.timeout(60000) });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`загрузка медиа ${res.status}`);
+  const token = json.token ?? Object.values(json.photos ?? {})[0]?.token ?? up.token ?? null;
+  if (!token) throw new Error("после загрузки нет токена");
+  let lastErr = null;
+  for (let i = 0; i < 6; i++) {
+    try {
+      const msg = await api("POST", "/messages", {
+        query: { user_id: userId },
+        body: { text: caption, attachments: [{ type: isVideo ? "video" : "image", payload: { token } }] },
+      });
+      const mid = msg.message?.body?.mid ?? msg.message?.mid ?? null;
+      if (!mid) throw new Error("в ответе нет mid: " + JSON.stringify(msg).slice(0, 150));
+      return { mid };
+    } catch (err) {
+      lastErr = err;
+      if (!/not.ready|not.processed|processing/i.test(err.message)) throw err;
+      await new Promise((ok) => setTimeout(ok, 2000)); // видео ещё обрабатывается
+    }
+  }
+  throw lastErr;
+}
+
+/**
  * Обработка одного update. Экспортирована для юнит-канареек: send/post
  * инжектируются, снаружи подставляются боевые.
  */
