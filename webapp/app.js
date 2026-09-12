@@ -100,6 +100,9 @@ async function initMaxBridge() {
   restoreLastGrade(); // последний класс — сразу к предметам, без лишнего тапа
   renderAvatar();     // кружок профиля в шапке — только внутри MAX
   setupContestButton(); // кнопка конкурса — по статусу с бэка, fire-and-forget
+  loadAiFeatures();   // ПОСЛЕ initData: /api/features с userId (админ-canary
+                      // видит фичи; ранний вызов уходил анонимно — видео-плашки
+                      // у Ильи не было, живой кейс 12.09)
 }
 
 // ---------- конкурс (06.09): кнопка, экран условий, отправка заявки ----------
@@ -2809,6 +2812,6 @@ if (aiRail) {
       alert(err.message);
     }
   });
-  loadAiFeatures();
+  // loadAiFeatures НЕ здесь: зовётся из initMaxBridge, когда initData уже есть.
 }
 // ================== END AI-разделы ==================
