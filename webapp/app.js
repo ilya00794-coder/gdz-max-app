@@ -3072,6 +3072,10 @@ function openSubjectSheet() {
   sheetHome = { gradeParent: grade.parentNode, gradeNext: grade.nextSibling, subjParent: subj.parentNode, subjNext: subj.nextSibling };
   document.getElementById("sheet-slot-grade").appendChild(grade);
   document.getElementById("sheet-slot-subject").appendChild(subj);
+  // Версия — в шторке: первый экран пропускается, больше её негде увидеть.
+  let v = subjectSheet.querySelector(".sheet-version");
+  if (!v) { v = document.createElement("p"); v.className = "sheet-version"; subjectSheet.querySelector(".sheet-panel").appendChild(v); }
+  v.textContent = "версия " + (window.APP_VERSION ?? "dev");
   subjectSheet.hidden = false;
 }
 function closeSubjectSheet() {
