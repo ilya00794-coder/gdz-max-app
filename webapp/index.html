@@ -94,7 +94,14 @@
           </svg>
           <p class="capture-hint">Сфотографируй задачу или выбери из галереи</p>
           <p class="capture-sub">Один снимок — одно задание</p>
+          <span class="snap-ring" aria-hidden="true"></span>
         </label>
+        <!-- Ряд альтернатив видоискателя (редизайн D): те же живые механики -->
+        <div class="capture-alts" id="capture-alts">
+          <button type="button" id="alt-gallery">🖼 Галерея</button>
+          <button type="button" id="alt-typed">⌨️ Словами</button>
+          <button type="button" id="alt-voice" hidden>🎤 Голосом</button>
+        </div>
         <!-- Без capture: система сама предложит снять камерой или выбрать готовое фото. -->
         <input type="file" id="file-input" accept="image/*" hidden />
 
@@ -201,6 +208,7 @@
           <div class="ai-composer">
             <button class="ai-plus" id="ai-plus" type="button" aria-label="Прикрепить фото" hidden>+</button>
             <textarea id="ai-input" rows="1" placeholder="Спроси о чём угодно…"></textarea>
+            <button class="ai-plus" id="ai-mic" type="button" aria-label="Голосом" hidden>🎤</button>
             <button class="ai-send" id="ai-send" type="button" aria-label="Отправить">➤</button>
           </div>
         </div>
@@ -256,6 +264,7 @@
         <div class="graph-card" id="figure-card" hidden></div>
         <div class="graph-card" id="schema-card" hidden></div>
         <div class="answer-block" id="answer-block"></div>
+        <button class="ai-share-btn solution-share" id="btn-share-solution" type="button" hidden>↗ Поделиться решением</button>
       </div>
 
       <div class="sheet-actions">
@@ -359,11 +368,23 @@
     <!-- Нижние вкладки (редизайн D, 12.09): показываются на корневых экранах
          (съёмка/чат); переключают СУЩЕСТВУЮЩИЕ экраны — логика бека не задета. -->
     <nav class="tab-bar" id="tab-bar" hidden>
-      <button class="tab-btn" id="tab-solve" type="button"><span class="tab-i">📸</span>Решить</button>
-      <button class="tab-btn" id="tab-check" type="button"><span class="tab-i">📝</span>Проверить</button>
-      <button class="tab-btn" id="tab-chat" type="button" hidden><span class="tab-i">💬</span>Чат</button>
-      <button class="tab-btn" id="tab-create" type="button" hidden><span class="tab-i">✨</span>Создать</button>
+      <button class="tab-btn" id="tab-solve" type="button"><svg class="tab-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8a2 2 0 0 1 2-2h1.6l1-1.6h6.8l1 1.6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.2"/></svg>Решить</button>
+      <button class="tab-btn" id="tab-check" type="button"><svg class="tab-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l1 2h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2z"/><path d="M9 13l2 2 4-4"/></svg>Проверить</button>
+      <button class="tab-btn" id="tab-chat" type="button" hidden><svg class="tab-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z"/><path d="M9 11h6M9 14h4"/></svg>Чат</button>
+      <button class="tab-btn" id="tab-create" type="button" hidden><svg class="tab-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7z"/><path d="M18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg>Создать</button>
     </nav>
+
+    <!-- Шторка класса/предмета (концепт экрана 3): открывается пилюлей с камеры;
+         сюда JS ПЕРЕНОСИТ живые #grade-row и #subject-block из setup (те же
+         узлы и слушатели), при закрытии возвращает на место. -->
+    <div class="sheet-backdrop" id="subject-sheet" hidden>
+      <div class="sheet-panel">
+        <div class="sheet-grab" aria-hidden="true"></div>
+        <h3 class="sheet-h">Класс</h3>
+        <div id="sheet-slot-grade"></div>
+        <div id="sheet-slot-subject"></div>
+      </div>
+    </div>
   </div>
 
   <!-- Обычные (не defer) скрипты: KaTeX и auto-render должны быть готовы к моменту загрузки app.js. -->

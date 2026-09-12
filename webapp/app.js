@@ -108,6 +108,12 @@ async function initMaxBridge() {
   PLATFORM = platformTag(); // Bridge прогрет (initData дождались) — пересчёт раз на сессию
   updateSetupCta();
   setupShareButton(); // видимость «Скинуть другу» решается один раз, когда режим известен
+  // Онбординг: без сохранённого класса — крупное приветствие (первый запуск).
+  try {
+    if (!localStorage.getItem(LAST_GRADE_KEY)) {
+      document.querySelector(".setup-lead").textContent = "Привет! 👋 В каком ты классе?";
+    }
+  } catch {}
   restoreLastGrade(); // последний класс — сразу к предметам, без лишнего тапа
   renderAvatar();     // кружок профиля в шапке — только внутри MAX
   setupContestButton(); // кнопка конкурса — по статусу с бэка, fire-and-forget
@@ -872,12 +878,16 @@ btnComposerSend.addEventListener("click", () => { submitTypedTask(); });
 // её нет, дырки в вёрстке тоже (flex-слот).
 const btnMic = document.getElementById("btn-composer-mic");
 let voiceRec = null; // активная запись: { rec, stream, timer }
+// Куда падает расшифровка и как показывать ошибку — задаёт кнопка,
+// запустившая запись (композер съёмки или чат-композер, 12.09).
+let voiceTargetInput = null;
+let voiceShowError = null;
 
 const VOICE_OK = Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
 if (VOICE_OK) {
   btnMic.hidden = false;
   composerPh.textContent = "Опиши задачу словами или голосом";
-  btnMic.addEventListener("click", toggleVoice);
+  btnMic.addEventListener("click", () => { voiceTargetInput = taskTextInput; voiceShowError = showCaptureError; toggleVoice(); });
 }
 
 async function toggleVoice() {
@@ -900,7 +910,7 @@ async function toggleVoice() {
       composerPh.textContent = "Опиши задачу словами";
       showCaptureError("В приложении MAX микрофон пока недоступен — напиши текстом. В веб-версии MAX (через браузер) голос работает.");
     } else {
-      showCaptureError("Микрофон сейчас не отвечает — попробуй ещё раз или напиши текстом.");
+      (voiceShowError || showCaptureError)("Микрофон сейчас не отвечает — попробуй ещё раз или напиши текстом.");
     }
     return;
   }
@@ -922,14 +932,13 @@ async function toggleVoice() {
       const res = await postJson("/api/transcribe", { audioBase64: dataUrl }, 30000);
       trackUi("voice_ok", rec.mimeType || mime || "unknown"); // знаменатель доли отказов
       if (res.text) {
-        taskTextInput.value = taskTextInput.value.trim()
-          ? taskTextInput.value.trim() + " " + res.text
-          : res.text;
+        const field = voiceTargetInput || taskTextInput;
+        field.value = field.value.trim() ? field.value.trim() + " " + res.text : res.text;
         // Один вход для подсказки/плейсхолдера/кнопки — как при ручном вводе.
-        taskTextInput.dispatchEvent(new Event("input"));
+        field.dispatchEvent(new Event("input"));
       }
     } catch (err) {
-      showCaptureError(err.message);
+      (voiceShowError || showCaptureError)(err.message);
     } finally {
       btnMic.disabled = false;
       btnMic.classList.remove("busy");
@@ -2349,6 +2358,10 @@ function renderSolution(solution) {
   renderFigureCard(solution.figure);
   renderSchemaCard(solution.schemaId);
   answerBlock.innerHTML = answerMarkup(solution);
+  // Зелёная плашка ТОЛЬКО при подтверждённом ответе (плашки честности не задеты).
+  answerBlock.classList.toggle("answer-ok", solution.verification?.verified === true);
+  const shareBtn = document.getElementById("btn-share-solution");
+  if (shareBtn) shareBtn.hidden = false;
 
   // Формулы отрисовываем после того, как всё уже в DOM.
   renderMath(stepsList);
@@ -2923,6 +2936,16 @@ if (aiRail) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); aiSend(); }
   });
   aiPlusBtn.addEventListener("click", () => aiFileInput.click());
+  // Голос в чате (12.09): та же запись, что в съёмке, но текст падает в aiInput.
+  const aiMicBtn = document.getElementById("ai-mic");
+  if (typeof VOICE_OK !== "undefined" && VOICE_OK && aiMicBtn) {
+    aiMicBtn.hidden = false;
+    aiMicBtn.addEventListener("click", () => {
+      voiceTargetInput = aiInput;
+      voiceShowError = (msg) => aiBubble("assistant", `<span class="ai-error">${aiTextHtml(msg)}</span>`);
+      toggleVoice();
+    });
+  }
   document.getElementById("ai-attach-remove").addEventListener("click", clearAiAttach);
   aiFileInput.addEventListener("change", async () => {
     const file = aiFileInput.files?.[0];
@@ -3003,7 +3026,61 @@ for (const el of [aiInput, taskTextInput]) {
 // ================== END нижние вкладки ==================
 
 
-document.getElementById("context-pill")?.addEventListener("click", () => showScreen("screen-setup"));
+document.getElementById("context-pill")?.addEventListener("click", openSubjectSheet);
+
+// ---- Ряд альтернатив видоискателя (12.09): те же живые механики ----
+document.getElementById("alt-gallery")?.addEventListener("click", () => document.getElementById("file-input").click());
+document.getElementById("alt-typed")?.addEventListener("click", () => { taskTextInput?.focus(); });
+{
+  const altVoice = document.getElementById("alt-voice");
+  if (altVoice && typeof VOICE_OK !== "undefined" && VOICE_OK) {
+    altVoice.hidden = false;
+    altVoice.addEventListener("click", () => { voiceTargetInput = taskTextInput; voiceShowError = showCaptureError; toggleVoice(); });
+  }
+}
+
+// ---- Шторка класса/предмета (концепт экрана 3, 12.09) ----
+// Переносим ЖИВЫЕ узлы выбора (слушатели сохраняются), закрытие возвращает.
+const subjectSheet = document.getElementById("subject-sheet");
+let sheetHome = null; // {gradeParent, gradeNext, subjParent, subjNext}
+function openSubjectSheet() {
+  const grade = document.getElementById("grade-row");
+  const subj = document.getElementById("subject-block");
+  sheetHome = { gradeParent: grade.parentNode, gradeNext: grade.nextSibling, subjParent: subj.parentNode, subjNext: subj.nextSibling };
+  document.getElementById("sheet-slot-grade").appendChild(grade);
+  document.getElementById("sheet-slot-subject").appendChild(subj);
+  subjectSheet.hidden = false;
+}
+function closeSubjectSheet() {
+  if (!sheetHome) { subjectSheet.hidden = true; return; }
+  sheetHome.gradeParent.insertBefore(document.getElementById("grade-row"), sheetHome.gradeNext);
+  sheetHome.subjParent.insertBefore(document.getElementById("subject-block"), sheetHome.subjNext);
+  sheetHome = null;
+  subjectSheet.hidden = true;
+}
+subjectSheet?.addEventListener("click", (e) => { if (e.target === subjectSheet) closeSubjectSheet(); });
+
+document.getElementById("btn-share-solution")?.addEventListener("click", async () => {
+  const caption = "Решено в «Домашка в MAX» 🚀";
+  const text = `${state.recognizedText || "Задача"}\n\nОтвет: ${state.solution?.finalAnswer || ""}\n\n${caption}`;
+  try {
+    if (typeof window.WebApp?.shareMaxContent === "function") {
+      await window.WebApp.shareMaxContent({ text, link: CHANNEL_URL });
+    } else if (navigator.share) {
+      await navigator.share({ text, url: CHANNEL_URL });
+    } else {
+      await navigator.clipboard.writeText(text + "\n" + CHANNEL_URL);
+      alert("Скопировано — вставь другу в чат");
+    }
+  } catch {} // закрыл шторку — не ошибка
+});
+
+// ---- Хаптика (12.09): лёгкий отклик на навигацию; iOS Safari vibrate не
+// поддерживает — там просто тишина, фича-детект прикрывает. ----
+function haptic() { try { navigator.vibrate?.(8); } catch {} }
+for (const id of ["tab-solve", "tab-check", "tab-chat", "tab-create", "context-pill", "ai-send"]) {
+  document.getElementById(id)?.addEventListener("click", haptic);
+}
 
 // ================== Память предмета + автопропуск онбординга (12.09) ==================
 // Класс уже запоминается (restoreLastGrade). Предмет — так же: тогда со второго
@@ -3019,6 +3096,7 @@ subjectRow.addEventListener("click", (e) => {
   // Выбор предмета = сразу камера (жалоба 21:57: «нужно ещё раз нажать
   // Решить — неочевидно»). Родной обработчик чипа уже выставил state.subject.
   setTimeout(() => {
+    if (!subjectSheet?.hidden) closeSubjectSheet();
     if (state.grade && state.subject) enterCapture(state.mode === "check" ? "check" : "solve");
   }, 0);
 });
