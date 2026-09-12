@@ -1526,7 +1526,7 @@ body {
    на телефоне не активировался (композер уезжал под бар, скрин 21:50);
    бар на этих экранах есть всегда, лишний отступ при спрятанном баре
    (клавиатура) не виден под ней. Простота надёжнее. */
-#screen-capture .capture { padding-bottom: 96px !important; }
+#screen-capture .capture { padding-bottom: 104px !important; }
 #screen-setup .setup { padding-bottom: 96px !important; }
 #screen-ai .ai-composer-zone { padding-bottom: calc(88px + env(safe-area-inset-bottom)) !important; }
 
@@ -1568,7 +1568,8 @@ body {
   color: #fff;
   position: relative;
   overflow: hidden;
-  min-height: 46svh;
+  height: clamp(280px, 38svh, 480px);
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1596,7 +1597,7 @@ body {
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
   margin-top: 6px;
 }
-.capture-alts { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
+.capture-alts { display: none; } /* ряд удалён: дублировал композер и кадр (Илья 22:16) */
 .capture-alts button {
   border: 1px solid var(--glass-border);
   background: var(--glass);
