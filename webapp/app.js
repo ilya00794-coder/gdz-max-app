@@ -2835,7 +2835,7 @@ if (aiRail) {
   document.getElementById("rail-chat").addEventListener("click", () => openAiScreen("chat"));
   document.getElementById("rail-image").addEventListener("click", () => openAiScreen("image"));
   document.getElementById("rail-video").addEventListener("click", () => openAiScreen("video"));
-  document.getElementById("btn-back-ai").addEventListener("click", () => showScreen("screen-setup"));
+  document.getElementById("btn-back-ai").addEventListener("click", () => showScreen(state.grade && state.subject ? "screen-capture" : "screen-setup"));
   aiChipImage.addEventListener("click", () => setAiMode("image"));
   aiChipVideo.addEventListener("click", () => setAiMode("video"));
   document.querySelectorAll(".ai-suggest").forEach((b) =>
@@ -2885,3 +2885,95 @@ if (aiRail) {
   // loadAiFeatures НЕ здесь: зовётся из initMaxBridge, когда initData уже есть.
 }
 // ================== END AI-разделы ==================
+
+// ================== Нижние вкладки (редизайн D, 12.09) ==================
+// Бар — только навигация по СУЩЕСТВУЮЩИМ экранам (enterCapture/openAiScreen):
+// контракты бека не затронуты. Виден на корневых экранах (съёмка, AI-чат);
+// на подэкранах (решение, confirm, проверка) — свой «назад», бар спрятан.
+const tabBar = document.getElementById("tab-bar");
+const TAB_ROOTS = new Set(["screen-capture", "screen-ai"]);
+
+function updateTabBar(screenId) {
+  if (!tabBar) return;
+  const f = aiState.features;
+  document.getElementById("tab-chat").hidden = !f.chat;
+  document.getElementById("tab-create").hidden = !(f.image || f.video);
+  const visible = TAB_ROOTS.has(screenId);
+  tabBar.hidden = !visible;
+  document.body.classList.toggle("has-tabbar", visible);
+  if (visible) aiRail.hidden = true; // бар заменяет боковой рейл целиком
+  const active =
+    screenId === "screen-capture" ? (state.mode === "check" ? "tab-check" : "tab-solve")
+    : screenId === "screen-ai" ? (aiState.mode === "chat" ? "tab-chat" : "tab-create")
+    : null;
+  for (const id of ["tab-solve", "tab-check", "tab-chat", "tab-create"]) {
+    document.getElementById(id).dataset.on = id === active ? "true" : "";
+  }
+}
+
+// showScreen дополняется обновлением бара (function-binding переприсваиваем,
+// чтобы не править десятки вызовов по файлу).
+const __showScreenBase = showScreen;
+// eslint-disable-next-line no-func-assign
+showScreen = function (id) {
+  __showScreenBase(id);
+  updateTabBar(id);
+};
+
+function tabToCapture(mode) {
+  // Класс/предмет ещё не выбраны — сначала онбординг (setup).
+  if (!state.grade || !state.subject) { showScreen("screen-setup"); return; }
+  trackUi(mode === "check" ? "mode_check" : "mode_solve");
+  enterCapture(mode);
+}
+document.getElementById("tab-solve").addEventListener("click", () => tabToCapture("solve"));
+document.getElementById("tab-check").addEventListener("click", () => tabToCapture("check"));
+document.getElementById("tab-chat").addEventListener("click", () => openAiScreen("chat"));
+document.getElementById("tab-create").addEventListener("click", () => openAiScreen("image"));
+
+// Клавиатура: бар прячется, пока фокус в полях ввода (композеры у низа).
+for (const el of [aiInput, taskTextInput]) {
+  if (!el) continue;
+  el.addEventListener("focus", () => { tabBar.hidden = true; document.body.classList.remove("has-tabbar"); });
+  el.addEventListener("blur", () => setTimeout(() => {
+    const active = document.querySelector('.screen[data-active="true"]')?.id;
+    if (active) updateTabBar(active);
+  }, 150));
+}
+// ================== END нижние вкладки ==================
+
+
+// ================== Память предмета + автопропуск онбординга (12.09) ==================
+// Класс уже запоминается (restoreLastGrade). Предмет — так же: тогда со второго
+// запуска приложение открывается СРАЗУ камерой (решение Ильи: «фото сразу»).
+// Бек не задет: grade+subject как и раньше уходят только с /api/solve.
+const LAST_SUBJECT_KEY = "gdz:last-subject";
+let autoEnteredCapture = false;
+
+subjectRow.addEventListener("click", (e) => {
+  const chip = e.target.closest(".chip");
+  if (chip) { try { localStorage.setItem(LAST_SUBJECT_KEY, chip.textContent); } catch {} }
+});
+
+// Чипы предметов появляются асинхронно (GET /api/subjects по классу) —
+// восстанавливаем выбором «как живой тап», когда они дорисованы.
+new MutationObserver(() => {
+  if (state.subject || autoEnteredCapture) return;
+  let saved = null;
+  try { saved = localStorage.getItem(LAST_SUBJECT_KEY); } catch {}
+  if (!saved) return;
+  const chip = [...subjectRow.children].find((c) => c.textContent === saved);
+  if (!chip) return;
+  chip.click();
+  // Первый экран сессии — сразу камера (онбординг пройден раньше).
+  autoEnteredCapture = true;
+  if (document.querySelector('.screen[data-active="true"]')?.id === "screen-setup") {
+    enterCapture("solve");
+  }
+}).observe(subjectRow, { childList: true });
+
+// Активная вкладка следует за сменой режима внутри AI-экрана (чипы/подсказки).
+for (const el of [aiChipImage, aiChipVideo, ...document.querySelectorAll(".ai-suggest")]) {
+  el?.addEventListener("click", () => updateTabBar("screen-ai"));
+}
+// ================== END память предмета ==================

@@ -14,6 +14,8 @@
         href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.18.4/katex.min.css"
         integrity="sha512-CjgvIbfXwhzjOCtP+wuQMPGJZ5uEY2kHZ4qPGvjIgfkTiFdnuDmF+oJW2B5glj7d7OkPPDX9BMu4hDio5MWTEA=="
         crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v=7416795-12.09.2009" />
 </head>
 <body>
@@ -347,6 +349,14 @@
       </div>
     
 
+    <!-- Нижние вкладки (редизайн D, 12.09): показываются на корневых экранах
+         (съёмка/чат); переключают СУЩЕСТВУЮЩИЕ экраны — логика бека не задета. -->
+    <nav class="tab-bar" id="tab-bar" hidden>
+      <button class="tab-btn" id="tab-solve" type="button"><span class="tab-i">📸</span>Решить</button>
+      <button class="tab-btn" id="tab-check" type="button"><span class="tab-i">📝</span>Проверить</button>
+      <button class="tab-btn" id="tab-chat" type="button" hidden><span class="tab-i">💬</span>Чат</button>
+      <button class="tab-btn" id="tab-create" type="button" hidden><span class="tab-i">✨</span>Создать</button>
+    </nav>
   </div>
 
   <!-- Обычные (не defer) скрипты: KaTeX и auto-render должны быть готовы к моменту загрузки app.js. -->
