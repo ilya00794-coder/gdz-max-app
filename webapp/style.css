@@ -1524,4 +1524,8 @@ body {
 }
 /* Отступ под бар у прижатых к низу элементов корневых экранов */
 body.has-tabbar #screen-capture .capture { padding-bottom: 82px; }
+body.has-tabbar #screen-setup .setup { padding-bottom: 82px; }
 body.has-tabbar #screen-ai .ai-composer-zone { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }
+
+/* Рейл полностью заменён нижними вкладками (скрин Ильи 21:01 — двойная навигация) */
+.ai-rail { display: none !important; }
