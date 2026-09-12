@@ -716,8 +716,10 @@ export function isHardInequality(text) {
   if (!hasIneq) return false;
   // LaTeX: \frac{...}{...буква...} — знаменатель содержит переменную.
   const latexVarDenom = /\\[cd]?frac\s*\{[^{}]*\}\s*\{[^{}]*[a-zа-яё][^{}]*\}/i.test(s);
-  // Плоская запись: «/» и сразу (со скобкой/цифрами) буква: 1/(x+2), 2x/x, 5/2y.
-  const plainVarDenom = /\/\s*\(?\s*-?\s*\d*\s*[a-zа-яё]/i.test(s);
+  // Плоская запись: «/» и сразу (со скобками/цифрами) буква: 1/(x+2), 2x/x, 5/2y,
+  // ((x+3)(x+2)) — скобок может быть НЕСКОЛЬКО (живой пропуск 12.09: знаменатель
+  // из произведения скобок «/((x+3)(x+2)(x-3))» не ловился одиночной \(?).
+  const plainVarDenom = /\/\s*\(*\s*-?\s*\d*\s*[a-zа-яё]/i.test(s);
   return latexVarDenom || plainVarDenom;
 }
 async function solveViaNative(request, program, quarter, { hard = false } = {}) {
