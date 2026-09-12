@@ -247,7 +247,10 @@ if (window.visualViewport) {
     const el = document.activeElement;
     if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT")) {
       // Задержка — WebKit доводит панорамирование после resize.
-      setTimeout(() => el.scrollIntoView({ block: "center", behavior: "smooth" }), 60);
+      // ai-input прижат к НИЗУ экрана, сжатого до var(--vvh): центрирование
+      // утащило бы шапку под статусбар (живой скрин 12.09) — ему нужен верх.
+      if (el.id === "ai-input") setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 60);
+      else setTimeout(() => el.scrollIntoView({ block: "center", behavior: "smooth" }), 60);
     }
   };
   vv.addEventListener("resize", applyVvh);
@@ -2686,6 +2689,7 @@ async function aiSend() {
   aiState.busy = true;
   aiSendBtn.disabled = true;
   aiInput.value = "";
+  aiInput.style.height = "auto";
 
   const attachHtml = photo ? `<img class="ai-msg-photo" src="${photo}" alt="">` : "";
   aiBubble("user", attachHtml + aiTextHtml(text));
@@ -2753,6 +2757,10 @@ if (aiRail) {
   aiChipVideo.addEventListener("click", () => setAiMode("video"));
   document.querySelectorAll(".ai-suggest").forEach((b) =>
     b.addEventListener("click", () => { openAiScreen(b.dataset.aiMode); }));
+  aiInput.addEventListener("input", () => {
+    aiInput.style.height = "auto";
+    aiInput.style.height = Math.min(aiInput.scrollHeight, 96) + "px";
+  });
   aiSendBtn.addEventListener("click", aiSend);
   aiInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); aiSend(); }
