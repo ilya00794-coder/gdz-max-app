@@ -3160,4 +3160,10 @@ function maybeSelfUpdate(fresh) {
     location.replace(url.toString());
   } catch { /* приватный режим без sessionStorage — живём со старой версией */ }
 }
+// MAX может держать вебвью живым: переоткрытие мини-аппа не перезапускает
+// страницу, и проверка «только при старте» не срабатывала (скрин 22:24 —
+// старый экран при свежем эдже). Возврат в приложение — тоже повод проверить.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) loadAiFeatures();
+});
 // ================== END авто-обновление ==================
