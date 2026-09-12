@@ -273,7 +273,10 @@ if (window.visualViewport) {
       // надо ПЕРЕБАРЫВАТЬ серией мгновенных возвратов (одиночный smooth
       // проигрывал гонку — скрин 21:52, приложение уезжало за экран).
       if (el.id === "ai-input") {
-        for (const ms of [0, 80, 200, 400, 700]) setTimeout(() => window.scrollTo(0, 0), ms);
+        // WKWebView панорамирует НАТИВНО — window.scrollTo его не возвращает
+        // (скрин 22:53). scrollIntoView шапки двигает и нативную панораму.
+        const top = document.querySelector("#screen-ai .brand-topbar");
+        for (const ms of [60, 180, 380, 700]) setTimeout(() => top?.scrollIntoView({ block: "start" }), ms);
       } else setTimeout(() => el.scrollIntoView({ block: "center", behavior: "smooth" }), 60);
     }
   };
@@ -281,8 +284,8 @@ if (window.visualViewport) {
   // Панорамирование двигает visualViewport, не скролл документа: пока фокус
   // в композере чата — прижимаем страницу к верху при каждом сдвиге.
   vv.addEventListener("scroll", () => {
-    if (document.activeElement?.id === "ai-input" && (vv.offsetTop > 1 || window.scrollY > 1)) {
-      window.scrollTo(0, 0);
+    if (document.activeElement?.id === "ai-input" && vv.offsetTop > 1) {
+      document.querySelector("#screen-ai .brand-topbar")?.scrollIntoView({ block: "start" });
     }
   });
   applyVvh();
