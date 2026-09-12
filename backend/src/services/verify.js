@@ -239,7 +239,20 @@ async function checkAnyInvariant(values) {
   return null;
 }
 
-export async function verifyAnswer({ subject, expression, candidateAnswer, answerValues }) {
+/**
+ * Обёртка вердикта: добавляет computable — вычислим ли предмет в принципе.
+ * Нужна фронту для честной плашки (решение Ильи 12.09 после инцидента №40):
+ * на ВЫЧИСЛИМОМ предмете verified=false больше не молчит — ребёнок видит
+ * «не удалось проверить», а при несовпадении сверки — прямое предупреждение.
+ * На гуманитарных (не вычислимых) плашки нет — там false штатен и вечен.
+ */
+export async function verifyAnswer(args) {
+  const computable = isComputableSubject(String(args.subject || "").trim().toLowerCase().replace(/ё/g, "е"));
+  const verdict = await verifyAnswerCore(args);
+  return { ...verdict, computable };
+}
+
+async function verifyAnswerCore({ subject, expression, candidateAnswer, answerValues }) {
   const normalizedSubject = String(subject || "").trim().toLowerCase().replace(/ё/g, "е");
   let invariantViolation = null; // уходит в details для телеметрии (п.8)
 
