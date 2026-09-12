@@ -1,3 +1,14 @@
+// Диагностика фронта (12.09, охота за исчезнувшим таб-баром): первая JS-ошибка
+// показывается в строке версии на первом экране — вебвью MAX не даёт консоли.
+window.addEventListener("error", (e) => {
+  try {
+    const msg = `ERR: ${e.message} @${(e.filename || "").split("/").pop()}:${e.lineno}`;
+    localStorage.setItem("gdz:last-error", msg);
+    const el = document.getElementById("app-version");
+    if (el) el.textContent = (el.textContent || "") + " · " + msg;
+  } catch {}
+});
+
 // =============================================================
 // Мини-приложение "Решебник".
 //
@@ -184,7 +195,9 @@ const GRADES = Array.from({ length: 11 }, (_, i) => i + 1);
 // Версия фронта: видима на экране настройки и в консоли — так с телефона
 // можно убедиться, что кэш не подсунул старый app.js.
 console.log("Домашка в МАХ, фронт " + (window.APP_VERSION ?? "dev"));
-document.getElementById("app-version").textContent = "версия " + (window.APP_VERSION ?? "dev");
+document.getElementById("app-version").textContent = "версия " + (window.APP_VERSION ?? "dev")
+  + (localStorage.getItem("gdz:last-error") ? " · прошлый запуск: " + localStorage.getItem("gdz:last-error") : "");
+try { localStorage.removeItem("gdz:last-error"); } catch {}
 
 
 
