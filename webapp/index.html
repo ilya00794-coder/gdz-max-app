@@ -37,6 +37,14 @@
         <span class="avatar" id="user-avatar" hidden></span>
       </header>
 
+      <!-- AI-разделы (12.09): плашки справа НА ГЛАВНОМ экране (перенос с экрана
+           съёмки — Илья искал их здесь); видны только если бэкенд включил фичи -->
+      <nav class="ai-rail" id="ai-rail" hidden>
+        <button class="ai-rail-btn" id="rail-chat" type="button" hidden><span class="ai-rail-ico">💬</span><span class="ai-rail-cap">Чат</span></button>
+        <button class="ai-rail-btn" id="rail-image" type="button" hidden><span class="ai-rail-ico">🎨</span><span class="ai-rail-cap">Арт</span></button>
+        <button class="ai-rail-btn" id="rail-video" type="button" hidden><span class="ai-rail-ico">🎬</span><span class="ai-rail-cap">Видео</span></button>
+      </nav>
+
       <div class="setup">
         <p class="setup-lead">Сфотографируй задачу — покажем решение по шагам.</p>
 
@@ -67,13 +75,6 @@
         <button class="sheet-back" id="btn-back-setup" aria-label="Назад">←</button>
         <img class="brand-logo" src="assets/logo-header.svg" alt="домашка в max" />
       </header>
-
-      <!-- AI-разделы (12.09): плашки справа; видны только если бэкенд включил фичи -->
-      <nav class="ai-rail" id="ai-rail" hidden>
-        <button class="ai-rail-btn" id="rail-chat" type="button" hidden><span class="ai-rail-ico">💬</span><span class="ai-rail-cap">Чат</span></button>
-        <button class="ai-rail-btn" id="rail-image" type="button" hidden><span class="ai-rail-ico">🎨</span><span class="ai-rail-cap">Арт</span></button>
-        <button class="ai-rail-btn" id="rail-video" type="button" hidden><span class="ai-rail-ico">🎬</span><span class="ai-rail-cap">Видео</span></button>
-      </nav>
 
       <div class="capture">
         <!-- До съёмки: одна крупная тап-цель на весь блок. -->
