@@ -3014,7 +3014,13 @@ let autoEnteredCapture = false;
 
 subjectRow.addEventListener("click", (e) => {
   const chip = e.target.closest(".chip");
-  if (chip) { try { localStorage.setItem(LAST_SUBJECT_KEY, chip.textContent); } catch {} }
+  if (!chip) return;
+  try { localStorage.setItem(LAST_SUBJECT_KEY, chip.textContent); } catch {}
+  // Выбор предмета = сразу камера (жалоба 21:57: «нужно ещё раз нажать
+  // Решить — неочевидно»). Родной обработчик чипа уже выставил state.subject.
+  setTimeout(() => {
+    if (state.grade && state.subject) enterCapture(state.mode === "check" ? "check" : "solve");
+  }, 0);
 });
 
 // Чипы предметов появляются асинхронно (GET /api/subjects по классу) —
@@ -3026,12 +3032,8 @@ new MutationObserver(() => {
   if (!saved) return;
   const chip = [...subjectRow.children].find((c) => c.textContent === saved);
   if (!chip) return;
-  chip.click();
-  // Первый экран сессии — сразу камера (онбординг пройден раньше).
   autoEnteredCapture = true;
-  if (document.querySelector('.screen[data-active="true"]')?.id === "screen-setup") {
-    enterCapture("solve");
-  }
+  chip.click(); // делегированный слушатель выше сам уведёт в камеру
 }).observe(subjectRow, { childList: true });
 
 // Активная вкладка следует за сменой режима внутри AI-экрана (чипы/подсказки).
