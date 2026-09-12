@@ -13,7 +13,7 @@ import { coerceBySchema } from "./qwenSolveAdapter.js";
 
 const BASE_URL = process.env.QWEN_NATIVE_BASE_URL
   || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1";
-const TIMEOUT_MS = 120_000;
+const TIMEOUT_MS = Number(process.env.QWEN_TIMEOUT_MS || 120_000);
 
 /** Ошибка конфигурации (нет ключа) — сервер поднимается без ключа, падает только вызов. */
 export class QwenConfigError extends Error {

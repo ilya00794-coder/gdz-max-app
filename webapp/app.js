@@ -1970,12 +1970,29 @@ const solutionScreen = document.getElementById("screen-solution");
  * появляется исключительно при настоящей верификации.
  */
 function verificationRow(verification) {
-  if (verification?.verified !== true) return "";
-  return `<p class="answer-verify" data-verified="true">
+  if (verification?.verified === true) {
+    return `<p class="answer-verify" data-verified="true">
     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"
          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <circle cx="12" cy="12" r="9" /><path d="m9 12 2 2 4-4" />
     </svg><span>Ответ проверен вычислением</span></p>`;
+  }
+  // ЧЕСТНАЯ ПЛАШКА (решение Ильи 12.09 после инцидента №40): на ВЫЧИСЛИМОМ
+  // предмете false больше не молчит — ребёнок видит статус проверки.
+  // Два уровня: сверка ПРОШЛА и ответ НЕ совпал (sympy) — прямое предупреждение;
+  // прочие false (не формализовано, форма не разобрана) — мягкое «перепроверь».
+  // Гуманитарные (computable=false) и старый кэш без поля — без плашки, как раньше.
+  if (verification?.computable !== true) return "";
+  const mismatch = verification.method === "sympy" || verification.method === "sympy-set";
+  const cls = mismatch ? "answer-verify answer-verify--alert" : "answer-verify answer-verify--warn";
+  const text = mismatch
+    ? "Проверка вычислением не сошлась с этим ответом — перепроверь решение или спроси учителя"
+    : "Этот ответ не удалось проверить вычислением — перепроверь сам";
+  return `<p class="${cls}" data-verified="false">
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 9v4" /><path d="M12 17h.01" /><circle cx="12" cy="12" r="9" />
+    </svg><span>${text}</span></p>`;
 }
 
 // ---------- markdown-таблицы в шагах ----------

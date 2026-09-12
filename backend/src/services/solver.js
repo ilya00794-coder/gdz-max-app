@@ -692,7 +692,7 @@ export async function solveTask({ recognizedText, grade, subject, quarter = 4, s
  * QWEN_NATIVE_CHAOS=fail-first — тестовый рубильник канарейки фолбэка:
  * первая попытка искусственно бросает; не задан (прод) — мёртв.
  */
-const QWEN_FALLBACK_MODEL = "qwen3.8-flash";
+const QWEN_FALLBACK_MODEL = process.env.QWEN_FALLBACK_MODEL || "qwen3.8-flash";
 async function solveViaNative(request, program, quarter) {
   const system = (request.system ?? []).map((b) => b.text).join("\n\n");
   const messages = [{ role: "user", content: request.messages[0].content }];
