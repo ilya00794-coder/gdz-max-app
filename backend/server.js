@@ -9,7 +9,7 @@ import uiEventRouter from "./src/routes/uiEvent.js";
 import contestRouter from "./src/routes/contestEntry.js";
 import aiFeaturesRouter from "./src/routes/aiFeatures.js";
 import aiChatRouter from "./src/routes/aiChat.js";
-import { imageRouter, videoRouter } from "./src/routes/aiMedia.js";
+import { imageRouter, videoRouter, enhanceRouter } from "./src/routes/aiMedia.js";
 import { assertDatabaseReady, DATABASE_URL } from "./src/services/cache.js";
 import { maxInitData, INIT_DATA_HEADER } from "./src/middleware/maxInitData.js";
 import { subscriptionGate, assertGatingReady, checkSubscription } from "./src/subscription.js";
@@ -71,6 +71,7 @@ app.use("/api/features", aiFeaturesRouter);
 app.use("/api/chat", aiChatRouter);
 app.use("/api/image", imageRouter);
 app.use("/api/video", videoRouter);
+app.use("/api/enhance", enhanceRouter); // кнопка «✨ Улучшить» в композере
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 

@@ -325,3 +325,7 @@ CREATE TABLE IF NOT EXISTS gen_events (
   output_tokens integer
 );
 CREATE INDEX IF NOT EXISTS gen_events_user_hour_idx ON gen_events (user_hash, kind, created_at DESC);
+
+-- Кнопка «✨ Улучшить» (12.09): усиление промпта — отдельный вид события.
+ALTER TABLE gen_events DROP CONSTRAINT IF EXISTS gen_events_kind_check;
+ALTER TABLE gen_events ADD CONSTRAINT gen_events_kind_check CHECK (kind IN ('chat','image','video','enhance'));

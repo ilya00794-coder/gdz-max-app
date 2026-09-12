@@ -14,6 +14,7 @@ import { hashUser, usageCost } from "../services/telemetry.js";
 
 export const imageRouter = Router();
 export const videoRouter = Router();
+export const enhanceRouter = Router();
 
 const IMAGE_MODEL = process.env.QWEN_IMAGE_MODEL || "qwen-image-3.0";
 const IMAGE_EDIT_MODEL = process.env.QWEN_IMAGE_EDIT_MODEL || "qwen-image-edit";
@@ -199,4 +200,23 @@ videoRouter.get("/status", async (req, res) => {
     console.error(new Date().toISOString(), "[ai-video] сбой статуса:", err.message);
     res.status(502).json({ error: describeQwenError(err) });
   }
+});
+
+// POST /api/enhance — кнопка «✨ Улучшить» в композере (Илья 12.09): улучшенный
+// промпт возвращается В ПОЛЕ, пользователь правит и отправляет сам. Для фото
+// (edit) кнопки нет — там LLM-усиление вредно (два живых кейса).
+enhanceRouter.post("/", async (req, res) => {
+  const source = requestSource(req);
+  const userId = req.max?.userId;
+  if (!featureEnabled("QWEN_IMAGE", source, userId) && !featureEnabled("QWEN_VIDEO", source, userId)) {
+    return res.status(503).json({ error: "Раздел пока выключен" });
+  }
+  const prompt = String(req.body?.prompt ?? "").trim();
+  if (!prompt || prompt.length > 1000) {
+    return res.status(400).json({ error: "Сначала напиши запрос (до 1000 символов)" });
+  }
+  const target = req.body?.target === "video" ? "video" : "image";
+  const e = await enhancePrompt(prompt, target);
+  recordGenEvent({ kind: "enhance", source, userHash: hashUser(userId), model: ENHANCE_MODEL, prompt, enhancedPrompt: e.text, ok: true, costUsd: e.cost });
+  res.json({ enhanced: e.text });
 });

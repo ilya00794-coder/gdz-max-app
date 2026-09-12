@@ -2605,6 +2605,14 @@ function setAiMode(mode) {
   // «+» (фото на обработку) — только в режиме картинки.
   aiPlusBtn.hidden = !(aiState.mode === "image" && aiState.features.image);
   if (aiState.mode !== "image") clearAiAttach();
+  updateAiEnhanceBtn();
+}
+
+/** «✨ Улучшить» — только для генерации картинки/видео БЕЗ фото:
+ * точечные правки фото LLM-усиление ломало (кейсы 12.09). */
+function updateAiEnhanceBtn() {
+  const btn = document.getElementById("ai-enhance");
+  btn.hidden = !((aiState.mode === "image" || aiState.mode === "video") && !aiState.photo);
 }
 
 function openAiScreen(mode) {
@@ -2615,6 +2623,7 @@ function openAiScreen(mode) {
   aiChipVideo.dataset.on = mode === "video" ? "true" : "";
   aiInput.placeholder = AI_PLACEHOLDERS[mode];
   aiPlusBtn.hidden = !(mode === "image" && aiState.features.image);
+  updateAiEnhanceBtn();
   aiInput.focus();
 }
 
@@ -2623,6 +2632,7 @@ function clearAiAttach() {
   aiAttach.hidden = true;
   aiAttachImg.removeAttribute("src");
   aiFileInput.value = "";
+  updateAiEnhanceBtn();
 }
 
 /** Пузырь в ленту. content — Node или HTML-строка (уже безопасная). */
@@ -2761,6 +2771,26 @@ if (aiRail) {
     aiInput.style.height = "auto";
     aiInput.style.height = Math.min(aiInput.scrollHeight, 96) + "px";
   });
+  const aiEnhanceBtn = document.getElementById("ai-enhance");
+  aiEnhanceBtn.addEventListener("click", async () => {
+    const text = aiInput.value.trim();
+    if (!text) { aiInput.focus(); return; }
+    if (aiEnhanceBtn.dataset.busy) return;
+    aiEnhanceBtn.dataset.busy = "1";
+    const label = aiEnhanceBtn.textContent;
+    aiEnhanceBtn.textContent = "✨ Думаю…";
+    try {
+      const data = await postJson("/api/enhance", { prompt: text, target: aiState.mode === "video" ? "video" : "image" }, 40_000);
+      aiInput.value = data.enhanced;
+      aiInput.dispatchEvent(new Event("input")); // автогроу пересчитается
+      aiInput.focus();
+    } catch (err) {
+      alert(err.message || "Не получилось улучшить, попробуй ещё раз");
+    } finally {
+      delete aiEnhanceBtn.dataset.busy;
+      aiEnhanceBtn.textContent = label;
+    }
+  });
   aiSendBtn.addEventListener("click", aiSend);
   aiInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); aiSend(); }
@@ -2774,6 +2804,7 @@ if (aiRail) {
       aiState.photo = await aiReadPhoto(file);
       aiAttachImg.src = aiState.photo;
       aiAttach.hidden = false;
+      updateAiEnhanceBtn();
     } catch (err) {
       alert(err.message);
     }
