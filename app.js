@@ -2912,14 +2912,19 @@ function updateTabBar(screenId) {
   }
 }
 
-// showScreen дополняется обновлением бара (function-binding переприсваиваем,
-// чтобы не править десятки вызовов по файлу).
-const __showScreenBase = showScreen;
-// eslint-disable-next-line no-func-assign
-showScreen = function (id) {
-  __showScreenBase(id);
-  updateTabBar(id);
-};
+// Бар следит за экранами НАПРЯМУЮ через data-active (MutationObserver):
+// не зависит от того, каким путём переключили экран, и от порядка загрузки
+// (патч showScreen на телефоне Ильи не сработал — скрин 21:03 без бара).
+const __tabObserver = new MutationObserver(() => {
+  try {
+    const active = document.querySelector('.screen[data-active="true"]')?.id;
+    if (active) updateTabBar(active);
+  } catch (e) { console.warn("tab-bar:", e); }
+});
+document.querySelectorAll(".screen").forEach((el) =>
+  __tabObserver.observe(el, { attributes: true, attributeFilter: ["data-active"] }));
+// первичное состояние — сразу при загрузке
+try { updateTabBar(document.querySelector('.screen[data-active="true"]')?.id); } catch {}
 
 function tabToCapture(mode) {
   // Класс/предмет ещё не выбраны — сначала онбординг (setup).
