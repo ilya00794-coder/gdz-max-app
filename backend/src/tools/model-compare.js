@@ -54,15 +54,37 @@ async function workerMain(model, tasksFile) {
   const takeUsage = () => usageQueue.shift() ?? null;
   const client = getClient();
   const originalParse = client.messages.parse.bind(client.messages);
+  const originalCreate = client.messages.create.bind(client.messages);
+  // DeepSeek (стенд, не прод): output_config.format не поддерживается — транслируем
+  // parse→tools/tool_choice:auto через deepseek-compat. Промпт/схема/curriculum те же.
+  const isDeepSeek = /deepseek|qwen/i.test(model); // не-Anthropic модели: DeepSeek, Qwen
+  const deepseekParse = isDeepSeek ? (await import("./deepseek-compat.mjs")).deepseekStructuredParse : null;
+  if (isDeepSeek) console.error(`[${model}] DeepSeek-адаптер: output_config.format → tools+tool_choice:auto (tool-локально)`);
   // Haiku 4.5 — модель до 4.6: thinking «adaptive» не поддерживает (канарейка
   // это поймала 400-й ошибкой). Единственная адаптация запроса — thinking с
   // фиксированным бюджетом; промпт, curriculum и схема ответа не меняются.
-  const needsBudgetThinking = !/-(4-6|4-8|5)\b|opus-5|sonnet-5|fable-5/.test(model)
-    || model.includes("haiku");
+  const needsBudgetThinking = !isDeepSeek && (!/-(4-6|4-8|5)\b|opus-5|sonnet-5|fable-5/.test(model)
+    || model.includes("haiku"));
   if (needsBudgetThinking) {
     console.error(`[${model}] шим для модели до 4.6: thinking adaptive → enabled (budget 8000), output_config.effort убран`);
   }
+  // π-дисциплина для qwen (замер 11.09): finalAnswer верный («36π см²»), но в
+  // answerValues.values π ТЕРЯЛСЯ (value:"36") → SymPy-провал и порча машинных
+  // значений. Пост-нормализация невозможна (π потерян), чиним в источнике —
+  // строка правила в system (аналог HAIKU_OUTPUT_RULES; для прода — тем же швом).
+  const QWEN_VALUE_RULES =
+    "Правило для answerValues.values: множители π и другие символьные части — " +
+    "ЧАСТЬ value (пиши \"36π\" или \"36*pi\", НЕ теряй π и не переноси его в unit). " +
+    "unit — только единицы измерения (см², см³, кг). Никакого LaTeX в value (\\pi нельзя).";
   client.messages.parse = async (args) => {
+    if (isDeepSeek) {
+      const withRules = /qwen/i.test(model)
+        ? { ...args, system: [...(Array.isArray(args.system) ? args.system : args.system ? [{ type: "text", text: String(args.system) }] : []), { type: "text", text: QWEN_VALUE_RULES }] }
+        : args;
+      const resp = await deepseekParse(originalCreate, withRules);
+      usageQueue.push(resp.usage ?? null);
+      return resp;
+    }
     let patched = args;
     if (needsBudgetThinking) {
       const { effort, ...outputConfig } = args.output_config ?? {};
@@ -177,6 +199,19 @@ function cleanValue(value) {
  * simplify(a−b)==0 — порядок и форма записи не важны.
  */
 export async function answersMatch(modelAnswer, knownSympy, helpers, answerValues) {
+  const first = await answersMatchCore(modelAnswer, knownSympy, helpers, answerValues);
+  // Fallback на строку (π-урок qwen 11.09): машинные values теряют символьную
+  // часть («36π см²» → value:"36"), а finalAnswer цел. При расхождении машинного
+  // пути дополнительно сверяем строку; fail-closed сохраняется — строка обязана
+  // SymPy-сойтись с эталоном. Haiku это не касается (машинный путь сходится).
+  if (!first.match && Array.isArray(answerValues?.values) && answerValues.values.length) {
+    const second = await answersMatchCore(modelAnswer, knownSympy, helpers, null);
+    if (second.match) return { match: true, recoveredFromString: true };
+  }
+  return first;
+}
+
+async function answersMatchCore(modelAnswer, knownSympy, helpers, answerValues) {
   const { parseCandidateAnswer, runPython } = helpers;
   // Машинная форма answerValues (то, чем пользуется продовый verifyAnswer) —
   // первична; парсинг человеческой строки finalAnswer — только fallback.
