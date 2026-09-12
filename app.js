@@ -1678,7 +1678,26 @@ const btnEditText = document.getElementById("btn-edit-text");
 function wrapBareLatex(line) {
   if (line.includes("$")) return line;
   if (!/\\(frac|geq|leq|sqrt|cdot|times|div|neq|pm|infty|int|sum|log|sin|cos|tan|left|right|cup|cap|emptyset|varnothing|pi|approx|le|ge|ne)\b/.test(line)) return line;
-  return `$${line}$`;
+  if (!/[а-яё]/i.test(line)) return `$${line}$`;
+  // Смесь русского и формул: оборачиваем ТОЛЬКО формульные фрагменты — KaTeX,
+  // получив всю строку, жевал кириллицу без пробелов («Решитенеравенство»,
+  // хедлесс-канарейка 12.09). Фрагмент = подряд идущие слова без кириллицы.
+  const parts = line.split(/(\s+)/);
+  let out = "";
+  let buf = [];
+  const flush = () => {
+    if (!buf.length) return;
+    const chunk = buf.join("");
+    const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(chunk);
+    out += /\\[a-zA-Z]+/.test(m[2]) ? m[1] + "$" + m[2] + "$" + m[3] : chunk;
+    buf = [];
+  };
+  for (const w of parts) {
+    if (/[а-яё]/i.test(w)) { flush(); out += w; }
+    else buf.push(w);
+  }
+  flush();
+  return out;
 }
 
 function renderRecognizedView() {
