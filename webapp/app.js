@@ -2601,6 +2601,11 @@ async function loadAiFeatures() {
     return; // бэкенд недоступен/фичи выключены — плашек просто нет
   }
   maybeSelfUpdate(data.frontVersion);
+  // Фичи пришли ПОСЛЕ первичной отрисовки бара — перерисовать вкладки Чат/Создать.
+  try {
+    const active = document.querySelector('.screen[data-active="true"]')?.id;
+    if (active) updateTabBar(active);
+  } catch {}
   const f = aiState.features;
   document.getElementById("rail-chat").hidden = !f.chat;
   document.getElementById("rail-image").hidden = !f.image;
