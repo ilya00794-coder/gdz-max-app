@@ -2580,12 +2580,14 @@ const AI_PLACEHOLDERS = {
 };
 
 async function loadAiFeatures() {
+  let data;
   try {
-    const data = await getJson("/api/features", 8000);
+    data = await getJson("/api/features", 8000);
     aiState.features = data.features || aiState.features;
   } catch {
     return; // бэкенд недоступен/фичи выключены — плашек просто нет
   }
+  maybeSelfUpdate(data.frontVersion);
   const f = aiState.features;
   document.getElementById("rail-chat").hidden = !f.chat;
   document.getElementById("rail-image").hidden = !f.image;
@@ -2983,3 +2985,22 @@ for (const el of [aiChipImage, aiChipVideo, ...document.querySelectorAll(".ai-su
   el?.addEventListener("click", () => updateTabBar("screen-ai"));
 }
 // ================== END память предмета ==================
+
+
+// ================== Авто-обновление фронта (12.09) ==================
+// Кэш Pages держит index до 10+ минут — телефоны сидят на старой версии
+// (трижды ловили за день). Бек знает актуальную версию: если наша отстала,
+// один раз перезагружаемся с cache-buster'ом мимо кэша. sessionStorage-guard
+// защищает от цикла, когда эдж ещё не пересобрался.
+function maybeSelfUpdate(fresh) {
+  try {
+    if (!fresh || !window.APP_VERSION || fresh === window.APP_VERSION) return;
+    const KEY = "gdz:reloaded-for";
+    if (sessionStorage.getItem(KEY) === fresh) return; // уже пробовали — не циклим
+    sessionStorage.setItem(KEY, fresh);
+    const url = new URL(location.href);
+    url.searchParams.set("fresh", fresh);
+    location.replace(url.toString());
+  } catch { /* приватный режим без sessionStorage — живём со старой версией */ }
+}
+// ================== END авто-обновление ==================
