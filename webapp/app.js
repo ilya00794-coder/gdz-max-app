@@ -1658,7 +1658,7 @@ const btnEditText = document.getElementById("btn-edit-text");
  * кривая смесь останется текстом (throwOnError:false), хуже не становится. */
 function wrapBareLatex(line) {
   if (line.includes("$")) return line;
-  if (!/\\(frac|geq|leq|sqrt|cdot|times|div|neq|pm|infty|int|sum|log|sin|cos|tan|left|right)\b/.test(line)) return line;
+  if (!/\\(frac|geq|leq|sqrt|cdot|times|div|neq|pm|infty|int|sum|log|sin|cos|tan|left|right|cup|cap|emptyset|varnothing|pi|approx|le|ge|ne)\b/.test(line)) return line;
   return `$${line}$`;
 }
 
@@ -2271,8 +2271,11 @@ function answerParts(finalAnswer) {
 
 /** Разметка блока ответа вместе со строкой верификации. */
 function answerMarkup(solution) {
+  // wrapBareLatex: qwen отдаёт финальный ответ и голым LaTeX без $...$
+  // (живой кейс 12.09: «(-3; -2) \cup (3; \infty)» сырьём на экране) —
+  // тот же фикс, что у условия в renderSolution.
   const lines = answerParts(solution.finalAnswer)
-    .map((p) => `<p class="answer-value">${escapeHtml(p)}</p>`)
+    .map((p) => `<p class="answer-value">${escapeHtml(wrapBareLatex(p))}</p>`)
     .join("");
   return `
     <p class="answer-label">Ответ</p>
