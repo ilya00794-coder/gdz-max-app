@@ -1308,7 +1308,9 @@ function taskCardMarkup(task, index, order) {
   const label = task.number ? `Задание ${escapeHtml(task.number)}` : `Задача ${order}`;
   const text = task.text
     .split("\n")
-    .map((line) => `<p class="task-card-line">${escapeHtml(line)}</p>`)
+    // Голый LaTeX qwen-vision оборачиваем и здесь (недофикс 12.09: экран
+    // «несколько задач» показывал \frac сырьём — renderMath его не видел).
+    .map((line) => `<p class="task-card-line">${escapeHtml(wrapBareLatex(line))}</p>`)
     .join("");
   // Шапка кликабельна (тап = решить/раскрыть), task-acc — контейнер аккордеона:
   // решение раскрывается ВНУТРИ карточки, остальные задачи уходят под него.
