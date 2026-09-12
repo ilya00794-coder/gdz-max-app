@@ -9,6 +9,7 @@ import { requestSource } from "../middleware/maxInitData.js";
 import { qwenChat, describeQwenError, normalizeQwenUsage } from "../services/qwenClient.js";
 import { generateImage, editImage, submitVideoTask, getTaskStatus } from "../services/qwenTaskClient.js";
 import { featureEnabled, checkHourlyLimit, recordGenEvent, updateGenEventCost } from "../services/aiFeatures.js";
+import { storeFromUrl } from "../services/mediaStore.js";
 import { hashUser, usageCost } from "../services/telemetry.js";
 
 export const imageRouter = Router();
@@ -37,10 +38,10 @@ async function enhancePrompt(prompt, target) {
     const r = await qwenChat({
       model: ENHANCE_MODEL,
       messages: [
-        { role: "system", content: `Ты — редактор промптов для генерации ${target === "video" ? "видео" : "изображений"} в детском приложении. Перепиши запрос пользователя в один развёрнутый промпт по-русски: добавь композицию, стиль, свет, настроение, детали. Сохрани замысел, сделай сцену яркой и доброй. Ответь ТОЛЬКО текстом промпта, без пояснений.` },
+        { role: "system", content: `Ты — редактор промптов для генерации ${target === "video" ? "видео" : "изображений"} в детском приложении. Перепиши запрос пользователя в один развёрнутый промпт по-русски: добавь композицию, стиль, свет, настроение, детали. Сохрани замысел, сделай сцену яркой и доброй. Уложись в 400 символов. Ответь ТОЛЬКО текстом промпта, без пояснений.` },
         { role: "user", content: prompt },
       ],
-      max_tokens: 300,
+      max_tokens: 450,
     }, { timeoutMs: 20_000 });
     const text = r.choices?.[0]?.message?.content?.trim();
     const cost = usageCost(normalizeQwenUsage(r.usage), ENHANCE_MODEL) ?? 0;
@@ -97,10 +98,10 @@ imageRouter.post("/", mediaHandler({
     if (photo) {
       const dataUrl = String(photo).startsWith("data:") ? String(photo) : `data:image/jpeg;base64,${photo}`;
       const { url } = await editImage({ model: IMAGE_EDIT_MODEL, prompt: enhancedPrompt, imageDataUrl: dataUrl });
-      return { url, model: IMAGE_EDIT_MODEL, mediaCost: MEDIA_COST.imageEdit };
+      return { url: await storeFromUrl(url, ".png"), model: IMAGE_EDIT_MODEL, mediaCost: MEDIA_COST.imageEdit };
     }
     const { url } = await generateImage({ model: IMAGE_MODEL, prompt: enhancedPrompt });
-    return { url, model: IMAGE_MODEL, mediaCost: MEDIA_COST.image };
+    return { url: await storeFromUrl(url, ".png"), model: IMAGE_MODEL, mediaCost: MEDIA_COST.image };
   },
 }));
 
@@ -157,6 +158,7 @@ videoRouter.get("/status", async (req, res) => {
   try {
     const s = await getTaskStatus(taskId);
     if (s.status === "done") {
+      s.url = await storeFromUrl(s.url, ".mp4"); // OSS вебвью не откроет; наш хост откроет
       // Честная стоимость по ФАКТУ (usage.SR): если параметр разрешения вдруг
       // не применился (ловушка 12.09 — два ролика 1080P по $1.00 при записи
       // $0.25), телеметрия не должна врать, как было с единым Opus-тарифом.
