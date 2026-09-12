@@ -2732,7 +2732,7 @@ if (aiRail) {
   document.getElementById("rail-chat").addEventListener("click", () => openAiScreen("chat"));
   document.getElementById("rail-image").addEventListener("click", () => openAiScreen("image"));
   document.getElementById("rail-video").addEventListener("click", () => openAiScreen("video"));
-  document.getElementById("btn-back-ai").addEventListener("click", () => showScreen("screen-capture"));
+  document.getElementById("btn-back-ai").addEventListener("click", () => showScreen("screen-setup"));
   aiChipImage.addEventListener("click", () => setAiMode("image"));
   aiChipVideo.addEventListener("click", () => setAiMode("video"));
   document.querySelectorAll(".ai-suggest").forEach((b) =>

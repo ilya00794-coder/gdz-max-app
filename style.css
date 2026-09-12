@@ -1241,7 +1241,7 @@ button.task-card:active { background: var(--l-accent-soft); }
 .ai-rail {
   position: absolute;
   right: 0;
-  top: 30%;
+  top: 45%; /* пустая зона главного экрана: ниже чипов класса, выше кнопок */
   display: flex;
   flex-direction: column;
   gap: 10px;
