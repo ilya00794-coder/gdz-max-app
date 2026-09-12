@@ -2663,10 +2663,54 @@ async function aiMediaSrc(url) {
   try {
     const r = await fetch(full, { headers: { "ngrok-skip-browser-warning": "true" } });
     if (!r.ok) throw new Error("HTTP " + r.status);
-    return URL.createObjectURL(await r.blob());
+    const blob = await r.blob();
+    return { src: URL.createObjectURL(blob), blob, full };
   } catch {
-    return full; // хотя бы попытка напрямую (не-ngrok хостинг будущего)
+    return { src: full, blob: null, full }; // хотя бы попытка напрямую
   }
+}
+
+// ---------- поделиться генерацией (Илья 12.09) ----------
+/** Кнопка «Поделиться» под пузырём: медиа — файлом через нативный share sheet,
+ * текст — через MAX Bridge; фолбэки: shareMaxContent с ссылкой → буфер обмена. */
+function aiAddShare(bubble, { text, blob, filename, mime, url }) {
+  const row = document.createElement("div");
+  row.className = "ai-share";
+  row.innerHTML = `<button type="button" class="ai-share-btn">↗ Поделиться</button>`;
+  row.querySelector("button").addEventListener("click", async () => {
+    const caption = "Сделано в «Домашка в MAX» 🚀";
+    try {
+      if (blob && typeof File === "function" && navigator.canShare?.({ files: [new File([blob], filename, { type: mime })] })) {
+        await navigator.share({ files: [new File([blob], filename, { type: mime })], text: caption });
+        return;
+      }
+      if (typeof window.WebApp?.shareMaxContent === "function") {
+        await window.WebApp.shareMaxContent({ text: text ? `${text}\n\n${caption}` : caption, link: url || CHANNEL_URL });
+        return;
+      }
+      if (navigator.share) { await navigator.share({ text: text || caption, url: url || undefined }); return; }
+      await navigator.clipboard.writeText(text || url || caption);
+      alert("Скопировано — вставь другу в чат");
+    } catch {} // закрыл шторку — не ошибка
+  });
+  bubble.appendChild(row);
+}
+
+/** «Печатается в реальном времени»: ответ чата проявляется порциями с курсором. */
+function aiTypewriter(el, text) {
+  return new Promise((resolve) => {
+    el.classList.add("ai-typing");
+    el.textContent = "";
+    let i = 0;
+    const step = () => {
+      i = Math.min(text.length, i + 2 + Math.floor(Math.random() * 3));
+      el.textContent = text.slice(0, i);
+      aiFeed.scrollTop = aiFeed.scrollHeight;
+      if (i < text.length) setTimeout(step, 18);
+      else { el.classList.remove("ai-typing"); resolve(); }
+    };
+    step();
+  });
 }
 
 /** Фото → data-URL с ужатием до 1280px по большей стороне (лимит тела 15MB,
@@ -2719,17 +2763,23 @@ async function aiSend() {
       aiState.messages.push({ role: "user", content: text });
       const data = await postJson("/api/chat", { messages: aiState.messages }, 90_000);
       aiState.messages.push({ role: "assistant", content: data.reply });
-      wait.innerHTML = aiTextHtml(data.reply);
+      wait.style.whiteSpace = "pre-wrap";
+      await aiTypewriter(wait, data.reply);
+      aiAddShare(wait, { text: data.reply });
     } else if (mode === "image") {
       const payload = { prompt: text, ...(photo ? { imageBase64: photo } : {}) };
       const data = await postJson("/api/image", payload, 180_000);
-      wait.innerHTML = `<img class="ai-msg-media" src="${escapeHtml(await aiMediaSrc(data.url))}" alt="Сгенерированное изображение">`
+      const media = await aiMediaSrc(data.url);
+      wait.innerHTML = `<img class="ai-msg-media" src="${escapeHtml(media.src)}" alt="Сгенерированное изображение">`
         + (data.enhancedPrompt ? `<p class="ai-enhanced">${aiTextHtml(data.enhancedPrompt)}</p>` : "");
+      aiAddShare(wait, { blob: media.blob, filename: "domashka-max.png", mime: "image/png", url: media.full });
     } else {
       const data = await postJson("/api/video", { prompt: text }, 60_000);
       const url = await aiPollVideo(data.taskId);
-      wait.innerHTML = `<video class="ai-msg-media" controls playsinline preload="metadata" src="${escapeHtml(await aiMediaSrc(url))}"></video>`
+      const media = await aiMediaSrc(url);
+      wait.innerHTML = `<video class="ai-msg-media" controls playsinline preload="metadata" src="${escapeHtml(media.src)}"></video>`
         + (data.enhancedPrompt ? `<p class="ai-enhanced">${aiTextHtml(data.enhancedPrompt)}</p>` : "");
+      aiAddShare(wait, { blob: media.blob, filename: "domashka-max.mp4", mime: "video/mp4", url: media.full });
     }
   } catch (err) {
     wait.innerHTML = `<span class="ai-error">${aiTextHtml(err.message || "Что-то пошло не так, попробуй ещё раз")}</span>`;

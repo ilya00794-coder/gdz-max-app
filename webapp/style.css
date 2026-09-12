@@ -1393,3 +1393,19 @@ button.task-card:active { background: var(--l-accent-soft); }
 
 /* «✨ Улучшить» (12.09): усиленный промпт возвращается в поле для правки. */
 .ai-chip--enhance { margin-left: auto; border-color: var(--l-accent); color: var(--l-accent); }
+
+/* Поделиться генерацией + «печатается» (12.09) */
+.ai-share { margin-top: 8px; }
+.ai-share-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--l-accent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--l-accent);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ai-typing::after { content: "▍"; animation: ai-blink 0.9s steps(2) infinite; color: var(--l-muted); }
+@keyframes ai-blink { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .ai-typing::after { animation: none; } }
