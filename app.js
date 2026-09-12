@@ -2605,17 +2605,17 @@ function setAiMode(mode) {
   aiChipImage.dataset.on = aiState.mode === "image" ? "true" : "";
   aiChipVideo.dataset.on = aiState.mode === "video" ? "true" : "";
   aiInput.placeholder = AI_PLACEHOLDERS[aiState.mode];
-  // «+» (фото на обработку) — только в режиме картинки.
-  aiPlusBtn.hidden = !(aiState.mode === "image" && aiState.features.image);
-  if (aiState.mode !== "image") clearAiAttach();
+  // «+» (своё фото): картинка — обработка, видео — первый кадр (i2v).
+  aiPlusBtn.hidden = !((aiState.mode === "image" && aiState.features.image) || (aiState.mode === "video" && aiState.features.video));
+  if (aiState.mode === "chat") clearAiAttach();
   updateAiEnhanceBtn();
 }
 
-/** «✨ Улучшить» — только для генерации картинки/видео БЕЗ фото:
- * точечные правки фото LLM-усиление ломало (кейсы 12.09). */
+/** «✨ Улучшить» — в режимах картинки и видео, с фото и без:
+ * с фото сервер использует вариант «люди с фото остаются собой». */
 function updateAiEnhanceBtn() {
   const btn = document.getElementById("ai-enhance");
-  btn.hidden = !((aiState.mode === "image" || aiState.mode === "video") && !aiState.photo);
+  btn.hidden = !(aiState.mode === "image" || aiState.mode === "video");
 }
 
 function openAiScreen(mode) {
@@ -2625,7 +2625,7 @@ function openAiScreen(mode) {
   aiChipImage.dataset.on = mode === "image" ? "true" : "";
   aiChipVideo.dataset.on = mode === "video" ? "true" : "";
   aiInput.placeholder = AI_PLACEHOLDERS[mode];
-  aiPlusBtn.hidden = !(mode === "image" && aiState.features.image);
+  aiPlusBtn.hidden = !((mode === "image" && aiState.features.image) || (mode === "video" && aiState.features.video));
   updateAiEnhanceBtn();
   aiInput.focus();
 }
@@ -2677,19 +2677,28 @@ function aiAddShare(bubble, { text, blob, filename, mime, url }) {
   const row = document.createElement("div");
   row.className = "ai-share";
   row.innerHTML = `<button type="button" class="ai-share-btn">↗ Поделиться</button>`;
+  // Ссылка для друга — НЕ голый ngrok (заглушка для браузеров, живой кейс
+  // 12.09: «ссылка не открывается»), а просмотрщик view.html на Pages:
+  // он качает медиа fetch'ем с заголовком и показывает. Парная точка: view.html.
+  const mediaName = url ? String(url).split("/media/")[1] : null;
+  const viewUrl = mediaName
+    ? new URL("view.html#" + mediaName, location.href).href
+    : null;
   row.querySelector("button").addEventListener("click", async () => {
     const caption = "Сделано в «Домашка в MAX» 🚀";
     try {
+      // 1) лучший случай: сам файл в нативную шторку
       if (blob && typeof File === "function" && navigator.canShare?.({ files: [new File([blob], filename, { type: mime })] })) {
         await navigator.share({ files: [new File([blob], filename, { type: mime })], text: caption });
         return;
       }
+      // 2) MAX Bridge: текст + рабочая ссылка (просмотрщик для медиа, канал для текста)
       if (typeof window.WebApp?.shareMaxContent === "function") {
-        await window.WebApp.shareMaxContent({ text: text ? `${text}\n\n${caption}` : caption, link: url || CHANNEL_URL });
+        await window.WebApp.shareMaxContent({ text: text ? `${text}\n\n${caption}` : caption, link: viewUrl || CHANNEL_URL });
         return;
       }
-      if (navigator.share) { await navigator.share({ text: text || caption, url: url || undefined }); return; }
-      await navigator.clipboard.writeText(text || url || caption);
+      if (navigator.share) { await navigator.share({ text: text || caption, url: viewUrl || CHANNEL_URL }); return; }
+      await navigator.clipboard.writeText(viewUrl || text || caption);
       alert("Скопировано — вставь другу в чат");
     } catch {} // закрыл шторку — не ошибка
   });
@@ -2774,7 +2783,7 @@ async function aiSend() {
         + (data.enhancedPrompt ? `<p class="ai-enhanced">${aiTextHtml(data.enhancedPrompt)}</p>` : "");
       aiAddShare(wait, { blob: media.blob, filename: "domashka-max.png", mime: "image/png", url: media.full });
     } else {
-      const data = await postJson("/api/video", { prompt: text }, 60_000);
+      const data = await postJson("/api/video", { prompt: text, ...(photo ? { imageBase64: photo } : {}) }, 60_000);
       const url = await aiPollVideo(data.taskId);
       const media = await aiMediaSrc(url);
       wait.innerHTML = `<video class="ai-msg-media" controls playsinline preload="metadata" src="${escapeHtml(media.src)}"></video>`
@@ -2833,7 +2842,7 @@ if (aiRail) {
     const label = aiEnhanceBtn.textContent;
     aiEnhanceBtn.textContent = "✨ Думаю…";
     try {
-      const data = await postJson("/api/enhance", { prompt: text, target: aiState.mode === "video" ? "video" : "image" }, 40_000);
+      const data = await postJson("/api/enhance", { prompt: text, target: aiState.mode === "video" ? "video" : "image", hasPhoto: !!aiState.photo }, 40_000);
       aiInput.value = data.enhanced;
       aiInput.dispatchEvent(new Event("input")); // автогроу пересчитается
       aiInput.focus();
