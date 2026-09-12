@@ -7,6 +7,9 @@ import subjectsRouter from "./src/routes/subjects.js";
 import transcribeRouter from "./src/routes/transcribe.js";
 import uiEventRouter from "./src/routes/uiEvent.js";
 import contestRouter from "./src/routes/contestEntry.js";
+import aiFeaturesRouter from "./src/routes/aiFeatures.js";
+import aiChatRouter from "./src/routes/aiChat.js";
+import { imageRouter, videoRouter } from "./src/routes/aiMedia.js";
 import { assertDatabaseReady, DATABASE_URL } from "./src/services/cache.js";
 import { maxInitData, INIT_DATA_HEADER } from "./src/middleware/maxInitData.js";
 import { subscriptionGate, assertGatingReady, checkSubscription } from "./src/subscription.js";
@@ -58,6 +61,11 @@ app.use("/api/feedback", feedbackRouter);
 app.use("/api/transcribe", transcribeRouter); // голос → текст (whisper.cpp локально)
 app.use("/api/ui-event", uiEventRouter); // события интерфейса (выбор режима)
 app.use("/api/contest", contestRouter); // конкурс: статус + заявка из приложения (общий список с ботом)
+// AI-разделы (12.09.2026, за флагами QWEN_CHAT/IMAGE/VIDEO — все off по умолчанию)
+app.use("/api/features", aiFeaturesRouter);
+app.use("/api/chat", aiChatRouter);
+app.use("/api/image", imageRouter);
+app.use("/api/video", videoRouter);
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 

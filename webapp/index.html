@@ -68,6 +68,13 @@
         <img class="brand-logo" src="assets/logo-header.svg" alt="домашка в max" />
       </header>
 
+      <!-- AI-разделы (12.09): плашки справа; видны только если бэкенд включил фичи -->
+      <nav class="ai-rail" id="ai-rail" hidden>
+        <button class="ai-rail-btn" id="rail-chat" type="button" hidden><span class="ai-rail-ico">💬</span><span class="ai-rail-cap">Чат</span></button>
+        <button class="ai-rail-btn" id="rail-image" type="button" hidden><span class="ai-rail-ico">🎨</span><span class="ai-rail-cap">Арт</span></button>
+        <button class="ai-rail-btn" id="rail-video" type="button" hidden><span class="ai-rail-ico">🎬</span><span class="ai-rail-cap">Видео</span></button>
+      </nav>
+
       <div class="capture">
         <!-- До съёмки: одна крупная тап-цель на весь блок. -->
         <label class="capture-frame" for="file-input" id="capture-empty">
@@ -154,6 +161,43 @@
     </section>
 
     <!-- Экран 2.5: выбор задачи, если на фото их несколько -->
+    <!-- Экран AI (12.09): единое чат-окно в духе ChatGPT — обычный чат,
+         создание картинок (в т.ч. обработка своего фото) и видео в одной ленте. -->
+    <section class="screen screen-light" id="screen-ai" data-active="false">
+      <header class="brand-topbar brand-topbar--back">
+        <button class="sheet-back" id="btn-back-ai" aria-label="Назад">←</button>
+        <img class="brand-logo" src="assets/logo-header.svg" alt="домашка в max" />
+      </header>
+
+      <div class="ai-wrap">
+        <div class="ai-feed" id="ai-feed">
+          <div class="ai-empty" id="ai-empty">
+            <p class="ai-empty-title">Чат с AI</p>
+            <button class="ai-suggest" type="button" data-ai-mode="chat">💬 Просто спроси о чём угодно</button>
+            <button class="ai-suggest" type="button" data-ai-mode="image" hidden>🎨 Создать изображение</button>
+            <button class="ai-suggest" type="button" data-ai-mode="video" hidden>🎬 Создать видео</button>
+          </div>
+        </div>
+
+        <div class="ai-composer-zone">
+          <div class="ai-mode-chips">
+            <button class="ai-chip" type="button" data-ai-mode="image" id="ai-chip-image" hidden>🎨 Картинка</button>
+            <button class="ai-chip" type="button" data-ai-mode="video" id="ai-chip-video" hidden>🎬 Видео</button>
+          </div>
+          <div class="ai-attach" id="ai-attach" hidden>
+            <img id="ai-attach-img" alt="Прикреплённое фото" />
+            <button id="ai-attach-remove" type="button" aria-label="Убрать фото">✕</button>
+          </div>
+          <div class="ai-composer">
+            <button class="ai-plus" id="ai-plus" type="button" aria-label="Прикрепить фото" hidden>+</button>
+            <textarea id="ai-input" rows="1" placeholder="Спроси о чём угодно…"></textarea>
+            <button class="ai-send" id="ai-send" type="button" aria-label="Отправить">➤</button>
+          </div>
+        </div>
+      </div>
+      <input type="file" id="ai-file-input" accept="image/*" hidden />
+    </section>
+
     <section class="screen screen-light" id="screen-tasks" data-active="false">
       <header class="brand-topbar brand-topbar--back">
         <button class="sheet-back" id="btn-back-tasks" aria-label="Назад">←</button>

@@ -303,3 +303,25 @@ CREATE TABLE IF NOT EXISTS haiku_eval (
   from_cache      boolean     NOT NULL DEFAULT false
 );
 CREATE INDEX IF NOT EXISTS haiku_eval_created_idx ON haiku_eval (created_at DESC);
+
+-- ===== AI-разделы приложения (чат/изображение/видео, 12.09.2026) =====
+-- Каждая генерация — строка: лимиты в час считаются COUNT'ом по user_hash,
+-- экономика — sum(cost_usd). Промпты храним для разбора качества усилителя
+-- (свои тексты пользователей, не персданные; ретенция 30 дней в hourlyReport).
+CREATE TABLE IF NOT EXISTS gen_events (
+  id          bigserial   PRIMARY KEY,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  kind        text        NOT NULL CHECK (kind IN ('chat','image','video')),
+  source      text        NOT NULL,
+  user_hash   text,
+  model       text,
+  prompt      text,
+  enhanced_prompt text,
+  ok          boolean     NOT NULL DEFAULT true,
+  error_kind  text,
+  duration_ms integer,
+  cost_usd    numeric(10,6),
+  input_tokens  integer,
+  output_tokens integer
+);
+CREATE INDEX IF NOT EXISTS gen_events_user_hour_idx ON gen_events (user_hash, kind, created_at DESC);

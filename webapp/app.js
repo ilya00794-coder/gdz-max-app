@@ -2540,3 +2540,220 @@ document.getElementById("btn-new-check").addEventListener("click", () => {
 document.getElementById("btn-report-check").addEventListener("click", () => {
   feedbackForm(checkScreen, "check").querySelector(".feedback-text").focus();
 });
+
+// ================== AI-разделы: чат / картинка / видео (12.09.2026) ==================
+// Единое чат-окно в духе ChatGPT (ориентир Ильи): обычный чат, генерация
+// картинок (в т.ч. обработка своего фото) и видео — в одной ленте.
+// Плашки на экране съёмки видны ТОЛЬКО если бэкенд включил фичи (/api/features):
+// все off → интерфейс неотличим от прежнего.
+
+const aiRail = document.getElementById("ai-rail");
+const aiFeed = document.getElementById("ai-feed");
+const aiEmpty = document.getElementById("ai-empty");
+const aiInput = document.getElementById("ai-input");
+const aiSendBtn = document.getElementById("ai-send");
+const aiPlusBtn = document.getElementById("ai-plus");
+const aiFileInput = document.getElementById("ai-file-input");
+const aiAttach = document.getElementById("ai-attach");
+const aiAttachImg = document.getElementById("ai-attach-img");
+const aiChipImage = document.getElementById("ai-chip-image");
+const aiChipVideo = document.getElementById("ai-chip-video");
+
+const aiState = {
+  features: { chat: false, image: false, video: false },
+  mode: "chat",          // chat | image | video
+  messages: [],          // история ТЕКСТОВОГО чата для /api/chat (медиа не входят)
+  photo: null,           // data-URL прикреплённого фото (режим обработки)
+  busy: false,
+};
+
+const AI_PLACEHOLDERS = {
+  chat: "Спроси о чём угодно…",
+  image: "Опиши картинку, которую создать…",
+  video: "Опиши видео, которое создать…",
+};
+
+async function loadAiFeatures() {
+  try {
+    const data = await getJson("/api/features", 8000);
+    aiState.features = data.features || aiState.features;
+  } catch {
+    return; // бэкенд недоступен/фичи выключены — плашек просто нет
+  }
+  const f = aiState.features;
+  document.getElementById("rail-chat").hidden = !f.chat;
+  document.getElementById("rail-image").hidden = !f.image;
+  document.getElementById("rail-video").hidden = !f.video;
+  aiRail.hidden = !(f.chat || f.image || f.video);
+  aiChipImage.hidden = !f.image;
+  aiChipVideo.hidden = !f.video;
+  document.querySelectorAll(".ai-suggest").forEach((b) => {
+    const m = b.dataset.aiMode;
+    b.hidden = m === "image" ? !f.image : m === "video" ? !f.video : !f.chat;
+  });
+}
+
+function setAiMode(mode) {
+  // Повторный тап по активному чипу возвращает обычный чат.
+  aiState.mode = aiState.mode === mode ? "chat" : mode;
+  aiChipImage.dataset.on = aiState.mode === "image" ? "true" : "";
+  aiChipVideo.dataset.on = aiState.mode === "video" ? "true" : "";
+  aiInput.placeholder = AI_PLACEHOLDERS[aiState.mode];
+  // «+» (фото на обработку) — только в режиме картинки.
+  aiPlusBtn.hidden = !(aiState.mode === "image" && aiState.features.image);
+  if (aiState.mode !== "image") clearAiAttach();
+}
+
+function openAiScreen(mode) {
+  showScreen("screen-ai");
+  // Прямое выставление (не setAiMode: тот работает переключателем от текущего).
+  aiState.mode = mode;
+  aiChipImage.dataset.on = mode === "image" ? "true" : "";
+  aiChipVideo.dataset.on = mode === "video" ? "true" : "";
+  aiInput.placeholder = AI_PLACEHOLDERS[mode];
+  aiPlusBtn.hidden = !(mode === "image" && aiState.features.image);
+  aiInput.focus();
+}
+
+function clearAiAttach() {
+  aiState.photo = null;
+  aiAttach.hidden = true;
+  aiAttachImg.removeAttribute("src");
+  aiFileInput.value = "";
+}
+
+/** Пузырь в ленту. content — Node или HTML-строка (уже безопасная). */
+function aiBubble(role, html) {
+  aiEmpty.hidden = true;
+  const div = document.createElement("div");
+  div.className = `ai-msg ai-msg--${role}`;
+  div.innerHTML = html;
+  aiFeed.appendChild(div);
+  aiFeed.scrollTop = aiFeed.scrollHeight;
+  return div;
+}
+
+function aiTextHtml(text) {
+  return escapeHtml(text).replace(/\n/g, "<br>");
+}
+
+/** Фото → data-URL с ужатием до 1280px по большей стороне (лимит тела 15MB,
+ * камеры отдают кратно больше; тот же приём, что imageForUpload). */
+function aiReadPhoto(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(FILE_READ_ERROR));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error(FILE_READ_ERROR));
+      img.onload = () => {
+        const maxSide = 1280;
+        const k = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * k));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * k));
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.9));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function aiSend() {
+  if (aiState.busy) return;
+  const text = aiInput.value.trim();
+  if (!text) return;
+  const mode = aiState.mode;
+  const photo = aiState.photo;
+  aiState.busy = true;
+  aiSendBtn.disabled = true;
+  aiInput.value = "";
+
+  const attachHtml = photo ? `<img class="ai-msg-photo" src="${photo}" alt="">` : "";
+  aiBubble("user", attachHtml + aiTextHtml(text));
+  clearAiAttach();
+  const wait = aiBubble("assistant",
+    mode === "video"
+      ? `<span class="ai-wait">🎬 Генерирую видео… обычно 2–3 минуты</span>`
+      : mode === "image"
+        ? `<span class="ai-wait">🎨 Рисую… ~20 секунд</span>`
+        : `<span class="ai-wait">…</span>`);
+
+  try {
+    if (mode === "chat") {
+      aiState.messages.push({ role: "user", content: text });
+      const data = await postJson("/api/chat", { messages: aiState.messages }, 90_000);
+      aiState.messages.push({ role: "assistant", content: data.reply });
+      wait.innerHTML = aiTextHtml(data.reply);
+    } else if (mode === "image") {
+      const payload = { prompt: text, ...(photo ? { imageBase64: photo } : {}) };
+      const data = await postJson("/api/image", payload, 180_000);
+      wait.innerHTML = `<img class="ai-msg-media" src="${escapeHtml(data.url)}" alt="Сгенерированное изображение">`
+        + (data.enhancedPrompt ? `<p class="ai-enhanced">${aiTextHtml(data.enhancedPrompt)}</p>` : "");
+    } else {
+      const data = await postJson("/api/video", { prompt: text }, 60_000);
+      const url = await aiPollVideo(data.taskId);
+      wait.innerHTML = `<video class="ai-msg-media" controls playsinline preload="metadata" src="${escapeHtml(url)}"></video>`
+        + (data.enhancedPrompt ? `<p class="ai-enhanced">${aiTextHtml(data.enhancedPrompt)}</p>` : "");
+    }
+  } catch (err) {
+    wait.innerHTML = `<span class="ai-error">${aiTextHtml(err.message || "Что-то пошло не так, попробуй ещё раз")}</span>`;
+    if (mode === "chat") aiState.messages.pop(); // не отправленный вопрос не тащим в историю
+  } finally {
+    aiState.busy = false;
+    aiSendBtn.disabled = false;
+    aiFeed.scrollTop = aiFeed.scrollHeight;
+  }
+}
+
+function aiPollVideo(taskId) {
+  // Опрос раз в 10 с, до 5 минут; экран может уснуть — тогда доберём после resume.
+  return new Promise((resolve, reject) => {
+    let tries = 0;
+    const tick = async () => {
+      tries += 1;
+      if (tries > 30) return reject(new Error("Видео готовится слишком долго — попробуй ещё раз позже"));
+      try {
+        const s = await getJson(`/api/video/status?taskId=${encodeURIComponent(taskId)}`, 40_000);
+        if (s.status === "done") return resolve(s.url);
+        if (s.status === "failed") return reject(new Error(s.error || "Генерация видео не удалась"));
+      } catch (err) {
+        if (tries > 3) return reject(err); // пара сетевых икот терпима, дальше — честная ошибка
+      }
+      setTimeout(tick, 10_000);
+    };
+    setTimeout(tick, 10_000);
+  });
+}
+
+if (aiRail) {
+  document.getElementById("rail-chat").addEventListener("click", () => openAiScreen("chat"));
+  document.getElementById("rail-image").addEventListener("click", () => openAiScreen("image"));
+  document.getElementById("rail-video").addEventListener("click", () => openAiScreen("video"));
+  document.getElementById("btn-back-ai").addEventListener("click", () => showScreen("screen-capture"));
+  aiChipImage.addEventListener("click", () => setAiMode("image"));
+  aiChipVideo.addEventListener("click", () => setAiMode("video"));
+  document.querySelectorAll(".ai-suggest").forEach((b) =>
+    b.addEventListener("click", () => { openAiScreen(b.dataset.aiMode); }));
+  aiSendBtn.addEventListener("click", aiSend);
+  aiInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); aiSend(); }
+  });
+  aiPlusBtn.addEventListener("click", () => aiFileInput.click());
+  document.getElementById("ai-attach-remove").addEventListener("click", clearAiAttach);
+  aiFileInput.addEventListener("change", async () => {
+    const file = aiFileInput.files?.[0];
+    if (!file) return;
+    try {
+      aiState.photo = await aiReadPhoto(file);
+      aiAttachImg.src = aiState.photo;
+      aiAttach.hidden = false;
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+  loadAiFeatures();
+}
+// ================== END AI-разделы ==================
