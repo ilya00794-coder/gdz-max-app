@@ -60,6 +60,22 @@ ALLOWED_CALLS = {
     "factorint": sympy.factorint,
     "len": len,
     "str": str,
+    # 12.09 (переезд на qwen, живые кейсы из телеметрии 14 дней; правило —
+    # расширять ТОЛЬКО по живым):
+    # solve_univariate_inequality — qwen-стилистика формализации неравенств
+    # (инцидент №40, haiku_eval id=359: Haiku писал solve(нер-во), qwen зовёт
+    # эту функцию с domain=S.Reals). Возвращает relational — run_set
+    # конвертирует as_set(). Без неё класс падал в unsupported и знаковые
+    # ошибки решателя не ловились сверкой.
+    "solve_univariate_inequality": sympy.solve_univariate_inequality,
+    # round/sorted/divmod — чистые builtins без доступа к атрибутам (та же
+    # логика, что len/str); по 1-2 живых кейса каждая.
+    "round": round,
+    "sorted": sorted,
+    "divmod": divmod,
+    # Interval в ОСНОВНОЙ список НЕ добавлен намеренно: он тянет oo, а oo
+    # из основного списка убран сознательно (конфликт со школьными
+    # переменными); живой кейс единичный. Interval живёт в set-режиме.
 }
 
 # Константы, разрешённые как имена. Только pi: у него нет школьного конкурента.
@@ -440,7 +456,9 @@ _SET_NAMES = {
     "True": True,
     "False": False,
 }
-_SET_ALLOWED_ATTRS = {("S", "Reals")}
+# ("Interval","open") — qwen-стилистика (инцидент №40: Interval.open(-3,-2));
+# безопасный конструктор sympy, вызов по атрибуту разрешён точечно ниже.
+_SET_ALLOWED_ATTRS = {("S", "Reals"), ("Interval", "open")}
 
 
 def _eval_set_candidate(text):
@@ -453,7 +471,10 @@ def _eval_set_candidate(text):
             if not (isinstance(node.value, ast.Name) and (node.value.id, node.attr) in _SET_ALLOWED_ATTRS):
                 raise Rejected(f"атрибут вне белого списка: {ast.dump(node)[:60]}")
         elif isinstance(node, ast.Call):
-            if not (isinstance(node.func, ast.Name) and node.func.id in _SET_CALLS):
+            by_name = isinstance(node.func, ast.Name) and node.func.id in _SET_CALLS
+            by_attr = (isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
+                       and (node.func.value.id, node.func.attr) in _SET_ALLOWED_ATTRS)
+            if not (by_name or by_attr):
                 raise Rejected("вызов вне белого списка множеств")
         elif isinstance(node, ast.Name):
             if node.id not in _SET_CALLS and node.id not in _SET_NAMES:
