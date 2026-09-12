@@ -1557,3 +1557,143 @@ body {
   cursor: pointer;
 }
 .context-pill-edit { color: var(--l-accent); font-weight: 800; }
+
+/* ================== Пакет редизайна №2 (12.09 вечер) ================== */
+
+/* Видоискатель: тёмный кадр с уголками и затвором */
+#screen-capture .capture-frame {
+  background: radial-gradient(140% 110% at 50% 0%, #454050, #262230) !important;
+  border: none !important;
+  border-radius: 26px;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+  min-height: 46svh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 14px 34px rgba(38, 34, 48, 0.35);
+}
+#screen-capture .capture-frame::before {
+  content: "";
+  position: absolute;
+  inset: 18px;
+  border: 2px dashed rgba(255, 255, 255, 0.28);
+  border-radius: 18px;
+  pointer-events: none;
+}
+#screen-capture .capture-frame .capture-icon { color: #d8b4fe; }
+#screen-capture .capture-hint { color: #fff; font-family: var(--font-display); font-size: 15px; }
+#screen-capture .capture-sub { color: #bdb7cb; }
+.snap-ring {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 5px solid #fff;
+  background: var(--grad);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+  margin-top: 6px;
+}
+.capture-alts { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
+.capture-alts button {
+  border: 1px solid var(--glass-border);
+  background: var(--glass);
+  box-shadow: var(--glass-shadow);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--l-text-2);
+  padding: 10px 14px;
+  min-height: 40px;
+  cursor: pointer;
+}
+
+/* Шторка класса/предмета */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(28, 28, 34, 0.4);
+  display: flex;
+  align-items: flex-end;
+}
+.sheet-panel {
+  width: 100%;
+  max-height: 78svh;
+  overflow-y: auto;
+  background: var(--l-bg, #fff);
+  background: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border-radius: 26px 26px 0 0;
+  padding: 12px 16px calc(20px + env(safe-area-inset-bottom));
+  animation: sheetUp 0.25s ease;
+}
+@keyframes sheetUp { from { transform: translateY(40px); opacity: 0.6; } to { transform: none; opacity: 1; } }
+.sheet-grab { width: 44px; height: 5px; border-radius: 99px; background: rgba(28,28,34,.18); margin: 0 auto 12px; }
+.sheet-h { font-family: var(--font-display); font-size: 15px; margin: 10px 2px 8px; }
+
+/* Ответ: зелёная плашка при подтверждённом ответе */
+.answer-block.answer-ok {
+  background: linear-gradient(135deg, rgba(220, 252, 231, 0.9), rgba(187, 247, 208, 0.85));
+  border-color: rgba(22, 163, 74, 0.25);
+}
+.solution-share { margin: 10px 20px 0; min-height: 42px; align-self: flex-start; }
+
+/* «Печать» шагов решения: каскадное проявление (KaTeX уже отрендерен) */
+#screen-solution .steps > li { animation: stepIn 0.4s ease both; }
+#screen-solution .steps > li:nth-child(1) { animation-delay: 0.05s; }
+#screen-solution .steps > li:nth-child(2) { animation-delay: 0.35s; }
+#screen-solution .steps > li:nth-child(3) { animation-delay: 0.65s; }
+#screen-solution .steps > li:nth-child(4) { animation-delay: 0.95s; }
+#screen-solution .steps > li:nth-child(5) { animation-delay: 1.25s; }
+#screen-solution .steps > li:nth-child(6) { animation-delay: 1.55s; }
+#screen-solution .steps > li:nth-child(7) { animation-delay: 1.85s; }
+#screen-solution .steps > li:nth-child(n+8) { animation-delay: 2.1s; }
+@keyframes stepIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* Переходы экранов + микро-анимации вкладок */
+.screen[data-active="true"] { animation: screenIn 0.22s ease; }
+@keyframes screenIn { from { opacity: 0.35; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.tab-i { width: 21px; height: 21px; transition: transform 0.2s ease; }
+.tab-btn[data-on="true"] .tab-i { transform: scale(1.12); }
+.tab-btn:active { transform: scale(0.95); }
+.tab-btn { transition: color 0.2s ease, transform 0.15s ease; }
+
+/* Тач-цели ≥40px (чек-лист) */
+.ai-share-btn { min-height: 40px; }
+.context-pill { min-height: 42px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .screen[data-active="true"], #screen-solution .steps > li, .sheet-panel { animation: none; }
+}
+
+/* Тёмная тема (авто из системы) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --l-text: #ececf1;
+    --l-text-2: #c9c9d3;
+    --l-muted: #8f8f9e;
+    --l-line: rgba(255, 255, 255, 0.12);
+    --l-surface: rgba(44, 44, 60, 0.6);
+    --l-accent-soft: rgba(139, 92, 246, 0.22);
+    --glass: rgba(34, 34, 48, 0.62);
+    --glass-border: rgba(255, 255, 255, 0.13);
+    --glass-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+  }
+  body {
+    background:
+      radial-gradient(420px 420px at -10% -5%, rgba(76, 66, 160, 0.5), transparent 70%),
+      radial-gradient(460px 460px at 110% 40%, rgba(150, 60, 110, 0.35), transparent 70%),
+      linear-gradient(180deg, #14141c 0%, #191420 60%, #1c1822 100%);
+    background-attachment: fixed;
+  }
+  .brand-logo { filter: brightness(1.7) saturate(0.9); }
+  .composer-field, .sheet-panel { background: rgba(34, 34, 48, 0.9); }
+  .answer-block.answer-ok { background: linear-gradient(135deg, rgba(20, 83, 45, 0.55), rgba(22, 101, 52, 0.45)); }
+  .ai-msg--user { background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(236, 72, 153, 0.24)); }
+}
+/* ================== END пакет №2 ================== */
