@@ -28,9 +28,15 @@ export function featuresFor(source, userId) {
   };
 }
 
-// Лимиты В ЧАС на пользователя (решение Ильи 12.09). Канарейки (source=canary)
-// лимитом не ограничены — стендовые прогоны не должны съедать квоту теста.
-export const HOURLY_LIMITS = { chat: 10, image: 3, video: 1 };
+// Лимиты В ЧАС на пользователя — из .env, строка вида "chat:10,image:3,video:1".
+// Решение Ильи 12.09 (вечер): НА СТАРТЕ ЛИМИТОВ НЕТ (GEN_LIMITS пуст/не задан),
+// вводить постепенно правкой .env + kickstart, без изменения кода.
+// Канарейки (source=canary) лимитом не ограничены в любом случае.
+export const HOURLY_LIMITS = Object.fromEntries(
+  String(process.env.GEN_LIMITS || "").split(",").map((p) => p.split(":"))
+    .filter(([k, v]) => ["chat", "image", "video"].includes(k?.trim()) && Number(v) > 0)
+    .map(([k, v]) => [k.trim(), Number(v)])
+);
 
 /**
  * Проверяет лимит и возвращает {allowed, used}. Считаем только успешные
@@ -57,17 +63,28 @@ export async function checkHourlyLimit(kind, userHash, source) {
   }
 }
 
-/** Телеметрия генераций — fire-and-forget, ответ пользователя не ждёт БД. */
+/** Телеметрия генераций — fire-and-forget, ответ пользователя не ждёт БД.
+ * Возвращает Promise<id|null> — нужен видео-пути, чтобы на завершении задачи
+ * поправить стоимость по ФАКТИЧЕСКОМУ разрешению (см. updateGenEventCost). */
 export function recordGenEvent({ kind, source, userHash, model, prompt, enhancedPrompt, ok, errorKind, durationMs, costUsd, inputTokens, outputTokens }) {
-  getPool()
+  return getPool()
     .query(
       `INSERT INTO gen_events (kind, source, user_hash, model, prompt, enhanced_prompt, ok, error_kind, duration_ms, cost_usd, input_tokens, output_tokens)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
       [kind, source, userHash ?? null, model ?? null,
        prompt ? String(prompt).slice(0, 2000) : null,
        enhancedPrompt ? String(enhancedPrompt).slice(0, 2000) : null,
        ok !== false, errorKind ?? null, durationMs ?? null, costUsd ?? null,
        inputTokens ?? null, outputTokens ?? null]
     )
-    .catch((err) => console.warn(new Date().toISOString(), "[gen-events] запись не удалась:", err.message));
+    .then((r) => r.rows[0]?.id ?? null)
+    .catch((err) => { console.warn(new Date().toISOString(), "[gen-events] запись не удалась:", err.message); return null; });
+}
+
+/** Правка стоимости события по факту завершения (честная телеметрия видео). */
+export function updateGenEventCost(id, costUsd, durationMs) {
+  if (!id) return;
+  getPool()
+    .query(`UPDATE gen_events SET cost_usd = $2, duration_ms = COALESCE($3, duration_ms) WHERE id = $1`, [id, costUsd, durationMs ?? null])
+    .catch((err) => console.warn(new Date().toISOString(), "[gen-events] правка стоимости не удалась:", err.message));
 }

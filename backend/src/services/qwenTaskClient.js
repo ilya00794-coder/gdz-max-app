@@ -105,14 +105,17 @@ export async function submitVideoTask({ model, prompt, resolution = "480P", dura
   return { taskId };
 }
 
-/** Один опрос статуса задачи: {status: 'running'|'done'|'failed', url?, error?}. */
+/** Один опрос статуса задачи: {status: 'running'|'done'|'failed', url?, error?, usage?}.
+ * usage на done содержит ФАКТИЧЕСКИЕ параметры генерации (SR: 480/720/1080,
+ * output_video_duration) — по ним телеметрия считает честную стоимость
+ * (урок 12.09: параметр не применился → ролик 1080P за $1.00 при записи $0.25). */
 export async function getTaskStatus(taskId) {
   const t = await call(`/tasks/${encodeURIComponent(taskId)}`, { method: "GET", timeoutMs: 30_000 });
   const status = t.output?.task_status;
   if (status === "SUCCEEDED") {
     const url = t.output.video_url || t.output.results?.find((x) => x.url || x.video_url)?.url
       || t.output.results?.[0]?.video_url;
-    return url ? { status: "done", url } : { status: "failed", error: "в результате нет video_url" };
+    return url ? { status: "done", url, usage: t.usage ?? null } : { status: "failed", error: "в результате нет video_url" };
   }
   if (status === "FAILED" || status === "CANCELED") {
     return { status: "failed", error: `${t.output?.code ?? status}: ${t.output?.message ?? "генерация не удалась"}` };
