@@ -77,6 +77,12 @@
         <button class="sheet-back" id="btn-back-setup" aria-label="Назад">←</button>
         <img class="brand-logo" src="assets/logo-header.svg" alt="домашка в max" />
       </header>
+      <!-- Пилюля контекста (12.09): приложение открывается сразу камерой —
+           смена класса/предмета живёт здесь (жалоба Ильи: «нельзя выбрать
+           другой предмет»). Тап — на экран выбора. -->
+      <button class="context-pill" id="context-pill" type="button" hidden>
+        🎓 <b id="context-pill-text"></b> <span class="context-pill-edit">изменить</span>
+      </button>
 
       <div class="capture">
         <!-- До съёмки: одна крупная тап-цель на весь блок. -->
