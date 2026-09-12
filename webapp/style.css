@@ -1276,10 +1276,9 @@ button.task-card:active { background: var(--l-accent-soft); }
 .ai-wrap {
   display: flex;
   flex-direction: column;
-  height: calc(100svh - 64px);
+  flex: 1;
   min-height: 0;
 }
-#screen-ai:focus-within .ai-wrap { height: calc(var(--vvh, 100svh) - 64px); }
 .ai-feed {
   flex: 1;
   min-height: 0;
@@ -1732,3 +1731,12 @@ body {
 /* Фон за пределами страницы (панорама клавиатуры оголяла белое) */
 html { background: #eef1ff; }
 @media (prefers-color-scheme: dark) { html { background: #14141c; } }
+
+/* Чат-экран = ровно видимая область (капитальный фикс клавиатуры 12.09):
+   документ не выше вьюпорта → WKWebView НЕЧЕГО панорамировать. --vvh пишет
+   visualViewport-хук; без него фолбэк 100svh (Chromium сжимает сам). */
+#screen-ai[data-active="true"] {
+  height: var(--vvh, 100svh);
+  min-height: 0;
+  overflow: hidden;
+}
