@@ -34,11 +34,17 @@ const videoTaskLedger = new Map();
 /** Усилитель: детский промпт → развёрнутый (композиция/стиль/свет). Сбой
  * усилителя НЕ валит генерацию — уходит исходный промпт (усилитель — бонус). */
 async function enhancePrompt(prompt, target) {
+  // Для ОБРАБОТКИ ФОТО усилитель другой: прежний навязывал «мультяшность» —
+  // edit-модель рисовала сцену заново и теряла человека (живой скрин 12.09:
+  // вместо Ильи — мультяшный мальчик). Здесь главное — сохранить внешность.
+  const system = target === "edit"
+    ? `Ты — редактор промптов для обработки ФОТОГРАФИИ человека. Перепиши запрос в один промпт по-русски: опиши сцену по замыслу пользователя ВОКРУГ человека с фото. ГЛАВНОЕ: человек должен остаться собой — то же лицо, узнаваемая внешность, фотореалистично; никакой мультяшности, если пользователь сам её не просил. Уложись в 400 символов. Ответь ТОЛЬКО текстом промпта.`
+    : `Ты — редактор промптов для генерации ${target === "video" ? "видео" : "изображений"} в детском приложении. Перепиши запрос пользователя в один развёрнутый промпт по-русски: добавь композицию, стиль, свет, настроение, детали. Сохрани замысел, сделай сцену яркой и доброй. Уложись в 400 символов. Ответь ТОЛЬКО текстом промпта, без пояснений.`;
   try {
     const r = await qwenChat({
       model: ENHANCE_MODEL,
       messages: [
-        { role: "system", content: `Ты — редактор промптов для генерации ${target === "video" ? "видео" : "изображений"} в детском приложении. Перепиши запрос пользователя в один развёрнутый промпт по-русски: добавь композицию, стиль, свет, настроение, детали. Сохрани замысел, сделай сцену яркой и доброй. Уложись в 400 символов. Ответь ТОЛЬКО текстом промпта, без пояснений.` },
+        { role: "system", content: system },
         { role: "user", content: prompt },
       ],
       max_tokens: 450,
@@ -70,7 +76,7 @@ function mediaHandler({ kind, flagName, run }) {
       const what = kind === "video" ? "видео" : "картинок";
       return res.status(429).json({ error: `Лимит ${what} — ${limit} в час. Возвращайся чуть позже!`, limitReached: true });
     }
-    const enhanced = await enhancePrompt(prompt, kind);
+    const enhanced = await enhancePrompt(prompt, kind === "image" && req.body?.imageBase64 ? "edit" : kind);
     try {
       const { url, model, mediaCost } = await run(req, enhanced.text);
       recordGenEvent({
@@ -97,7 +103,7 @@ imageRouter.post("/", mediaHandler({
     const photo = req.body?.imageBase64; // data-URL или голый base64 → режим обработки фото
     if (photo) {
       const dataUrl = String(photo).startsWith("data:") ? String(photo) : `data:image/jpeg;base64,${photo}`;
-      const { url } = await editImage({ model: IMAGE_EDIT_MODEL, prompt: enhancedPrompt, imageDataUrl: dataUrl });
+      const { url } = await editImage({ model: IMAGE_EDIT_MODEL, prompt: "Сохрани лицо и внешность человека с фотографии узнаваемыми, фотореалистично. " + enhancedPrompt, imageDataUrl: dataUrl });
       return { url: await storeFromUrl(url, ".png"), model: IMAGE_EDIT_MODEL, mediaCost: MEDIA_COST.imageEdit };
     }
     const { url } = await generateImage({ model: IMAGE_MODEL, prompt: enhancedPrompt });
