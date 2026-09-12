@@ -1158,9 +1158,17 @@ function renderSolutionStreaming(st) {
   // flushTypeQueue, НЕ length=0 (регрессия, чинено 06.09): голое обнуление
   // бросало li аккордеона со скрытыми словами навсегда — «пустые тела шагов».
   flushTypeQueue();
-  stepsList.innerHTML = st.steps.map((step, i) => stepMarkup(step, i, true)).join("");
-  renderMath(stepsList);
-  for (const li of stepsList.children) enqueueTyping(li);
+  if (st.steps.length) {
+    stepsList.innerHTML = st.steps.map((step, i) => stepMarkup(step, i, true)).join("");
+    renderMath(stepsList);
+    for (const li of stepsList.children) enqueueTyping(li);
+  } else {
+    // Скелетоны (12.09): силуэты будущих шагов, пока модель думает.
+    stepsList.innerHTML = [1, 2, 3].map(() => `
+      <li class="skel-step"><span class="skel skel-line" style="width:55%"></span>
+      <span class="skel skel-line" style="width:88%"></span>
+      <span class="skel skel-line" style="width:72%"></span></li>`).join("");
+  }
   renderGraphCard(null);
   renderFigureCard(null);
   renderSchemaCard(null);
@@ -1170,6 +1178,7 @@ function renderSolutionStreaming(st) {
   resetFeedback(solutionScreen);
   solutionScreen.querySelector(".sheet-scroll").scrollTop = 0;
   st.onStep = (step) => {
+    stepsList.querySelectorAll(".skel-step").forEach((el) => el.remove()); // настоящие шаги вытесняют скелетоны
     stepsList.insertAdjacentHTML("beforeend", stepMarkup(step, stepsList.children.length, true));
     renderMath(stepsList.lastElementChild);
     enqueueTyping(stepsList.lastElementChild);
@@ -2840,9 +2849,9 @@ async function aiSend() {
   clearAiAttach();
   const wait = aiBubble("assistant",
     mode === "video"
-      ? `<span class="ai-wait">🎬 Генерирую видео… обычно 2–3 минуты</span>`
+      ? `<span class="skel skel-media" aria-hidden="true"></span><span class="ai-wait">🎬 Генерирую видео… обычно 2–3 минуты</span>`
       : mode === "image"
-        ? `<span class="ai-wait">🎨 Рисую… ~20 секунд</span>`
+        ? `<span class="skel skel-media" aria-hidden="true"></span><span class="ai-wait">🎨 Рисую… ~20 секунд</span>`
         : `<span class="ai-wait">…</span>`);
 
   try {
@@ -3023,6 +3032,31 @@ for (const el of [aiInput, taskTextInput]) {
     if (active) updateTabBar(active);
   }, 150));
 }
+// Свайпы между вкладками (12.09): явный горизонтальный жест на корневых
+// экранах. Кроп, фото, медиа, поля ввода и шторка — исключены (свои жесты).
+let __swipeStart = null;
+document.addEventListener("touchstart", (e) => {
+  __swipeStart = null;
+  if (e.touches.length !== 1) return;
+  if (e.target.closest(".crop-frame, .photo-viewport, textarea, input, img, video, .sheet-panel")) return;
+  const active = document.querySelector('.screen[data-active="true"]')?.id;
+  if (!TAB_ROOTS.has(active) || !tabBar || tabBar.hidden) return;
+  __swipeStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+}, { passive: true });
+document.addEventListener("touchend", (e) => {
+  const s0 = __swipeStart;
+  __swipeStart = null;
+  if (!s0) return;
+  const dx = e.changedTouches[0].clientX - s0.x;
+  const dy = e.changedTouches[0].clientY - s0.y;
+  if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.8) return; // не горизонтальный жест
+  const order = ["tab-solve", "tab-check", "tab-chat", "tab-create"].filter((id) => !document.getElementById(id).hidden);
+  const cur = order.findIndex((id) => document.getElementById(id).dataset.on === "true");
+  const next = cur + (dx < 0 ? 1 : -1);
+  if (cur < 0 || next < 0 || next >= order.length) return;
+  haptic();
+  document.getElementById(order[next]).click();
+}, { passive: true });
 // ================== END нижние вкладки ==================
 
 
