@@ -3062,17 +3062,6 @@ document.addEventListener("touchend", (e) => {
 
 document.getElementById("context-pill")?.addEventListener("click", openSubjectSheet);
 
-// ---- Ряд альтернатив видоискателя (12.09): те же живые механики ----
-document.getElementById("alt-gallery")?.addEventListener("click", () => document.getElementById("file-input").click());
-document.getElementById("alt-typed")?.addEventListener("click", () => { taskTextInput?.focus(); });
-{
-  const altVoice = document.getElementById("alt-voice");
-  if (altVoice && typeof VOICE_OK !== "undefined" && VOICE_OK) {
-    altVoice.hidden = false;
-    altVoice.addEventListener("click", () => { voiceTargetInput = taskTextInput; voiceShowError = showCaptureError; toggleVoice(); });
-  }
-}
-
 // ---- Шторка класса/предмета (концепт экрана 3, 12.09) ----
 // Переносим ЖИВЫЕ узлы выбора (слушатели сохраняются), закрытие возвращает.
 const subjectSheet = document.getElementById("subject-sheet");
