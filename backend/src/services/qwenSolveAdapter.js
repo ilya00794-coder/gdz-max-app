@@ -38,6 +38,14 @@ export function coerceBySchema(node, spec, root = spec, depth = 0) {
       const coerced = coerceBySchema(node, sub, root, depth + 1);
       if (coerced !== node) return coerced;
     }
+    // nullable-объект у zodOutputFormat — anyOf[{object},{null}]: строка-мусор
+    // не сконвертировалась ни одним sub → если null допустим, а объектный sub
+    // есть — отдаём null (graph/figure — усиление; мусор не должен ронять zod).
+    if (typeof node === "string"
+        && spec.anyOf.some((sub) => { let g = 0, sp = sub; while (typeof sp?.$ref === "string" && g++ < 8) sp = root?.$defs?.[sp.$ref.replace("#/$defs/", "")]; const t = Array.isArray(sp?.type) ? sp.type : [sp?.type]; return t.includes("object") || sp?.properties; })
+        && acceptsNull(spec, root)) {
+      return null;
+    }
     return node;
   }
   const types = Array.isArray(spec.type) ? spec.type : [spec.type];
@@ -63,6 +71,16 @@ export function coerceBySchema(node, spec, root = spec, depth = 0) {
     }
     if (Array.isArray(v) && spec.items) return v.map((x) => coerceBySchema(x, spec.items, root, depth + 1));
     return v;
+  }
+  // Объект СТРОКОЙ (замер 3.7-plus 12.09: graph пришёл строкой): валидный
+  // JSON-объект разворачиваем; мусор при nullable-схеме → null (graph/figure —
+  // усиление, не условие), иначе оставляем как есть → zod-fail → ретрай.
+  if ((types.includes("object") || spec.properties) && typeof node === "string") {
+    try {
+      const p = JSON.parse(node);
+      if (p && typeof p === "object" && !Array.isArray(p)) node = p;
+      else if (types.includes("null")) return null;
+    } catch { if (types.includes("null")) return null; }
   }
   if ((types.includes("object") || spec.properties) && typeof node === "object" && !Array.isArray(node)) {
     const out = { ...node };

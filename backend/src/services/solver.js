@@ -627,7 +627,9 @@ export async function solveTask({ recognizedText, grade, subject, quarter = 4, s
     // QWEN_NATIVE (off|canary|on) — дети остаются на прослойке до явного слова.
     // Фолбэк: qwen-flash ×2 → qwen3.8-flash ×1 (Haiku жив как аварийка через QWEN_SOLVE=off).
     if (QWEN_NATIVE === "on" || (QWEN_NATIVE === "canary" && source === "canary")) {
-      return solveViaNative(request, program, quarter);
+      const hard = (QWEN_HARD_ROUTE === "on" || (QWEN_HARD_ROUTE === "canary" && source === "canary"))
+        && isHardInequality(recognizedText);
+      return solveViaNative(request, program, quarter, { hard });
     }
     for (let attempt = 1; attempt <= 2; attempt++) {
       let shape = null; // форма фактического ответа — в лог сбоя (диагностика канареек)
@@ -693,13 +695,45 @@ export async function solveTask({ recognizedText, grade, subject, quarter = 4, s
  * первая попытка искусственно бросает; не задан (прод) — мёртв.
  */
 const QWEN_FALLBACK_MODEL = process.env.QWEN_FALLBACK_MODEL || "qwen3.8-flash";
-async function solveViaNative(request, program, quarter) {
+
+// ---------- роутинг ТРУДНОГО класса (п.3 закрытия инцидента №40, 12.09) ----------
+// Дробно-рациональные неравенства qwen-flash решает со знаковыми ошибками
+// (стохастически); qwen3.7-plus решает верно за ~27с в полной обвязке (замер).
+// QWEN_HARD_ROUTE: off (дефолт) | canary (только X-Canary) | on.
+const QWEN_HARD_ROUTE = String(process.env.QWEN_HARD_ROUTE || "off").toLowerCase();
+const QWEN_HARD_MODEL = process.env.QWEN_HARD_MODEL || "qwen3.7-plus";
+const QWEN_HARD_TIMEOUT_MS = Number(process.env.QWEN_HARD_TIMEOUT_MS || 180_000);
+if (QWEN_HARD_ROUTE !== "off") {
+  console.log(`[qwen-hard] режим ${QWEN_HARD_ROUTE}: дробно-рациональные неравенства → ${QWEN_HARD_MODEL} ×2 (таймаут ${QWEN_HARD_TIMEOUT_MS / 1000}с)${QWEN_HARD_ROUTE === "canary" ? " ТОЛЬКО для X-Canary" : ""}`);
+}
+
+/** Узкий детект трудного класса: знак неравенства И дробь с ПЕРЕМЕННОЙ в
+ * знаменателе. Обычные дроби (числовые знаменатели), уравнения и неравенства
+ * без дробей остаются на qwen-flash. export — для юнит-канареек. */
+export function isHardInequality(text) {
+  const s = String(text ?? "");
+  const hasIneq = /[<>≥≤]|\\geq\b|\\leq\b|\\ge\b|\\le\b/.test(s);
+  if (!hasIneq) return false;
+  // LaTeX: \frac{...}{...буква...} — знаменатель содержит переменную.
+  const latexVarDenom = /\\[cd]?frac\s*\{[^{}]*\}\s*\{[^{}]*[a-zа-яё][^{}]*\}/i.test(s);
+  // Плоская запись: «/» и сразу (со скобкой/цифрами) буква: 1/(x+2), 2x/x, 5/2y.
+  const plainVarDenom = /\/\s*\(?\s*-?\s*\d*\s*[a-zа-яё]/i.test(s);
+  return latexVarDenom || plainVarDenom;
+}
+async function solveViaNative(request, program, quarter, { hard = false } = {}) {
   const system = (request.system ?? []).map((b) => b.text).join("\n\n");
   const messages = [{ role: "user", content: request.messages[0].content }];
   const schema = request.output_config.format.schema;
-  const attempts = [
-    { model: QWEN_SOLVER_MODEL }, { model: QWEN_SOLVER_MODEL }, { model: QWEN_FALLBACK_MODEL },
-  ];
+  // Трудный класс (дробно-рациональные неравенства): думающая модель ×2 с
+  // расширенным таймаутом, страховой 3.8 общий. Обычный путь — как был.
+  const attempts = hard
+    ? [
+        { model: QWEN_HARD_MODEL, timeoutMs: QWEN_HARD_TIMEOUT_MS },
+        { model: QWEN_HARD_MODEL, timeoutMs: QWEN_HARD_TIMEOUT_MS },
+        { model: QWEN_FALLBACK_MODEL, timeoutMs: QWEN_HARD_TIMEOUT_MS },
+      ]
+    : [{ model: QWEN_SOLVER_MODEL }, { model: QWEN_SOLVER_MODEL }, { model: QWEN_FALLBACK_MODEL }];
+  if (hard) console.log(new Date().toISOString(), `[qwen-hard] трудный класс: ${QWEN_HARD_MODEL} ×2 → ${QWEN_FALLBACK_MODEL}`);
   let lastErr = null;
   for (let i = 0; i < attempts.length; i++) {
     const { model } = attempts[i];
@@ -708,7 +742,7 @@ async function solveViaNative(request, program, quarter) {
       if ((chaos === "fail-first" && i === 0) || (chaos === "fail-twice" && i < 2)) {
         throw new Error(`CHAOS: искусственный сбой попытки ${i + 1} (канарейка фолбэка)`);
       }
-      const res = await qwenStructured({ model, system, messages, schemaName: "solution", schema, maxTokens: request.max_tokens });
+      const res = await qwenStructured({ model, system, messages, schemaName: "solution", schema, maxTokens: request.max_tokens, timeoutMs: attempts[i].timeoutMs });
       const parsed = SolutionSchema.parse(res.parsed); // null/мимо схемы → throw
       if (res.coerced) console.warn(new Date().toISOString(), `[qwen-native] коэрция чинила ответ (${model}) — транспортная причуда`);
       return finalizeParsed(parsed, program, quarter, normalizeQwenUsage(res.usage), model);

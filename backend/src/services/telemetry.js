@@ -45,6 +45,8 @@ const PRICES = {
   "qwen3.8-flash":    { input: 0.15, output: 0.47, cacheWrite: 0.15, cacheRead: 0.015 },
   "qwen3-vl-flash":   { input: 0.05, output: 0.4, cacheWrite: 0.05, cacheRead: 0.005 },
   "qwen3-vl-plus":    { input: 0.2, output: 1.6, cacheWrite: 0.2, cacheRead: 0.02 },
+  // qwen3.7-plus — думающая модель трудного класса (п.3, роутинг неравенств).
+  "qwen3.7-plus":     { input: 0.4, output: 1.6, cacheWrite: 0.4, cacheRead: 0.04 },
 };
 
 /** Суммирует usage-объекты ответов API (поля могут отсутствовать). */

@@ -75,10 +75,10 @@ function apiKey() {
  * Низкоуровневый chat-вызов. body — поля OpenAI-формата (model, messages,
  * tools, tool_choice, max_tokens). Возвращает разобранный JSON ответа.
  */
-export async function qwenChat(body) {
+export async function qwenChat(body, { timeoutMs = TIMEOUT_MS } = {}) {
   const r = await fetch(BASE_URL + "/chat/completions", {
     method: "POST",
-    signal: AbortSignal.timeout(TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
     headers: { "content-type": "application/json", authorization: "Bearer " + apiKey() },
     body: JSON.stringify(body),
   });
@@ -99,7 +99,7 @@ export async function qwenChat(body) {
  *   parsed=null — модель не позвала инструмент или аргументы не JSON
  *   (структурный сбой; ретрай/фолбэк — политика вызывающего).
  */
-export async function qwenStructured({ model, system, messages, schemaName, schema, maxTokens = 8000 }) {
+export async function qwenStructured({ model, system, messages, schemaName, schema, maxTokens = 8000, timeoutMs }) {
   const msgs = [
     ...(system ? [{ role: "system", content: system }] : []),
     ...messages,
@@ -110,7 +110,7 @@ export async function qwenStructured({ model, system, messages, schemaName, sche
     max_tokens: maxTokens,
     tools: [{ type: "function", function: { name: schemaName, description: "Верни результат СТРОГО по схеме, без пояснений вне инструмента.", parameters: schema } }],
     tool_choice: "auto",
-  });
+  }, { timeoutMs });
   const tc = raw.choices?.[0]?.message?.tool_calls?.[0];
   let parsed = null;
   if (tc?.function?.arguments) {
