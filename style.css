@@ -1728,3 +1728,7 @@ body {
 #screen-capture .capture { min-height: 0; }
 
 .sheet-version { text-align: center; color: var(--l-muted); font-size: 12px; margin-top: 14px; }
+
+/* Фон за пределами страницы (панорама клавиатуры оголяла белое) */
+html { background: #eef1ff; }
+@media (prefers-color-scheme: dark) { html { background: #14141c; } }
