@@ -37,3 +37,28 @@ function prune() {
     console.warn(new Date().toISOString(), "[media-store] чистка не удалась:", err.message);
   }
 }
+
+/** Сохраняет data-URL (фото пользователя) в хранилище. Возвращает "/media/<имя>".
+ * Нужен i2v: DashScope принимает первый кадр ТОЛЬКО http-URL — отдаём свой. */
+export function storeFromDataUrl(dataUrl) {
+  fs.mkdirSync(MEDIA_DIR, { recursive: true });
+  const m = /^data:image\/(png|jpe?g);base64,(.+)$/s.exec(String(dataUrl));
+  if (!m) throw new Error("ожидается data-URL картинки (png/jpeg)");
+  const name = crypto.randomUUID() + (m[1] === "png" ? ".png" : ".jpg");
+  fs.writeFileSync(path.join(MEDIA_DIR, name), Buffer.from(m[2], "base64"));
+  prune();
+  return "/media/" + name;
+}
+
+/** Публичная база бэкенда (ngrok agent API) — для ссылок, которые скачивает
+ * ВНЕШНИЙ сервис (DashScope i2v). Кэш на процесс; null — туннеля нет. */
+let publicBaseCache = null;
+export async function publicBase() {
+  if (publicBaseCache) return publicBaseCache;
+  try {
+    const r = await fetch("http://127.0.0.1:4040/api/tunnels", { signal: AbortSignal.timeout(3000) });
+    const j = await r.json();
+    publicBaseCache = j?.tunnels?.find((x) => x?.public_url?.startsWith("https://"))?.public_url ?? null;
+  } catch { publicBaseCache = null; }
+  return publicBaseCache;
+}

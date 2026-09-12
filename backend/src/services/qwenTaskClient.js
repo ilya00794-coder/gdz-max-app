@@ -93,15 +93,17 @@ export async function editImage({ model, prompt, imageDataUrl }) {
 /** Текст → видео: только САБМИТ задачи (480P, ~5 с по решению Ильи 12.09).
  * Генерация идёт минуты — держать HTTP открытым сквозь ngrok/вебвью ненадёжно,
  * поэтому статус опрашивает КЛИЕНТ через getTaskStatus. */
-export async function submitVideoTask({ model, prompt, imageDataUrl = null, resolution = "480P", durationSec = 5 }) {
+export async function submitVideoTask({ model, prompt, imageUrl = null, resolution = "480P", durationSec = 5 }) {
   // resolution, НЕ size (канарейка 12.09: size молча игнорится, дефолт 1080P —
   // ролик выходит $1.00 вместо $0.25; параметры сверены с API-гайдом wan3.0).
-  // imageDataUrl — фото первым кадром (i2v, Илья 12.09: «видео со своей фотографией»).
+  // imageUrl — фото первым кадром (i2v). Формат по гайду wan3.0:
+  // input.media [{type:"first_frame", url}], ТОЛЬКО http-URL (img_url тихо
+  // игнорился — канарейка 12.09 сгенерила чужого человека); ratio: adaptive.
   const submitted = await call("/services/aigc/video-generation/video-synthesis", {
     body: {
       model,
-      input: { prompt, ...(imageDataUrl ? { img_url: imageDataUrl } : {}) },
-      parameters: { resolution, ...(imageDataUrl ? {} : { ratio: "16:9" }), duration: durationSec },
+      input: { prompt, ...(imageUrl ? { media: [{ type: "first_frame", url: imageUrl }] } : {}) },
+      parameters: { resolution, ratio: imageUrl ? "adaptive" : "16:9", duration: durationSec },
     },
     async: true,
   });

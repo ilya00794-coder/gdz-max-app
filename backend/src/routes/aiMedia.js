@@ -9,7 +9,7 @@ import { requestSource } from "../middleware/maxInitData.js";
 import { qwenChat, describeQwenError, normalizeQwenUsage } from "../services/qwenClient.js";
 import { generateImage, editImage, submitVideoTask, getTaskStatus } from "../services/qwenTaskClient.js";
 import { featureEnabled, checkHourlyLimit, recordGenEvent, updateGenEventCost } from "../services/aiFeatures.js";
-import { storeFromUrl } from "../services/mediaStore.js";
+import { storeFromUrl, storeFromDataUrl, publicBase } from "../services/mediaStore.js";
 import { hashUser, usageCost } from "../services/telemetry.js";
 
 export const imageRouter = Router();
@@ -141,11 +141,19 @@ videoRouter.post("/", async (req, res) => {
   }
   const photo = req.body?.imageBase64; // фото первым кадром — i2v (Илья 12.09)
   const imageDataUrl = photo ? (String(photo).startsWith("data:") ? String(photo) : `data:image/jpeg;base64,${photo}`) : null;
-  const finalPrompt = imageDataUrl
+  // DashScope принимает первый кадр только http-URL — кладём фото в своё
+  // /media и отдаём публичную ссылку (их фетчер серверный, ngrok-заглушки нет).
+  let imageUrl = null;
+  if (imageDataUrl) {
+    const base = await publicBase();
+    if (!base) return res.status(503).json({ error: "Видео по фото сейчас недоступно — попробуй без фото" });
+    imageUrl = base + storeFromDataUrl(imageDataUrl);
+  }
+  const finalPrompt = imageUrl
     ? `${prompt}. Люди с исходной фотографии остаются собой: те же лица и узнаваемая внешность, фотореалистично.`
     : prompt;
   try {
-    const { taskId } = await submitVideoTask({ model: VIDEO_MODEL, prompt: finalPrompt, imageDataUrl, resolution: VIDEO_RESOLUTION, durationSec: VIDEO_SECONDS });
+    const { taskId } = await submitVideoTask({ model: VIDEO_MODEL, prompt: finalPrompt, imageUrl, resolution: VIDEO_RESOLUTION, durationSec: VIDEO_SECONDS });
     recordGenEvent({
       kind: "video", source, userHash, model: VIDEO_MODEL, prompt,
       enhancedPrompt: finalPrompt === prompt ? null : finalPrompt,
