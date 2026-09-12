@@ -1740,3 +1740,14 @@ html { background: #eef1ff; }
   min-height: 0;
   overflow: hidden;
 }
+
+/* Тёмная тема: читаемый ответ в зелёной плашке (фиолетовые формулы на
+   тёмно-зелёном были нечитаемы — скрин 23:38) + светлые формулы в шагах. */
+@media (prefers-color-scheme: dark) {
+  .answer-block.answer-ok { color: #eafff3; }
+  .answer-block.answer-ok .answer-value,
+  .answer-block.answer-ok .answer-value .katex { color: #eafff3; }
+  .answer-block.answer-ok .answer-label { color: #6ee7b7; }
+  .answer-block:not(.answer-ok) .answer-value .katex { color: #d8ccff; }
+  .step-text .katex { color: #c4b5fd; }
+}
