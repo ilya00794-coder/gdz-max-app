@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Домашка в MAX — смотри, что получилось</title>
+  <link rel="icon" type="image/svg+xml" href="assets/logo-icon.svg" />
+  <!-- Страница-просмотрщик шаринга (12.09): прямая ngrok-ссылка на /media
+       не открывается у друга (заглушка ngrok для браузеров без заголовка) —
+       эта страница на Pages качает медиа JS-fetch'ем С заголовком и показывает.
+       Заодно посадочная: кнопка ведёт в канал. Парная точка: aiAddShare (app.js)
+       формирует ссылку view.html#<имя файла в /media>. -->
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           background: #f6f5f0; color: #2c2c2a; display: flex; flex-direction: column;
+           align-items: center; min-height: 100svh; }
+    header { padding: 18px 16px 6px; font-weight: 800; font-size: 20px; color: #185fa5; }
+    .frame { width: min(92vw, 560px); margin: 10px auto; }
+    .frame img, .frame video { width: 100%; border-radius: 16px; display: block;
+                               box-shadow: 0 6px 24px rgba(0,0,0,.12); }
+    .status { color: #888780; padding: 30px 16px; text-align: center; }
+    .cta { display: block; width: min(92vw, 560px); margin: 14px auto 30px; padding: 15px;
+           border-radius: 14px; background: #185fa5; color: #fff; text-align: center;
+           text-decoration: none; font-weight: 600; font-size: 16px; }
+    .sub { color: #888780; font-size: 13px; margin: 0 0 8px; }
+  </style>
+</head>
+<body>
+  <header>домашка·max</header>
+  <p class="sub">сделано в мини-приложении</p>
+  <div class="frame" id="frame"><p class="status" id="status">Загружаю…</p></div>
+  <a class="cta" id="cta" href="https://max.ru/id772408566819_biz">🚀 Сделать свою — Домашка в MAX</a>
+  <script src="config.js"></script>
+  <script>
+    (async () => {
+      var frame = document.getElementById("frame");
+      var status = document.getElementById("status");
+      var name = (location.hash || "").slice(1);
+      // только uuid.расширение — ничего чужого не подставить
+      if (!/^[0-9a-f-]{36}\.(png|jpg|mp4)$/.test(name)) { status.textContent = "Ссылка неполная или устарела."; return; }
+      var backend = (window.APP_CONFIG && window.APP_CONFIG.BACKEND_URL) || "";
+      try {
+        var r = await fetch(backend + "/media/" + name, { headers: { "ngrok-skip-browser-warning": "true" } });
+        if (!r.ok) throw new Error(r.status);
+        var blob = await r.blob();
+        var src = URL.createObjectURL(blob);
+        frame.innerHTML = name.endsWith(".mp4")
+          ? '<video controls playsinline autoplay muted loop src="' + src + '"></video>'
+          : '<img src="' + src + '" alt="Сгенерировано в Домашка в MAX">';
+      } catch (e) {
+        status.textContent = "Не получилось загрузить — файл мог устареть (медиа хранятся 7 дней).";
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -34,17 +34,15 @@ const videoTaskLedger = new Map();
 
 /** Усилитель: детский промпт → развёрнутый (композиция/стиль/свет). Сбой
  * усилителя НЕ валит генерацию — уходит исходный промпт (усилитель — бонус). */
-async function enhancePrompt(prompt, target) {
-  // ОБРАБОТКА ФОТО: LLM-усилитель здесь ВРЕДЕН — два живых кейса 12.09
-  // («мультяшный мальчик» вместо Ильи; «девочки с усами» → придуманная
-  // вечерняя улица вместо усов). Точечная правка = точечный шаблон, без LLM:
-  if (target === "edit") {
-    return {
-      text: `${prompt}. Внеси только это изменение. Всё остальное оставь ровно как на исходной фотографии: фон, обстановку, людей, их позы, одежду и лица (кроме запрошенного изменения). Фотореалистично.`,
-      cost: 0,
-    };
-  }
-  const system = `Ты — редактор промптов для генерации ${target === "video" ? "видео" : "изображений"} в детском приложении. Перепиши запрос пользователя в один развёрнутый промпт по-русски: добавь композицию, стиль, свет, настроение, детали. Сохрани замысел, сделай сцену яркой и доброй. Уложись в 400 символов. Ответь ТОЛЬКО текстом промпта, без пояснений.`;
+// АВТО-усиления при отправке больше НЕТ (Илья 12.09 вечер): запрос уходит как
+// написан; LLM-усиление — только явной кнопкой «✨ Улучшить» (/api/enhance),
+// результат виден в поле и правится пользователем.
+/** LLM-усилитель для кнопки. hasPhoto — прикреплено фото (image-edit или
+ * видео с первым кадром): улучшаем ЗАПРОШЕННОЕ, людей с фото сохраняем. */
+async function enhancePrompt(prompt, target, hasPhoto = false) {
+  const system = hasPhoto
+    ? `Ты — редактор промптов: пользователь прикладывает СВОЮ ФОТОГРАФИЮ и просит ${target === "video" ? "видео" : "картинку"} на её основе. Перепиши запрос детальнее по-русски: раскрой именно то, что он просит (новую сцену — только если он сам её просит), добавь свет и настроение. Обязательно сохрани в промпте: люди с фотографии остаются собой — те же лица, узнаваемая внешность, фотореалистично. Не добавляй ничего, чего пользователь не просил. Уложись в 400 символов. Ответь ТОЛЬКО текстом промпта.`
+    : `Ты — редактор промптов для генерации ${target === "video" ? "видео" : "изображений"} в детском приложении. Перепиши запрос пользователя в один развёрнутый промпт по-русски: добавь композицию, стиль, свет, настроение, детали. Сохрани замысел, сделай сцену яркой и доброй. Уложись в 400 символов. Ответь ТОЛЬКО текстом промпта, без пояснений.`;
   try {
     const r = await qwenChat({
       model: ENHANCE_MODEL,
@@ -81,16 +79,21 @@ function mediaHandler({ kind, flagName, run }) {
       const what = kind === "video" ? "видео" : "картинок";
       return res.status(429).json({ error: `Лимит ${what} — ${limit} в час. Возвращайся чуть позже!`, limitReached: true });
     }
-    const enhanced = await enhancePrompt(prompt, kind === "image" && req.body?.imageBase64 ? "edit" : kind);
+    // Авто-усиления нет (кнопка «Улучшить» — единственный усилитель); для фото
+    // остаётся НЕ-LLM страховка «сохрани людей» (шаблон уже спасал дважды).
+    const finalPrompt = req.body?.imageBase64
+      ? `${prompt}. Люди с исходной фотографии остаются собой: те же лица и узнаваемая внешность, фотореалистично. Не меняй ничего, чего не просили.`
+      : prompt;
     try {
-      const { url, model, mediaCost } = await run(req, enhanced.text);
+      const { url, model, mediaCost } = await run(req, finalPrompt);
       recordGenEvent({
-        kind, source, userHash, model, prompt, enhancedPrompt: enhanced.text,
-        ok: true, durationMs: Date.now() - startedAt, costUsd: mediaCost + enhanced.cost,
+        kind, source, userHash, model, prompt,
+        enhancedPrompt: finalPrompt === prompt ? null : finalPrompt,
+        ok: true, durationMs: Date.now() - startedAt, costUsd: mediaCost,
       });
-      res.json({ url, enhancedPrompt: enhanced.text, used: used + 1, limit });
+      res.json({ url, used: used + 1, limit });
     } catch (err) {
-      recordGenEvent({ kind, source, userHash, prompt, enhancedPrompt: enhanced.text, ok: false, errorKind: String(err.message).slice(0, 160), durationMs: Date.now() - startedAt, costUsd: enhanced.cost });
+      recordGenEvent({ kind, source, userHash, prompt, ok: false, errorKind: String(err.message).slice(0, 160), durationMs: Date.now() - startedAt });
       console.error(new Date().toISOString(), `[ai-${kind}] сбой:`, err.message);
       // Реджект встроенной модерации DashScope приходит кодом DataInspectionFailed.
       const friendly = /inspection|green|risk/i.test(String(err.message))
@@ -136,20 +139,25 @@ videoRouter.post("/", async (req, res) => {
   if (!allowed) {
     return res.status(429).json({ error: `Лимит видео — ${limit} в час. Возвращайся чуть позже!`, limitReached: true });
   }
-  const enhanced = await enhancePrompt(prompt, "video");
+  const photo = req.body?.imageBase64; // фото первым кадром — i2v (Илья 12.09)
+  const imageDataUrl = photo ? (String(photo).startsWith("data:") ? String(photo) : `data:image/jpeg;base64,${photo}`) : null;
+  const finalPrompt = imageDataUrl
+    ? `${prompt}. Люди с исходной фотографии остаются собой: те же лица и узнаваемая внешность, фотореалистично.`
+    : prompt;
   try {
-    const { taskId } = await submitVideoTask({ model: VIDEO_MODEL, prompt: enhanced.text, resolution: VIDEO_RESOLUTION, durationSec: VIDEO_SECONDS });
+    const { taskId } = await submitVideoTask({ model: VIDEO_MODEL, prompt: finalPrompt, imageDataUrl, resolution: VIDEO_RESOLUTION, durationSec: VIDEO_SECONDS });
     recordGenEvent({
-      kind: "video", source, userHash, model: VIDEO_MODEL, prompt, enhancedPrompt: enhanced.text,
+      kind: "video", source, userHash, model: VIDEO_MODEL, prompt,
+      enhancedPrompt: finalPrompt === prompt ? null : finalPrompt,
       ok: true, durationMs: Date.now() - startedAt,
-      costUsd: MEDIA_COST.videoPerSec * VIDEO_SECONDS + enhanced.cost,
+      costUsd: MEDIA_COST.videoPerSec * VIDEO_SECONDS,
     }).then((id) => {
-      if (id) videoTaskLedger.set(taskId, { genEventId: id, enhCost: enhanced.cost, startedAt });
+      if (id) videoTaskLedger.set(taskId, { genEventId: id, enhCost: 0, startedAt });
       if (videoTaskLedger.size > 500) videoTaskLedger.delete(videoTaskLedger.keys().next().value);
     });
-    res.json({ taskId, enhancedPrompt: enhanced.text, used: used + 1, limit });
+    res.json({ taskId, used: used + 1, limit });
   } catch (err) {
-    recordGenEvent({ kind: "video", source, userHash, prompt, enhancedPrompt: enhanced.text, ok: false, errorKind: String(err.message).slice(0, 160), durationMs: Date.now() - startedAt, costUsd: enhanced.cost });
+    recordGenEvent({ kind: "video", source, userHash, prompt, ok: false, errorKind: String(err.message).slice(0, 160), durationMs: Date.now() - startedAt });
     console.error(new Date().toISOString(), "[ai-video] сбой сабмита:", err.message);
     const friendly = /inspection|green|risk/i.test(String(err.message))
       ? "Такое сгенерировать не получилось — попробуй переформулировать запрос"
@@ -216,7 +224,7 @@ enhanceRouter.post("/", async (req, res) => {
     return res.status(400).json({ error: "Сначала напиши запрос (до 1000 символов)" });
   }
   const target = req.body?.target === "video" ? "video" : "image";
-  const e = await enhancePrompt(prompt, target);
+  const e = await enhancePrompt(prompt, target, req.body?.hasPhoto === true);
   recordGenEvent({ kind: "enhance", source, userHash: hashUser(userId), model: ENHANCE_MODEL, prompt, enhancedPrompt: e.text, ok: true, costUsd: e.cost });
   res.json({ enhanced: e.text });
 });
