@@ -263,13 +263,22 @@ if (window.visualViewport) {
     const el = document.activeElement;
     if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT")) {
       // Задержка — WebKit доводит панорамирование после resize.
-      // ai-input прижат к НИЗУ экрана, сжатого до var(--vvh): центрирование
-      // утащило бы шапку под статусбар (живой скрин 12.09) — ему нужен верх.
-      if (el.id === "ai-input") setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 60);
-      else setTimeout(() => el.scrollIntoView({ block: "center", behavior: "smooth" }), 60);
+      // ai-input прижат к НИЗУ экрана, сжатого до var(--vvh): WebKit-панораму
+      // надо ПЕРЕБАРЫВАТЬ серией мгновенных возвратов (одиночный smooth
+      // проигрывал гонку — скрин 21:52, приложение уезжало за экран).
+      if (el.id === "ai-input") {
+        for (const ms of [0, 80, 200, 400, 700]) setTimeout(() => window.scrollTo(0, 0), ms);
+      } else setTimeout(() => el.scrollIntoView({ block: "center", behavior: "smooth" }), 60);
     }
   };
   vv.addEventListener("resize", applyVvh);
+  // Панорамирование двигает visualViewport, не скролл документа: пока фокус
+  // в композере чата — прижимаем страницу к верху при каждом сдвиге.
+  vv.addEventListener("scroll", () => {
+    if (document.activeElement?.id === "ai-input" && (vv.offsetTop > 1 || window.scrollY > 1)) {
+      window.scrollTo(0, 0);
+    }
+  });
   applyVvh();
 }
 

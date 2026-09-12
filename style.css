@@ -1522,10 +1522,13 @@ body {
   background: var(--grad);
   box-shadow: 0 6px 16px rgba(139, 92, 246, 0.35);
 }
-/* Отступ под бар у прижатых к низу элементов корневых экранов */
-body.has-tabbar #screen-capture .capture { padding-bottom: 82px; }
-body.has-tabbar #screen-setup .setup { padding-bottom: 82px; }
-body.has-tabbar #screen-ai .ai-composer-zone { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }
+/* Отступ под бар — БЕЗУСЛОВНЫЙ (12.09 вечер): вариант с body-классом от JS
+   на телефоне не активировался (композер уезжал под бар, скрин 21:50);
+   бар на этих экранах есть всегда, лишний отступ при спрятанном баре
+   (клавиатура) не виден под ней. Простота надёжнее. */
+#screen-capture .capture { padding-bottom: 96px !important; }
+#screen-setup .setup { padding-bottom: 96px !important; }
+#screen-ai .ai-composer-zone { padding-bottom: calc(88px + env(safe-area-inset-bottom)) !important; }
 
 /* Рейл полностью заменён нижними вкладками (скрин Ильи 21:01 — двойная навигация) */
 .ai-rail { display: none !important; }
