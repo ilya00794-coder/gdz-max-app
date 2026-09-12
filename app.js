@@ -2891,7 +2891,7 @@ if (aiRail) {
 // контракты бека не затронуты. Виден на корневых экранах (съёмка, AI-чат);
 // на подэкранах (решение, confirm, проверка) — свой «назад», бар спрятан.
 const tabBar = document.getElementById("tab-bar");
-const TAB_ROOTS = new Set(["screen-capture", "screen-ai"]);
+const TAB_ROOTS = new Set(["screen-setup", "screen-capture", "screen-ai"]);
 
 function updateTabBar(screenId) {
   if (!tabBar) return;
@@ -2903,9 +2903,10 @@ function updateTabBar(screenId) {
   document.body.classList.toggle("has-tabbar", visible);
   if (visible) aiRail.hidden = true; // бар заменяет боковой рейл целиком
   const active =
-    screenId === "screen-capture" ? (state.mode === "check" ? "tab-check" : "tab-solve")
-    : screenId === "screen-ai" ? (aiState.mode === "chat" ? "tab-chat" : "tab-create")
-    : null;
+    screenId === "screen-capture" || screenId === "screen-setup"
+      ? (state.mode === "check" ? "tab-check" : "tab-solve")
+      : screenId === "screen-ai" ? (aiState.mode === "chat" ? "tab-chat" : "tab-create")
+      : null;
   for (const id of ["tab-solve", "tab-check", "tab-chat", "tab-create"]) {
     document.getElementById(id).dataset.on = id === active ? "true" : "";
   }
