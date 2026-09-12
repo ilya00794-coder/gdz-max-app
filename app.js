@@ -2687,7 +2687,18 @@ function aiAddShare(bubble, { text, blob, filename, mime, url }) {
   row.querySelector("button").addEventListener("click", async () => {
     const caption = "Сделано в «Домашка в MAX» 🚀";
     try {
-      // 1) лучший случай: сам файл в нативную шторку
+      // 1) ЛУЧШИЙ путь (Илья 12.09): бот кладёт САМ файл сообщением в ЛС →
+      // нативный шеринг этого сообщения — другу уходит фото/видео + ссылка.
+      if (mediaName && max.mode === "max" && typeof window.WebApp?.shareMaxContent === "function") {
+        try {
+          const { mid } = await postJson("/api/share-media", { media: "/media/" + mediaName }, 90_000);
+          await window.WebApp.shareMaxContent({ mid, chatType: "DIALOG" });
+          return;
+        } catch (err) {
+          console.warn("share-media, иду по фолбэкам:", err?.message);
+        }
+      }
+      // 2) сам файл в нативную шторку (если вебвью умеет)
       if (blob && typeof File === "function" && navigator.canShare?.({ files: [new File([blob], filename, { type: mime })] })) {
         await navigator.share({ files: [new File([blob], filename, { type: mime })], text: caption });
         return;
