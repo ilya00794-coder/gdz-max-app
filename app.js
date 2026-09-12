@@ -2637,6 +2637,22 @@ function aiTextHtml(text) {
   return escapeHtml(text).replace(/\n/g, "<br>");
 }
 
+/** Медиа приходит относительным путём /media/... с НАШЕГО бэкенда (OSS-ссылки
+ * Alibaba не открываются из вебвью MAX — живой случай 12.09, битая картинка).
+ * Прямой <img src> через бесплатный ngrok ловит HTML-заглушку (заголовок
+ * ngrok-skip-browser-warning тег слать не умеет) — поэтому качаем fetch'ем
+ * с заголовком и отдаём blob-URL. */
+async function aiMediaSrc(url) {
+  const full = String(url).startsWith("/") ? BACKEND_URL + url : url;
+  try {
+    const r = await fetch(full, { headers: { "ngrok-skip-browser-warning": "true" } });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return URL.createObjectURL(await r.blob());
+  } catch {
+    return full; // хотя бы попытка напрямую (не-ngrok хостинг будущего)
+  }
+}
+
 /** Фото → data-URL с ужатием до 1280px по большей стороне (лимит тела 15MB,
  * камеры отдают кратно больше; тот же приём, что imageForUpload). */
 function aiReadPhoto(file) {
@@ -2690,12 +2706,12 @@ async function aiSend() {
     } else if (mode === "image") {
       const payload = { prompt: text, ...(photo ? { imageBase64: photo } : {}) };
       const data = await postJson("/api/image", payload, 180_000);
-      wait.innerHTML = `<img class="ai-msg-media" src="${escapeHtml(data.url)}" alt="Сгенерированное изображение">`
+      wait.innerHTML = `<img class="ai-msg-media" src="${escapeHtml(await aiMediaSrc(data.url))}" alt="Сгенерированное изображение">`
         + (data.enhancedPrompt ? `<p class="ai-enhanced">${aiTextHtml(data.enhancedPrompt)}</p>` : "");
     } else {
       const data = await postJson("/api/video", { prompt: text }, 60_000);
       const url = await aiPollVideo(data.taskId);
-      wait.innerHTML = `<video class="ai-msg-media" controls playsinline preload="metadata" src="${escapeHtml(url)}"></video>`
+      wait.innerHTML = `<video class="ai-msg-media" controls playsinline preload="metadata" src="${escapeHtml(await aiMediaSrc(url))}"></video>`
         + (data.enhancedPrompt ? `<p class="ai-enhanced">${aiTextHtml(data.enhancedPrompt)}</p>` : "");
     }
   } catch (err) {
