@@ -281,10 +281,6 @@ if (window.visualViewport) {
     }
   };
   vv.addEventListener("resize", applyVvh);
-  vv.addEventListener("resize", () => window.__kbdProbe?.());
-  vv.addEventListener("scroll", () => window.__kbdProbe?.());
-  window.addEventListener("scroll", () => window.__kbdProbe?.(), { passive: true });
-  document.addEventListener("focusin", () => setTimeout(() => window.__kbdProbe?.(), 300));
   // Панорамирование двигает visualViewport, не скролл документа: пока фокус
   // в композере чата — прижимаем страницу к верху при каждом сдвиге.
   vv.addEventListener("scroll", () => {
@@ -3075,47 +3071,7 @@ document.addEventListener("touchend", (e) => {
 // ================== END нижние вкладки ==================
 
 
-{
-  // ЗОНД клавиатуры (12.09, панорама в MAX не побеждена вслепую): 5 быстрых
-  // тапов по пилюле — оверлей с живыми цифрами сдвигов. По ним — точный фикс.
-  let taps = 0, tapTimer = null;
-  document.getElementById("context-pill")?.addEventListener("click", () => {
-    taps += 1;
-    clearTimeout(tapTimer);
-    tapTimer = setTimeout(() => { taps = 0; }, 1600);
-    if (taps >= 5) {
-      taps = 0;
-      const on = localStorage.getItem("gdz:kbd-probe") === "1" ? "0" : "1";
-      localStorage.setItem("gdz:kbd-probe", on);
-      alert("Зонд клавиатуры: " + (on === "1" ? "ВКЛ — открой чат, тапни поле, пришли скрин" : "выкл"));
-      return;
-    }
-    openSubjectSheet();
-  });
-}
-
-window.__kbdProbe = function () {
-  try {
-    if (localStorage.getItem("gdz:kbd-probe") !== "1") return;
-    let b = document.getElementById("kbd-probe");
-    if (!b) {
-      b = document.createElement("div");
-      b.id = "kbd-probe";
-      b.style.cssText = "position:fixed;top:4px;left:4px;z-index:9999;background:#000c;color:#0f0;font:11px monospace;padding:6px 8px;border-radius:8px;pointer-events:none;white-space:pre";
-      document.body.appendChild(b);
-    }
-    const vv = window.visualViewport;
-    b.textContent =
-      "innerH=" + window.innerHeight +
-      " vvH=" + (vv ? Math.round(vv.height) : "-") +
-      "\nvvTop=" + (vv ? Math.round(vv.offsetTop) : "-") +
-      " winY=" + Math.round(window.scrollY) +
-      "\ndocY=" + Math.round(document.documentElement.scrollTop) +
-      " bodyY=" + Math.round(document.body.scrollTop) +
-      "\nfocus=" + (document.activeElement?.id || document.activeElement?.tagName || "-") +
-      " ver=" + (window.APP_VERSION || "?");
-  } catch {}
-};
+document.getElementById("context-pill")?.addEventListener("click", openSubjectSheet);
 
 // ---- Шторка класса/предмета (концепт экрана 3, 12.09) ----
 // Переносим ЖИВЫЕ узлы выбора (слушатели сохраняются), закрытие возвращает.
