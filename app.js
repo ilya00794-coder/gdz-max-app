@@ -491,6 +491,12 @@ function applyMode(mode) {
 
 function enterCapture(mode) {
   applyMode(mode);
+  // Пилюля контекста: видимая точка смены класса/предмета (камера — первый экран).
+  const pill = document.getElementById("context-pill");
+  if (pill && state.grade && state.subject) {
+    document.getElementById("context-pill-text").textContent = `${state.grade} класс · ${state.subject}`;
+    pill.hidden = false;
+  }
   showScreen("screen-capture");
 }
 
@@ -2996,6 +3002,8 @@ for (const el of [aiInput, taskTextInput]) {
 }
 // ================== END нижние вкладки ==================
 
+
+document.getElementById("context-pill")?.addEventListener("click", () => showScreen("screen-setup"));
 
 // ================== Память предмета + автопропуск онбординга (12.09) ==================
 // Класс уже запоминается (restoreLastGrade). Предмет — так же: тогда со второго
