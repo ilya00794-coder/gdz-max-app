@@ -183,8 +183,11 @@ html, body {
   align-items: center;
   font-size: 13px;
 }
-/* Пометка рисуется только при подтверждённой верификации, серого варианта больше нет. */
+/* Галочка — подтверждённая верификация; warn/alert — честная плашка (12.09):
+   на вычислимом предмете false больше не молчит. */
 .answer-verify[data-verified="true"] { color: var(--l-success); }
+.answer-verify--warn { color: #8a6d1a; }
+.answer-verify--alert { color: #b3261e; font-weight: 600; }
 
 /* --- нижние кнопки --- */
 .sheet-actions {
