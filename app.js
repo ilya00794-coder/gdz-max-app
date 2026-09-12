@@ -3166,4 +3166,8 @@ function maybeSelfUpdate(fresh) {
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) loadAiFeatures();
 });
+// …и таймер на живую сессию: visibilitychange в вебвью MAX может не стрелять
+// (скрин 22:37 — сборка не обновилась за 8 минут). Раз в 5 минут — копеечный
+// GET, зато старая версия не живёт дольше пяти минут ни при каком сценарии.
+setInterval(loadAiFeatures, 5 * 60_000);
 // ================== END авто-обновление ==================
