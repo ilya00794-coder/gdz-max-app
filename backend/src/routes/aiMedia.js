@@ -17,13 +17,16 @@ export const videoRouter = Router();
 export const enhanceRouter = Router();
 
 const IMAGE_MODEL = process.env.QWEN_IMAGE_MODEL || "qwen-image-3.0";
-const IMAGE_EDIT_MODEL = process.env.QWEN_IMAGE_EDIT_MODEL || "qwen-image-edit";
+// edit-plus вместо базового edit (12.09 вечер): базовый ТЕРЯЛ людей при полной
+// смене сцены (живой кейс «нас на Мальдивах» — чужие девушки); plus/max переносят
+// (проба на селфи Ильи, обе ок). Plus — цена известна ($0.075), max — env-опция.
+const IMAGE_EDIT_MODEL = process.env.QWEN_IMAGE_EDIT_MODEL || "qwen-image-edit-plus";
 const VIDEO_MODEL = process.env.QWEN_VIDEO_MODEL || "wan3.0-video";
 const ENHANCE_MODEL = process.env.QWEN_CHAT_MODEL || "qwen-flash";
 
 // Цены генераций (intl, сверено 12.09 по прайсам Model Studio; за ШТУКУ и
 // СЕКУНДУ, не за токены — потому не в PRICES telemetry, а здесь).
-const MEDIA_COST = { image: 0.03, imageEdit: 0.045, videoPerSec: 0.05 /* 480P */ };
+const MEDIA_COST = { image: 0.03, imageEdit: 0.075 /* edit-plus */, videoPerSec: 0.05 /* 480P */ };
 const VIDEO_SECONDS = 5;
 const VIDEO_RESOLUTION = "480P"; // ЖЁСТКО (Илья 12.09): дефолт DashScope — 1080P = $1.00/ролик
 // Тариф wan3.0 по фактическому SR из usage задачи — для честной телеметрии.
