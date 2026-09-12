@@ -101,14 +101,37 @@ export function subjectsLine(rows) {
 }
 
 /** Текст отчёта за час, либо null (тихий час — молчание). */
+/** Генерации AI-разделов (чат/картинки/видео, 12.09) за окно: счётчики успешных
+ * по видам + общая стоимость (вкл. усилитель «✨»; canary/local не считаем —
+ * как и весь отчёт). */
+async function genStats(from, to) {
+  const { rows } = await getPool().query(
+    `SELECT kind, count(*) FILTER (WHERE ok) AS n, coalesce(sum(cost_usd), 0) AS cost
+       FROM gen_events
+      WHERE created_at >= $1 AND created_at < $2 AND source NOT IN ('canary','local')
+      GROUP BY kind`,
+    [from, to]
+  );
+  const g = { chat: 0, image: 0, video: 0, cost: 0 };
+  for (const r of rows) {
+    if (g[r.kind] !== undefined) g[r.kind] = Number(r.n);
+    g.cost += Number(r.cost);
+  }
+  g.total = g.chat + g.image + g.video;
+  return g;
+}
+
 export async function buildHourlyReport(hourStart, { withYesterday = false } = {}) {
   const hourEnd = new Date(hourStart.getTime() + 3600_000);
   const dayStart = new Date(hourStart); dayStart.setHours(0, 0, 0, 0);
 
   const h = await stats(hourStart, hourEnd);
-  if (Number(h.events) === 0) return null; // тишина = «никто не приходил»
+  const hg = await genStats(hourStart, hourEnd);
+  // тишина = «никто не приходил» — ни решений, ни AI-генераций
+  if (Number(h.events) === 0 && hg.total === 0) return null;
 
   const d = await stats(dayStart, hourEnd);
+  const dg = await genStats(dayStart, hourEnd);
   const hh = (dt) => String(dt.getHours()).padStart(2, "0") + ":00";
   const saved = (n, avg) => fmtUsd(Number(n) * Number(avg));
 
@@ -129,6 +152,12 @@ export async function buildHourlyReport(hourStart, { withYesterday = false } = {
   lines.push(
     `💰 Потрачено: ${fmtUsd(h.spent)} · за день: ${fmtUsd(d.spent)} · кэш сберёг: ${saved(h.from_cache, d.avg_gen_cost)} / ${saved(d.from_cache, d.avg_gen_cost)}`
   );
+  // AI-разделы (Илья 12.09): сколько чатов/картинок/видео и почём.
+  if (dg.total > 0) {
+    const part = (g) => `💬${g.chat} 🎨${g.image} 🎬${g.video} = ${fmtUsd(g.cost)}`;
+    lines.push(`🤖 AI за час: ${part(hg)} · за день: ${part(dg)}`);
+  }
+
   // Отказы видны, пока они были хоть раз за день, — даже нулём за час.
   if (h.refusals.length || d.refusals.length) {
     const hourPart = h.refusals.length ? h.refusals.map((r) => `${r.reason} ×${r.n}`).join(", ") : "0";
