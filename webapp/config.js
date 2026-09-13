@@ -11,4 +11,9 @@
 // на этот адрес фотографии ученика, и подставлять его снаружи ссылкой нельзя.
 window.APP_CONFIG = {
   BACKEND_URL: "https://whacking-ramble-womb.ngrok-free.dev",
+  // Фейловер (13.09): фронт перебирает хосты при сетевых сбоях. Свой домен
+  // (Cloudflare Tunnel) добавить ПЕРВЫМ, ngrok останется запасным.
+  BACKEND_URLS: [
+    "https://whacking-ramble-womb.ngrok-free.dev",
+  ],
 };

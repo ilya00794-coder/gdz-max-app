@@ -18,6 +18,21 @@ window.addEventListener("error", (e) => {
 
 // Адрес бэкенда задаётся в config.js — там же инструкция для ngrok.
 const BACKEND_URL = window.APP_CONFIG?.BACKEND_URL || "http://localhost:3000";
+// Фейловер хостов бекенда (13.09): операторы местами режут ngrok-free.dev по
+// DNS (Android-кейс «Сервер долго не отвечает» при живом беке) — фронт
+// перебирает BACKEND_URLS по порядку при СЕТЕВЫХ сбоях (не HTTP-ошибках)
+// и запоминает рабочий на сессию. Свой домен встанет первым в списке.
+const BACKEND_URLS = (window.APP_CONFIG?.BACKEND_URLS?.length ? window.APP_CONFIG.BACKEND_URLS : [BACKEND_URL]);
+let backendIdx = 0;
+try { backendIdx = Math.min(Number(sessionStorage.getItem("gdz:host-idx")) || 0, BACKEND_URLS.length - 1); } catch {}
+function backendBase() { return BACKEND_URLS[backendIdx] || BACKEND_URLS[0]; }
+function backendFailover() {
+  if (backendIdx + 1 >= BACKEND_URLS.length) return false;
+  backendIdx += 1;
+  try { sessionStorage.setItem("gdz:host-idx", String(backendIdx)); } catch {}
+  console.warn("бекенд-хост недоступен, переключение на", backendBase());
+  return true;
+}
 
 // ---------- MAX Bridge ----------
 const max = {
@@ -378,33 +393,36 @@ const subjectsCache = {}; // класс → список; в рамках сес
 let subjectsRequestId = 0;
 
 async function getJson(path, timeoutMs) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(`${BACKEND_URL}${path}`, {
-      headers: {
-        // ngrok без этого заголовка отдаёт браузеру HTML-заглушку вместо API.
-        "ngrok-skip-browser-warning": "true",
-        ...(max.initData ? { "X-Max-Init-Data": max.initData } : {}),
-        ...(window.APP_VERSION ? { "X-App-Version": window.APP_VERSION } : {}),
-        "X-Platform": PLATFORM,
-      },
-      signal: controller.signal,
-    });
-    const data = await res.json().catch(() => null);
-    if (!res.ok) {
-      const err = new Error(humanizeError(res.status, { serverMessage: data?.error }));
-      err.status = res.status;
-      err.body = data;
-      markNotSubscribed(err);
-      throw err;
+  for (;;) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${backendBase()}${path}`, {
+        headers: {
+          // ngrok без этого заголовка отдаёт браузеру HTML-заглушку вместо API.
+          "ngrok-skip-browser-warning": "true",
+          ...(max.initData ? { "X-Max-Init-Data": max.initData } : {}),
+          ...(window.APP_VERSION ? { "X-App-Version": window.APP_VERSION } : {}),
+          "X-Platform": PLATFORM,
+        },
+        signal: controller.signal,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const err = new Error(humanizeError(res.status, { serverMessage: data?.error }));
+        err.status = res.status;
+        err.body = data;
+        markNotSubscribed(err);
+        throw err;
+      }
+      return data;
+    } catch (err) {
+      if (err.status) throw err; // HTTP-ошибка: хост жив, переключаться не надо
+      if (backendFailover()) continue; // сетевой сбой: пробуем следующий хост
+      throw new Error(humanizeError(null, err));
+    } finally {
+      clearTimeout(timer);
     }
-    return data;
-  } catch (err) {
-    if (err.status) throw err;
-    throw new Error(humanizeError(null, err));
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -1011,7 +1029,7 @@ async function readNdjson(path, payload, timeoutMs, onEvent) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${BACKEND_URL}${path}`, {
+    const res = await fetch(`${backendBase()}${path}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1951,11 +1969,12 @@ function humanizeError(status, err) {
  * Наружу отдаёт уже человеческий текст в err.message.
  */
 async function postJson(path, payload, timeoutMs) {
+  for (;;) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(`${BACKEND_URL}${path}`, {
+    const res = await fetch(`${backendBase()}${path}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1982,9 +2001,11 @@ async function postJson(path, payload, timeoutMs) {
     return data;
   } catch (err) {
     if (err.status) throw err;                       // ответ был, текст уже человеческий
+    if (backendFailover()) continue;                 // сетевой сбой: следующий хост
     throw new Error(humanizeError(null, err));       // обрыв связи либо таймаут
   } finally {
     clearTimeout(timer);
+  }
   }
 }
 
@@ -2738,7 +2759,7 @@ function aiTextHtml(text) {
  * ngrok-skip-browser-warning тег слать не умеет) — поэтому качаем fetch'ем
  * с заголовком и отдаём blob-URL. */
 async function aiMediaSrc(url) {
-  const full = String(url).startsWith("/") ? BACKEND_URL + url : url;
+  const full = String(url).startsWith("/") ? backendBase() + url : url;
   try {
     const r = await fetch(full, { headers: { "ngrok-skip-browser-warning": "true" } });
     if (!r.ok) throw new Error("HTTP " + r.status);
