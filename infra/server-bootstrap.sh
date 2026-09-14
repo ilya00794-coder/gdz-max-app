@@ -17,6 +17,12 @@ DOMAIN=api.dmshk.ru
 
 log() { printf "\n\033[1;36m==> %s\033[0m\n" "$*"; }
 
+log "SSH: второй порт 2222 (у провайдера входящий 22 фильтруется — кейс 14.09)"
+if ! grep -qE '^Port 2222' /etc/ssh/sshd_config; then
+  printf '\nPort 22\nPort 2222\n' >> /etc/ssh/sshd_config
+fi
+systemctl restart ssh || systemctl restart sshd || true
+
 log "Пакеты системы"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
@@ -96,8 +102,11 @@ CADDY
 systemctl reload caddy || systemctl restart caddy
 
 log "Файрвол: только SSH и веб"
-ufw allow 22/tcp >/dev/null; ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null
+for p in 22 2222 80 443; do ufw allow "$p"/tcp >/dev/null; done
 ufw --force enable >/dev/null
+
+log "Диагностика портов (что слушает снаружи)"
+ss -ltnp | grep -E ':(22|2222|80|443|3000)' || true
 
 log "ГОТОВО. Дальше: привезти .env и дамп базы (infra/migrate-to-server.sh),"
 echo "     затем: sudo -u $APP_USER bash -lc 'cd $APP_DIR/backend && npm run migrate' && systemctl start gdz-backend"
