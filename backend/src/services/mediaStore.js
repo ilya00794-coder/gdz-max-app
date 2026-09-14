@@ -10,7 +10,8 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 
-export const MEDIA_DIR = path.join(os.homedir(), "gdz-media");
+// Путь настраивается: на маке ~/gdz-media, на сервере /var/lib/gdz/media (14.09).
+export const MEDIA_DIR = process.env.MEDIA_DIR || path.join(os.homedir(), "gdz-media");
 const RETENTION_DAYS = 7;
 
 /** Скачивает url и кладёт в хранилище. Возвращает публичный путь "/media/<имя>". */
