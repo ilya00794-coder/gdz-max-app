@@ -13,6 +13,9 @@ set -euo pipefail
 APP_USER=gdz
 APP_DIR=/opt/gdz-max-app
 REPO=https://github.com/ilya00794-coder/gdz-max-app.git
+# Из РФ-сети сервера GitHub недоступен (SSL timeout, кейс 14.09) — код берём
+# архивом через свой домен (Cloudflare-воркер probe.dmshk.ru проксирует GitHub).
+CODE_TARBALL=${CODE_TARBALL:-https://probe.dmshk.ru/code.tar.gz}
 DOMAIN=api.dmshk.ru
 
 log() { printf "\n\033[1;36m==> %s\033[0m\n" "$*"; }
@@ -38,10 +41,18 @@ node -v
 
 log "Пользователь приложения и код"
 id -u "$APP_USER" >/dev/null 2>&1 || useradd -m -s /bin/bash "$APP_USER"
-if [ -d "$APP_DIR/.git" ]; then
-  git -C "$APP_DIR" fetch --quiet origin main && git -C "$APP_DIR" reset --hard origin/main --quiet
+if git ls-remote --exit-code "$REPO" >/dev/null 2>&1; then
+  if [ -d "$APP_DIR/.git" ]; then
+    git -C "$APP_DIR" fetch --quiet origin main && git -C "$APP_DIR" reset --hard origin/main --quiet
+  else
+    git clone --quiet "$REPO" "$APP_DIR"
+  fi
 else
-  git clone --quiet "$REPO" "$APP_DIR"
+  echo "GitHub недоступен — код архивом через $CODE_TARBALL"
+  mkdir -p "$APP_DIR"
+  curl -fsSL "$CODE_TARBALL" -o /tmp/gdz-code.tar.gz
+  tar -xzf /tmp/gdz-code.tar.gz --strip-components=1 -C "$APP_DIR"
+  rm -f /tmp/gdz-code.tar.gz
 fi
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 sudo -u "$APP_USER" bash -lc "cd $APP_DIR/backend && npm ci --omit=dev --silent"
