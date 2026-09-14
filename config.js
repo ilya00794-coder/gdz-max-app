@@ -10,10 +10,12 @@
 // Адрес намеренно задаётся файлом, а не параметром в URL: мини-приложение отправляет
 // на этот адрес фотографии ученика, и подставлять его снаружи ссылкой нельзя.
 window.APP_CONFIG = {
-  BACKEND_URL: "https://whacking-ramble-womb.ngrok-free.dev",
-  // Фейловер (13.09): фронт перебирает хосты при сетевых сбоях. Свой домен
-  // (Cloudflare Tunnel) добавить ПЕРВЫМ, ngrok останется запасным.
+  BACKEND_URL: "https://api.dmshk.ru",
+  // Свой домен (14.09): api.dmshk.ru — Cloudflare Worker-прокси из облака на
+  // ngrok (обходит операторские DNS-фильтры и DPI). ngrok — запасной хост,
+  // фронт сам переключится при сетевом сбое (фейловер 13.09).
   BACKEND_URLS: [
+    "https://api.dmshk.ru",
     "https://whacking-ramble-womb.ngrok-free.dev",
   ],
 };
