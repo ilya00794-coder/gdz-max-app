@@ -21,10 +21,12 @@ DOMAIN=api.dmshk.ru
 log() { printf "\n\033[1;36m==> %s\033[0m\n" "$*"; }
 
 log "SSH: второй порт 2222 (у провайдера входящий 22 фильтруется — кейс 14.09)"
-if ! grep -qE '^Port 2222' /etc/ssh/sshd_config; then
-  printf '\nPort 22\nPort 2222\n' >> /etc/ssh/sshd_config
-fi
-systemctl restart ssh || systemctl restart sshd || true
+mkdir -p /etc/ssh/sshd_config.d
+printf 'Port 22\nPort 2222\n' > /etc/ssh/sshd_config.d/99-gdz-ports.conf
+grep -q 'sshd_config.d/\*.conf' /etc/ssh/sshd_config \
+  || sed -i '1i Include /etc/ssh/sshd_config.d/*.conf' /etc/ssh/sshd_config
+sshd -t && (systemctl restart ssh || systemctl restart sshd) || echo "ВНИМАНИЕ: sshd -t не прошёл, порт не добавлен"
+ss -ltnp | grep -E ':(22|2222)' || true
 
 log "Пакеты системы"
 export DEBIAN_FRONTEND=noninteractive
@@ -110,8 +112,7 @@ fi
 cat > /etc/nginx/sites-available/gdz <<NGINX
 server {
 	listen 80;
-	listen 443 ssl;
-	http2 on;
+	listen 443 ssl http2;
 	server_name $DOMAIN _;
 
 	ssl_certificate     /etc/ssl/gdz-origin.crt;
