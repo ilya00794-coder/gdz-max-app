@@ -272,8 +272,17 @@ WebKit о клавиатуре не знает — события/резайза
    работает из-за DoH). Илья покупает домен на reg.ru (хостинг НЕ нужен —
    только домен → Cloudflare Free → NS). Готово у нас: cloudflared установлен,
    фронт умеет BACKEND_URLS с фейловером по сетевым сбоям (0a3c988, задеплоен).
-   Осталось по факту домена: cloudflared tunnel + launchd + api.<домен>
-   первым в config.js BACKEND_URLS.
+   ✅ СДЕЛАНО 14.09 вечер: домен dmshk.ru (reg.ru) → Cloudflare (Free, NS
+   bart/cora). cloudflared-ТУННЕЛЬ НЕ ПРОШЁЛ: сначала пустой resolv.conf на
+   маке (починен: nameserver'ы дописаны с sudo), затем провайдерский DPI
+   режет QUIC И TLS к argotunnel (edge EOF) — туннели CF из этой сети
+   не работают. РЕШЕНИЕ: Cloudflare WORKER-прокси gdz-api-proxy
+   (infra/cf-worker, wrangler deploy): api.dmshk.ru на краю CF → fetch на
+   ngrok ИЗ ОБЛАКА (операторские блокировки не мешают). Фронт: BACKEND_URLS
+   = [api.dmshk.ru, ngrok] (438b71d задеплоен). Сквозная канарейка через
+   домен: preflight 204, solve верный. ЗАВИСИМОСТЬ: воркер держит ngrok-URL
+   константой — смена ngrok-адреса = поправить ORIGIN в worker.js +
+   npx wrangler deploy (из infra/cf-worker; wrangler залогинен).
 
 ## Что сделано сегодня (01.09)
 - **П.5 закрыт целиком** — интервальные и серийные ответы теперь verified:
