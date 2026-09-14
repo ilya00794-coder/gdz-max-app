@@ -34,6 +34,29 @@ function backendFailover() {
   return true;
 }
 
+// Гонка хостов на старте (14.09): у одних операторов зарезан ngrok, у других —
+// Cloudflare (кейс Ильи: домен только с VPN). Пингуем ВСЕ хосты параллельно
+// лёгким /health; первый живой становится хостом сессии. Последовательный
+// фейловер выше остаётся вторым рубежом.
+(function raceBackendHosts() {
+  if (BACKEND_URLS.length < 2) return;
+  let settled = false;
+  BACKEND_URLS.forEach((base, i) => {
+    const signal = typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(7000) : undefined;
+    fetch(base + "/health", { headers: { "ngrok-skip-browser-warning": "true" }, signal })
+      .then((r) => {
+        if (settled || !r.ok) return;
+        settled = true;
+        if (backendIdx !== i) {
+          backendIdx = i;
+          try { sessionStorage.setItem("gdz:host-idx", String(i)); } catch {}
+          console.warn("гонка хостов: выбран", base);
+        }
+      })
+      .catch(() => {});
+  });
+})();
+
 // ---------- MAX Bridge ----------
 const max = {
   mode: "loading", // loading | max | preview | blocked
