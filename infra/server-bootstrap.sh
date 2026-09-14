@@ -15,7 +15,7 @@ APP_DIR=/opt/gdz-max-app
 REPO=https://github.com/ilya00794-coder/gdz-max-app.git
 # Из РФ-сети сервера GitHub недоступен (SSL timeout, кейс 14.09) — код берём
 # архивом через свой домен (Cloudflare-воркер probe.dmshk.ru проксирует GitHub).
-CODE_TARBALL=${CODE_TARBALL:-https://probe.dmshk.ru/code.tar.gz}
+CODE_TARBALL=${CODE_TARBALL:-https://api.dmshk.ru/deploy/code.tar.gz?token=$DEPLOY_TOKEN}
 DOMAIN=api.dmshk.ru
 
 log() { printf "\n\033[1;36m==> %s\033[0m\n" "$*"; }

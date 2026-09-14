@@ -11,6 +11,7 @@ import aiFeaturesRouter from "./src/routes/aiFeatures.js";
 import aiChatRouter from "./src/routes/aiChat.js";
 import { imageRouter, videoRouter, enhanceRouter } from "./src/routes/aiMedia.js";
 import shareMediaRouter from "./src/routes/shareMedia.js";
+import deployRouter from "./src/routes/deploy.js"; // ВРЕМЕННО: раздача кода серверу (GitHub из РФ недоступен)
 import { assertDatabaseReady, DATABASE_URL } from "./src/services/cache.js";
 import { maxInitData, INIT_DATA_HEADER } from "./src/middleware/maxInitData.js";
 import { subscriptionGate, assertGatingReady, checkSubscription } from "./src/subscription.js";
@@ -38,6 +39,7 @@ app.use(express.json({ limit: "15mb" })); // фото в base64 могут бы�
 // Сгенерированные медиа (12.09): ДО auth — <img>/<video> не умеют слать
 // заголовки; имена-uuid неугадываемы, ретенция 7 дней (mediaStore).
 app.use("/media", express.static(MEDIA_DIR, { maxAge: "7d", immutable: true, fallthrough: false }));
+app.use("/deploy", deployRouter); // временный, работает только при заданном DEPLOY_TOKEN
 
 app.use("/api", maxInitData);
 
