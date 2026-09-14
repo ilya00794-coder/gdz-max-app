@@ -96,22 +96,44 @@ touch /var/log/gdz-backend.log && chown "$APP_USER:$APP_USER" /var/log/gdz-backe
 systemctl daemon-reload
 systemctl enable gdz-backend >/dev/null
 
-log "Caddy (HTTPS для $DOMAIN)"
-if ! command -v caddy >/dev/null; then
-  apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https
-  curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key \
-    | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  echo "deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.gpg] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main" \
-    > /etc/apt/sources.list.d/caddy-stable.list
-  apt-get update -qq && apt-get install -y -qq caddy
+log "Веб-приём: nginx из штатного репозитория (14.09: Caddy не встал — его
+# ключ подписи тянется с заблокированного из РФ хоста). TLS завершает
+# Cloudflare (оранжевое облако), origin слушает 80 и 443 со самоподписанным
+# сертификатом — режим SSL Full принимает его."
+apt-get install -y -qq nginx openssl
+if [ ! -f /etc/ssl/gdz-origin.crt ]; then
+  openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+    -keyout /etc/ssl/gdz-origin.key -out /etc/ssl/gdz-origin.crt \
+    -subj "/CN=$DOMAIN" >/dev/null 2>&1
+  chmod 600 /etc/ssl/gdz-origin.key
 fi
-cat > /etc/caddy/Caddyfile <<CADDY
-$DOMAIN {
-	encode gzip
-	reverse_proxy 127.0.0.1:3000
+cat > /etc/nginx/sites-available/gdz <<NGINX
+server {
+	listen 80;
+	listen 443 ssl;
+	http2 on;
+	server_name $DOMAIN _;
+
+	ssl_certificate     /etc/ssl/gdz-origin.crt;
+	ssl_certificate_key /etc/ssl/gdz-origin.key;
+
+	client_max_body_size 20m;   # фото в base64
+	proxy_read_timeout 300s;    # решение задачи — до 2-3 минут
+
+	location / {
+		proxy_pass http://127.0.0.1:3000;
+		proxy_http_version 1.1;
+		proxy_set_header Host \$host;
+		proxy_set_header X-Real-IP \$remote_addr;
+		proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-Proto \$scheme;
+		proxy_buffering off;    # NDJSON-стрим шагов решения
+	}
 }
-CADDY
-systemctl reload caddy || systemctl restart caddy
+NGINX
+ln -sf /etc/nginx/sites-available/gdz /etc/nginx/sites-enabled/gdz
+rm -f /etc/nginx/sites-enabled/default
+nginx -t && systemctl enable --now nginx && systemctl reload nginx
 
 log "Файрвол: только SSH и веб"
 for p in 22 2222 80 443; do ufw allow "$p"/tcp >/dev/null; done
