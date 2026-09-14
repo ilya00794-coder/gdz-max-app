@@ -13,6 +13,9 @@ export default {
       headers,
       body: ["GET", "HEAD"].includes(request.method) ? undefined : request.body,
       redirect: "manual",
+      // Кэш выключен: он подменял ответ на 200 и ломал Range-докачку
+      // (нужна при DPI, который рвёт длинные загрузки — кейс 14.09).
+      cf: { cacheTtl: 0, cacheEverything: false },
     });
     return new Response(resp.body, { status: resp.status, headers: resp.headers });
   },
