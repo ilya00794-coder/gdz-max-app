@@ -156,11 +156,40 @@ export function parseCandidateAnswer(candidateAnswer) {
   return parts;
 }
 
+// Ограничитель параллельных питонов (14.09, подготовка к VPS 1 ядро):
+// каждая проверка — отдельный процесс python+sympy (~0.4-0.6 с CPU). При пике
+// (50 детей разом) 50 процессов задавили бы одноядерный сервер памятью и
+// переключением контекста. Здесь — очередь: одновременно не больше
+// VERIFY_CONCURRENCY, остальные ждут своей очереди (запрос всё равно ждёт
+// модель ~19 с, лишние 1-2 с в очереди незаметны).
+const VERIFY_CONCURRENCY = Math.max(1, Number(process.env.VERIFY_CONCURRENCY || 4));
+let verifyActive = 0;
+const verifyQueue = [];
+function acquireVerifySlot() {
+  if (verifyActive < VERIFY_CONCURRENCY) { verifyActive += 1; return Promise.resolve(); }
+  return new Promise((release) => verifyQueue.push(release));
+}
+function releaseVerifySlot() {
+  const next = verifyQueue.shift();
+  if (next) next(); // слот передаётся следующему в очереди, счётчик не меняется
+  else verifyActive = Math.max(0, verifyActive - 1);
+}
+
 /**
  * Запускает verify_sympy.py отдельным процессом, передаёт задание в stdin.
  * Таймаут считаем сами: процесс убивается SIGKILL, чтобы зависший SymPy не держал запрос.
+ * Проходит через очередь слотов (см. VERIFY_CONCURRENCY).
  */
-export function runPython(payload) {
+export async function runPython(payload) {
+  await acquireVerifySlot();
+  try {
+    return await spawnPython(payload);
+  } finally {
+    releaseVerifySlot();
+  }
+}
+
+function spawnPython(payload) {
   return new Promise((resolve, reject) => {
     const child = spawn(PYTHON_BIN, [SCRIPT_PATH], { stdio: ["pipe", "pipe", "pipe"] });
 
