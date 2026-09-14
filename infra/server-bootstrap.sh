@@ -41,7 +41,8 @@ node -v
 
 log "Пользователь приложения и код"
 id -u "$APP_USER" >/dev/null 2>&1 || useradd -m -s /bin/bash "$APP_USER"
-if git ls-remote --exit-code "$REPO" >/dev/null 2>&1; then
+# timeout: при блокировке GitHub ls-remote висит минутами на SSL
+if timeout 12 git ls-remote --exit-code "$REPO" >/dev/null 2>&1; then
   if [ -d "$APP_DIR/.git" ]; then
     git -C "$APP_DIR" fetch --quiet origin main && git -C "$APP_DIR" reset --hard origin/main --quiet
   else
